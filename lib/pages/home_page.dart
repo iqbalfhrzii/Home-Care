@@ -1,34 +1,13 @@
 // lib/pages/home_page.dart
 
+import 'package:auto_route/auto_route.dart';
 import 'package:flutter/material.dart';
-import 'package:testaa/pages/schedule_page.dart';
-import 'package:testaa/pages/report_page.dart';
 
-class HomePage extends StatefulWidget {
+@RoutePage()
+class HomePage extends StatelessWidget {
   const HomePage({super.key});
 
-  @override
-  State<HomePage> createState() => _HomePageState();
-}
-
-class _HomePageState extends State<HomePage> {
-  int _selectedIndex = 0;
-
-  static const List<Widget> _widgetOptions = <Widget>[
-    Text(
-      'Halaman Beranda',
-      style: TextStyle(fontSize: 24),
-    ),
-    SchedulePage(),
-    ReportPage(),
-  ];
-
-  void _onItemTapped(int index) {
-    setState(() {
-      _selectedIndex = index;
-    });
-  }
-
+  // static const List<Widget> _widgetOptions = <Widget>[
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -44,34 +23,24 @@ class _HomePageState extends State<HomePage> {
               // 'popAndPushNamed' akan menghapus semua halaman sebelumnya dari stack
               Navigator.of(context).pushNamedAndRemoveUntil(
                 '/', // Rute untuk login_page.dart
-                    (Route<dynamic> route) => false,
+                (Route<dynamic> route) => false,
               );
             },
           ),
         ],
       ),
-      body: Center(
-        child: _widgetOptions.elementAt(_selectedIndex),
-      ),
-      bottomNavigationBar: BottomNavigationBar(
-        items: const <BottomNavigationBarItem>[
-          BottomNavigationBarItem(
-            icon: Icon(Icons.home),
-            label: 'Home',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.calendar_month),
-            label: 'Schedule',
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.insert_chart),
-            label: 'Report',
-          ),
-        ],
-        currentIndex: _selectedIndex,
-        selectedItemColor: Colors.blue,
-        onTap: _onItemTapped,
-      ),
+      body: const HomeView(),
+    );
+  }
+}
+
+class HomeView extends StatelessWidget {
+  const HomeView({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return const Center(
+      child: Text('Halaman Beranda', style: TextStyle(fontSize: 24)),
     );
   }
 }
