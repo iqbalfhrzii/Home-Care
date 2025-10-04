@@ -14,7 +14,7 @@ class ReportPage extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Beranda'),
+        title: const Text('Laporan'),
         centerTitle: true,
         actions: [
           IconButton(
