@@ -1,21 +1,13 @@
 import 'package:auto_route/auto_route.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:homecare_mobile/core/utils/injections.dart';
 import 'package:homecare_mobile/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:homecare_mobile/main.gr.dart';
 
 @RoutePage()
-class SplashPage extends StatelessWidget implements AutoRouteWrapper {
+class SplashPage extends StatelessWidget {
   const SplashPage({super.key});
 
-  @override
-  Widget wrappedRoute(BuildContext context) {
-    return BlocProvider(
-      create: (_) => sl<AuthBloc>()..add(const AuthCheckRequested()),
-      child: this, // the very same LoginPage instance
-    );
-  }
 
   @override
   Widget build(BuildContext context) {

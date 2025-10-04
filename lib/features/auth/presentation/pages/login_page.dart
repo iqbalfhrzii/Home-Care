@@ -1,24 +1,15 @@
 import 'package:auto_route/auto_route.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:homecare_mobile/core/utils/injections.dart';
 import 'package:homecare_mobile/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:homecare_mobile/main.gr.dart';
 
 @RoutePage()
-class LoginPage extends StatefulWidget implements AutoRouteWrapper {
+class LoginPage extends StatefulWidget  {
   const LoginPage({super.key});
 
   @override
   State<LoginPage> createState() => _LoginPageState();
-
-  @override
-  Widget wrappedRoute(BuildContext context) {
-    return BlocProvider(
-      create: (_) => sl<AuthBloc>(),
-      child: this, // the very same LoginPage instance
-    );
-  }
 }
 
 class _EmailField extends StatelessWidget {

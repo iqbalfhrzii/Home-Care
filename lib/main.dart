@@ -1,6 +1,7 @@
 // lib/main.dart
 import 'package:auto_route/auto_route.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:homecare_mobile/core/utils/injections.dart';
 import 'package:homecare_mobile/core/utils/logger.dart';
 import 'package:homecare_mobile/features/auth/presentation/bloc/auth_bloc.dart';
@@ -57,13 +58,15 @@ class AppRouter extends RootStackRouter {
     logger.d('AppRouter: Defining routes.');
     return [
       AutoRoute(page: SplashRoute.page, initial: true),
+      AutoRoute(page: HomecareReferralDetailRoute.page,        guards: [authGuard],
+      ),
       AutoRoute(
         page: MainRoute.page,
         guards: [authGuard],
         children: [
           AutoRoute(page: HomeRoute.page),
           AutoRoute(page: ReportRoute.page),
-          AutoRoute(page: ScheduleRoute.page),
+          AutoRoute(page: HomecareReferralListRoute.page),
         ],
       ),
       AutoRoute(page: LoginRoute.page),
@@ -99,10 +102,13 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     logger.d('Building MyApp widget');
 
-    return MaterialApp.router(
-      title: 'Aplikasi Percobaan',
-      theme: ThemeData(primarySwatch: Colors.blue),
-      routerConfig: _appRouter.config(),
+    return BlocProvider<AuthBloc>.value(
+      value: sl<AuthBloc>()..add(const AuthCheckRequested()),          // t
+      child: MaterialApp.router(
+        title: 'Aplikasi Percobaan',
+        theme: ThemeData(primarySwatch: Colors.blue),
+        routerConfig: _appRouter.config(),
+      ),
     );
   }
 }
