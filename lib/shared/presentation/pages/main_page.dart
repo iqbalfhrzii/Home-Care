@@ -9,7 +9,7 @@ class MainPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return AutoTabsScaffold(
-      routes: const [HomeRoute(), ReportRoute(), ScheduleRoute()],
+      routes: const [HomeRoute(), HomecareReferralListRoute(), ReportRoute()],
       bottomNavigationBuilder: _scaffoldBottomNavigationBuilder,
     );
   }
@@ -23,10 +23,10 @@ class MainPage extends StatelessWidget {
       onTap: tabsRouter.setActiveIndex,
       items: const [
         BottomNavigationBarItem(label: 'Users', icon: Icon(Icons.home)),
-        BottomNavigationBarItem(label: 'Posts', icon: Icon(Icons.insert_chart)),
+        BottomNavigationBarItem(label: 'Schedule', icon: Icon(Icons.calendar_month)),
         BottomNavigationBarItem(
-          label: 'Settings',
-          icon: Icon(Icons.calendar_month),
+          label: 'Report',
+          icon: Icon(Icons.insert_chart),
         ),
       ],
     );
