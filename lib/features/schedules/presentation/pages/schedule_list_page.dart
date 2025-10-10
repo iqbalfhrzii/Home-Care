@@ -1,18 +1,16 @@
-// lib/pages/homecare_referral_list_page.dart
-import 'package:auto_route/auto_route.dart';
 import 'package:flutter/material.dart';
-import 'package:homecare_mobile/main.gr.dart';
+import 'package:go_router/go_router.dart';
+import 'package:homecare_mobile/core/router/app_router.dart';
 
-@RoutePage()
-class HomecareReferralListPage extends StatefulWidget {
-  const HomecareReferralListPage({super.key});
+// @RoutePage()
+class ScheduleListPage extends StatefulWidget {
+  const ScheduleListPage({super.key});
 
   @override
-  State<HomecareReferralListPage> createState() =>
-      _HomecareReferralListPageState();
+  State<ScheduleListPage> createState() => _ScheduleListPageState();
 }
 
-class _HomecareReferralListPageState extends State<HomecareReferralListPage> {
+class _ScheduleListPageState extends State<ScheduleListPage> {
   int selectedIndex = 0; // 0 = Semua, 1 = Pending, 2 = Completed
 
   final List<Map<String, dynamic>> schedules = [
@@ -20,23 +18,20 @@ class _HomecareReferralListPageState extends State<HomecareReferralListPage> {
       "time": "10:30",
       "name": "Bp. Arya Andhika",
       "address": "Jl. Giri Rejo II alikpapan",
-      "status": "Pending"
+      "status": "Pending",
     },
     {
       "time": "09:00",
       "name": "Ibu Rizky Amelia",
       "address": "Jl. Melati No. 8, alikpapan",
-      "status": "Completed"
+      "status": "Completed",
     },
   ];
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Jadwal Kunjungan'),
-        centerTitle: true,
-      ),
+      appBar: AppBar(title: const Text('Jadwal Kunjungan'), centerTitle: true),
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -98,22 +93,28 @@ class _HomecareReferralListPageState extends State<HomecareReferralListPage> {
                 }
 
                 return Card(
-                  margin:
-                  const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  margin: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 8,
+                  ),
                   child: ListTile(
                     onTap: () {
-                      context.router.push(HomecareReferralDetailRoute(id: index));
+                      context.go('${AppRouter.schedules}/$index');
                     },
                     contentPadding: const EdgeInsets.all(16),
                     leading: Text(
                       schedule['time'],
                       style: const TextStyle(
-                          fontWeight: FontWeight.bold, fontSize: 16),
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                      ),
                     ),
                     title: Text(
                       schedule['name'],
                       style: const TextStyle(
-                          fontWeight: FontWeight.bold, fontSize: 16),
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                      ),
                     ),
                     subtitle: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -141,7 +142,7 @@ class _HomecareReferralListPageState extends State<HomecareReferralListPage> {
                             : Colors.green,
                       ),
                       onPressed: () {
-                        // context.router.push(HomecareReferralDetailRoute());
+                        context.go('${AppRouter.schedules}/$index');
                       },
                       child: Text(
                         schedule['status'] == "Pending"

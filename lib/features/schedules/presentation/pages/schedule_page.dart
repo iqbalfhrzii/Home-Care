@@ -1,11 +1,11 @@
 // lib/pages/homecare_referral_detail_page.dart
-import 'package:auto_route/auto_route.dart';
+// import 'package:auto_route/auto_route.dart';
 import 'package:flutter/material.dart';
 
-@RoutePage()
-class HomecareReferralDetailPage extends StatelessWidget {
+// @RoutePage()
+class SchedulePage extends StatelessWidget {
   final int id;
-  const HomecareReferralDetailPage({super.key, required this.id});
+  const SchedulePage({super.key, required this.id});
 
   @override
   Widget build(BuildContext context) {
@@ -16,14 +16,11 @@ class HomecareReferralDetailPage extends StatelessWidget {
       "address": "Jl. Giri Rejo II, Balikpapan",
       "status": "Pending",
       "complaint": "Pasien mengeluhkan sakit kepala sejak 2 hari lalu.",
-      "assignedStaff": "dr. Budi Santoso"
+      "assignedStaff": "dr. Budi Santoso",
     };
 
     return Scaffold(
-      appBar: AppBar(
-        title:  Text("Detail Rujukan $id"),
-        centerTitle: true,
-      ),
+      appBar: AppBar(title: Text("Detail Rujukan $id"), centerTitle: true),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
         child: ListView(
@@ -35,7 +32,10 @@ class HomecareReferralDetailPage extends StatelessWidget {
                 const SizedBox(width: 8),
                 Text(
                   referral['time'],
-                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ],
             ),
@@ -67,9 +67,10 @@ class HomecareReferralDetailPage extends StatelessWidget {
             // Status
             Row(
               children: [
-                const Text("Status: ",
-                    style:
-                    TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
+                const Text(
+                  "Status: ",
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
+                ),
                 Chip(
                   label: Text(referral['status']),
                   backgroundColor: referral['status'] == "Pending"
@@ -120,7 +121,7 @@ class HomecareReferralDetailPage extends StatelessWidget {
                     : "Lihat Laporan",
                 style: const TextStyle(fontSize: 16),
               ),
-            )
+            ),
           ],
         ),
       ),
