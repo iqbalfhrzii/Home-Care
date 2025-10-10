@@ -12,6 +12,4 @@ class AuthResponse {
   AuthResponse({required this.user, required this.token});
   factory AuthResponse.fromJson(Map<String, dynamic> json) =>
       _$AuthResponseFromJson(json);
-
-  Map<String, dynamic> toJson() => _$AuthResponseToJson(this);
 }
