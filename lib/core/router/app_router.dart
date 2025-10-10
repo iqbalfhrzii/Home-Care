@@ -8,7 +8,7 @@ import 'package:homecare_mobile/features/auth/presentation/pages/login_page.dart
 import 'package:homecare_mobile/features/reports/report_list_page.dart';
 import 'package:homecare_mobile/features/schedules/presentation/pages/schedule_list_page.dart';
 import 'package:homecare_mobile/features/schedules/presentation/pages/schedule_page.dart';
-import 'package:homecare_mobile/pages/home_page.dart';
+import 'package:homecare_mobile/shared/presentation/pages/home_page.dart';
 import 'package:homecare_mobile/shared/presentation/pages/main_page.dart';
 import 'package:homecare_mobile/shared/presentation/pages/splash_page.dart';
 
