@@ -18,6 +18,7 @@ class _MainPageState extends State<MainPage> {
   static const _routes = [
     AppRouter.home,
     AppRouter.schedules,
+    AppRouter.patients,
     AppRouter.reports,
   ];
 
@@ -37,8 +38,10 @@ class _MainPageState extends State<MainPage> {
       _currentIndex = 0;
     } else if (currentLocation.startsWith(AppRouter.schedules)) {
       _currentIndex = 1;
-    } else if (currentLocation.startsWith(AppRouter.reports)) {
+    } else if (currentLocation.startsWith(AppRouter.patients)) {
       _currentIndex = 2;
+    } else if (currentLocation.startsWith(AppRouter.reports)) {
+      _currentIndex = 3;
     }
 
     return Scaffold(
@@ -46,12 +49,19 @@ class _MainPageState extends State<MainPage> {
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _currentIndex,
         onTap: _onItemTapped,
+        type: BottomNavigationBarType.fixed, // 🎨 warna utama
+        selectedItemColor: const Color(0xFF002F67), // warna ikon & teks aktif
+        unselectedItemColor: const Color(
+          0xFF3F51B5,
+        ), // warna ikon & teks non-aktif
+        showUnselectedLabels: true,
         items: const [
           BottomNavigationBarItem(label: 'Home', icon: Icon(Icons.home)),
           BottomNavigationBarItem(
             label: 'Schedules',
             icon: Icon(Icons.calendar_month),
           ),
+          BottomNavigationBarItem(label: 'Patients', icon: Icon(Icons.people)),
           BottomNavigationBarItem(
             label: 'Reports',
             icon: Icon(Icons.insert_chart),

@@ -11,6 +11,8 @@ import 'package:homecare_mobile/features/schedules/presentation/pages/schedule_p
 import 'package:homecare_mobile/pages/home_page.dart';
 import 'package:homecare_mobile/shared/presentation/pages/main_page.dart';
 import 'package:homecare_mobile/shared/presentation/pages/splash_page.dart';
+import 'package:homecare_mobile/features/patients/presentation/pages/patient_list_pages.dart';
+import 'package:homecare_mobile/features/patients/presentation/pages/patient_pages.dart';
 
 class AppRouter {
   static const String splash = '/';
@@ -18,6 +20,7 @@ class AppRouter {
   static const String home = '/home';
   static const String schedules = '/schedules';
   static const String reports = '/reports';
+  static const String patients = '/patients';
 
   final AuthBloc _authBloc;
 
@@ -68,6 +71,25 @@ class AppRouter {
               ),
             ],
           ),
+          GoRoute(
+            path: patients,
+            name: 'patientList',
+            pageBuilder: (context, state) => NoTransitionPage(
+              key: state.pageKey,
+              child: const PatientListPage(),
+            ),
+            routes: [
+              GoRoute(
+                path: ':id',
+                name: 'patientDetail',
+                builder: (context, state) {
+                  final id = int.parse(state.pathParameters['id']!);
+                  return PatientDetailPage(patientId: id);
+                },
+              ),
+            ],
+          ),
+
           GoRoute(
             path: reports,
             name: 'reports',
