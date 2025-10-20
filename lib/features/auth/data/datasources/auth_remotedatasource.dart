@@ -15,7 +15,7 @@ class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
   @override
   Future<Map<String, dynamic>> login(LoginRequest request) async {
     try {
-      final response = await _dio.post('/auth/login', data: request.toJson());
+      final response = await _dio.post('/login', data: request.toJson());
 
       if (response.statusCode == 200) {
         return response.data as Map<String, dynamic>;
@@ -29,7 +29,7 @@ class AuthRemoteDataSourceImpl implements AuthRemoteDataSource {
 
   @override
   Future<void> logout() async {
-    final response = await _dio.post('/auth/logout');
+    final response = await _dio.post('/logout');
     if (response.statusCode == 200) {
       return Future.value();
     } else {
