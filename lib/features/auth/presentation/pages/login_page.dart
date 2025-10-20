@@ -114,6 +114,8 @@ class _LoginView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
     return SafeArea(
       child: Column(
         spacing: 30,
@@ -130,9 +132,9 @@ class _LoginView extends StatelessWidget {
               key: formKey,
               child: Container(
                 padding: const EdgeInsets.all(24),
-                decoration: const BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.all(Radius.circular(20)),
+                decoration: BoxDecoration(
+                  color: colorScheme.surface,
+                  borderRadius: const BorderRadius.all(Radius.circular(20)),
                 ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
@@ -161,7 +163,7 @@ class _LoginView extends StatelessWidget {
                           width: double.infinity,
                           child: ElevatedButton(
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF3F51B5),
+                              backgroundColor: colorScheme.primary,
                               padding: const EdgeInsets.symmetric(vertical: 16),
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(8),
@@ -169,21 +171,21 @@ class _LoginView extends StatelessWidget {
                             ),
                             onPressed: loading ? null : onLogin,
                             child: loading
-                                ? const SizedBox(
+                                ? SizedBox(
                                     height: 20,
                                     width: 20,
                                     child: CircularProgressIndicator(
                                       strokeWidth: 2,
                                       valueColor: AlwaysStoppedAnimation<Color>(
-                                        Colors.white,
+                                        colorScheme.onPrimary,
                                       ),
                                     ),
                                   )
-                                : const Text(
+                                : Text(
                                     'Sign In',
                                     style: TextStyle(
                                       fontSize: 18,
-                                      color: Colors.white,
+                                      color: colorScheme.onPrimary,
                                     ),
                                   ),
                           ),
@@ -196,17 +198,20 @@ class _LoginView extends StatelessWidget {
             ),
           ),
           const Spacer(),
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 20),
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 20),
             child: Column(
               children: [
                 Text(
                   '© 2024 Home Care System. All rights reserved.',
-                  style: TextStyle(color: Colors.black54),
+                  style: TextStyle(color: colorScheme.onSurfaceVariant),
                 ),
                 Text(
                   'Version 1.0.0',
-                  style: TextStyle(fontSize: 12, color: Colors.black54),
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: colorScheme.onSurfaceVariant,
+                  ),
                 ),
               ],
             ),

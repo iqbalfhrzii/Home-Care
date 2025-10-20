@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:homecare_mobile/core/router/app_router.dart';
 
-// @RoutePage()
 class ScheduleListPage extends StatefulWidget {
   const ScheduleListPage({super.key});
 
@@ -11,7 +10,7 @@ class ScheduleListPage extends StatefulWidget {
 }
 
 class _ScheduleListPageState extends State<ScheduleListPage> {
-  int selectedIndex = 0; // 0 = Semua, 1 = Pending, 2 = Completed
+  int selectedIndex = 0;
 
   final List<Map<String, dynamic>> schedules = [
     {
@@ -30,12 +29,13 @@ class _ScheduleListPageState extends State<ScheduleListPage> {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
     return Scaffold(
       appBar: AppBar(title: const Text('Jadwal Kunjungan'), centerTitle: true),
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Segmented Button
           Padding(
             padding: const EdgeInsets.all(12.0),
             child: Row(
@@ -45,10 +45,12 @@ class _ScheduleListPageState extends State<ScheduleListPage> {
                   label: const Text("Semua"),
                   selected: selectedIndex == 0,
                   onSelected: (_) => setState(() => selectedIndex = 0),
-                  selectedColor: Colors.blue,
-                  checkmarkColor: Colors.white,
+                  selectedColor: colorScheme.primary,
+                  checkmarkColor: colorScheme.onPrimary,
                   labelStyle: TextStyle(
-                    color: selectedIndex == 0 ? Colors.white : Colors.black,
+                    color: selectedIndex == 0
+                        ? colorScheme.onPrimary
+                        : colorScheme.onSurface,
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -56,10 +58,12 @@ class _ScheduleListPageState extends State<ScheduleListPage> {
                   label: const Text("Pending"),
                   selected: selectedIndex == 1,
                   onSelected: (_) => setState(() => selectedIndex = 1),
-                  selectedColor: Colors.blue,
-                  checkmarkColor: Colors.white,
+                  selectedColor: colorScheme.primary,
+                  checkmarkColor: colorScheme.onPrimary,
                   labelStyle: TextStyle(
-                    color: selectedIndex == 1 ? Colors.white : Colors.black,
+                    color: selectedIndex == 1
+                        ? colorScheme.onPrimary
+                        : colorScheme.onSurface,
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -67,24 +71,24 @@ class _ScheduleListPageState extends State<ScheduleListPage> {
                   label: const Text("Completed"),
                   selected: selectedIndex == 2,
                   onSelected: (_) => setState(() => selectedIndex = 2),
-                  selectedColor: Colors.blue,
-                  checkmarkColor: Colors.white,
+                  selectedColor: colorScheme.secondary,
+                  checkmarkColor: colorScheme.onSecondary,
                   labelStyle: TextStyle(
-                    color: selectedIndex == 2 ? Colors.white : Colors.black,
+                    color: selectedIndex == 2
+                        ? colorScheme.onSecondary
+                        : colorScheme.onSurface,
                   ),
                 ),
               ],
             ),
           ),
-
-          // List Jadwal
           Expanded(
             child: ListView.builder(
               itemCount: schedules.length,
               itemBuilder: (context, index) {
                 final schedule = schedules[index];
+                final isPending = schedule['status'] == 'Pending';
 
-                // filter sesuai tab
                 if (selectedIndex == 1 && schedule['status'] != 'Pending') {
                   return const SizedBox.shrink();
                 }
@@ -121,35 +125,32 @@ class _ScheduleListPageState extends State<ScheduleListPage> {
                       children: [
                         Text(schedule['address']),
                         const SizedBox(height: 6),
-                        if (schedule['status'] == "Pending")
-                          Chip(
-                            label: const Text("Pending"),
-                            backgroundColor: Colors.blue[50],
-                            labelStyle: const TextStyle(color: Colors.blue),
-                          )
-                        else
-                          Chip(
-                            label: const Text("Completed"),
-                            backgroundColor: Colors.green[50],
-                            labelStyle: const TextStyle(color: Colors.green),
+                        Chip(
+                          label: Text(schedule['status']),
+                          backgroundColor: isPending
+                              ? colorScheme.primaryContainer
+                              : colorScheme.secondaryContainer,
+                          labelStyle: TextStyle(
+                            color: isPending
+                                ? colorScheme.onPrimaryContainer
+                                : colorScheme.onSecondaryContainer,
                           ),
+                        ),
                       ],
                     ),
-                    trailing: ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: schedule['status'] == "Pending"
-                            ? Colors.blue
-                            : Colors.green,
-                      ),
-                      onPressed: () {
-                        context.go('${AppRouter.schedules}/$index');
-                      },
-                      child: Text(
-                        schedule['status'] == "Pending"
-                            ? "Start Visit"
-                            : "Lihat Laporan",
-                      ),
-                    ),
+                    trailing: isPending
+                        ? ElevatedButton(
+                            onPressed: () {
+                              context.go('${AppRouter.schedules}/$index');
+                            },
+                            child: const Text("Start Visit"),
+                          )
+                        : OutlinedButton(
+                            onPressed: () {
+                              context.go('${AppRouter.schedules}/$index');
+                            },
+                            child: const Text("Lihat Laporan"),
+                          ),
                   ),
                 );
               },

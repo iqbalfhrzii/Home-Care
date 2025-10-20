@@ -9,6 +9,8 @@ class SchedulePage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
     // Dummy data (sementara hardcoded)
     final Map<String, dynamic> referral = {
       "time": "10:30",
@@ -19,6 +21,14 @@ class SchedulePage extends StatelessWidget {
       "assignedStaff": "dr. Budi Santoso",
     };
 
+    final bool isPending = referral['status'] == "Pending";
+    final Color statusColor = isPending
+        ? colorScheme.primary
+        : colorScheme.secondary;
+    final Color statusBackgroundColor = isPending
+        ? colorScheme.primary.withValues(alpha: 0.1)
+        : colorScheme.secondary.withValues(alpha: 0.1);
+
     return Scaffold(
       appBar: AppBar(title: Text("Detail Rujukan $id"), centerTitle: true),
       body: Padding(
@@ -28,7 +38,7 @@ class SchedulePage extends StatelessWidget {
             // Jam kunjungan
             Row(
               children: [
-                const Icon(Icons.access_time, color: Colors.blue),
+                Icon(Icons.access_time, color: colorScheme.primary),
                 const SizedBox(width: 8),
                 Text(
                   referral['time'],
@@ -52,7 +62,7 @@ class SchedulePage extends StatelessWidget {
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Icon(Icons.location_on, color: Colors.red),
+                Icon(Icons.location_on, color: colorScheme.error),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
@@ -73,14 +83,8 @@ class SchedulePage extends StatelessWidget {
                 ),
                 Chip(
                   label: Text(referral['status']),
-                  backgroundColor: referral['status'] == "Pending"
-                      ? Colors.blue[50]
-                      : Colors.green[50],
-                  labelStyle: TextStyle(
-                    color: referral['status'] == "Pending"
-                        ? Colors.blue
-                        : Colors.green,
-                  ),
+                  backgroundColor: statusBackgroundColor,
+                  labelStyle: TextStyle(color: statusColor),
                 ),
               ],
             ),
@@ -107,18 +111,14 @@ class SchedulePage extends StatelessWidget {
             // Tombol Aksi
             ElevatedButton(
               style: ElevatedButton.styleFrom(
-                backgroundColor: referral['status'] == "Pending"
-                    ? Colors.blue
-                    : Colors.green,
+                backgroundColor: statusColor,
                 minimumSize: const Size(double.infinity, 48),
               ),
               onPressed: () {
                 // nanti bisa navigasi ke halaman visit / laporan
               },
               child: Text(
-                referral['status'] == "Pending"
-                    ? "Start Visit"
-                    : "Lihat Laporan",
+                isPending ? "Start Visit" : "Lihat Laporan",
                 style: const TextStyle(fontSize: 16),
               ),
             ),
