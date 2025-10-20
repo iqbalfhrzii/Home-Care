@@ -9,6 +9,7 @@ import 'package:homecare_mobile/features/auth/domain/usecases/logout_usecase.dar
 import 'package:homecare_mobile/features/auth/presentation/bloc/auth_bloc.dart';
 
 Future<void> initAuthInjections() async {
+  // DataSources
   sl
     ..registerFactory<AuthRemoteDataSource>(
       () => AuthRemoteDataSourceImpl(sl()),
@@ -16,12 +17,13 @@ Future<void> initAuthInjections() async {
     ..registerFactory<AuthLocalDataSource>(
       () => AuthLocalDataSourceImpl(sl(), sl()),
     )
-    ..registerLazySingleton<AuthRepository>(
-      () => AuthRepositoryImpl(sl(), sl()),
-    )
+    // Repositories
+    ..registerFactory<AuthRepository>(() => AuthRepositoryImpl(sl(), sl()))
+    // UseCases
     ..registerFactory(() => LoginUseCase(sl()))
     ..registerFactory(() => LogoutUseCase(sl()))
     ..registerFactory(() => GetCurrentUserUseCase(sl()))
+    // BlcC
     ..registerLazySingleton(
       () => AuthBloc(
         loginUseCase: sl(),
