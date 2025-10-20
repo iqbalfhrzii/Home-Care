@@ -6,7 +6,7 @@ import 'package:pretty_dio_logger/pretty_dio_logger.dart';
 final Dio dio = Dio(
   BaseOptions(
     baseUrl: kDebugMode
-        ? 'http://10.0.2.2:8000/api'
-        : 'https://musakki.com/api',
+        ? 'http://10.0.2.2:8000/api/v1'
+        : 'https://musakki.com/api/v1',
   ),
 )..interceptors.addAll([AuthInterceptor(), PrettyDioLogger()]);
