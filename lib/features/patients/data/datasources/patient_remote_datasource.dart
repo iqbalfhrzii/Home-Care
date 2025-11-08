@@ -1,8 +1,8 @@
+import 'package:dio/dio.dart';
 import 'package:homecare_mobile/core/network/dio.dart';
 import '../../domain/models/patient.dart';
 
 class PatientRemoteDataSource {
-  /// Ambil semua data pasien dari API
   Future<List<Patient>> getAllPatients() async {
     try {
       final response = await dio.get('/petugas/pasien');
@@ -18,7 +18,24 @@ class PatientRemoteDataSource {
     }
   }
 
-  /// Ambil detail satu pasien berdasarkan ID
+  Future<Patient> createPatient(Map<String, dynamic> payload) async {
+    try {
+      final response = await dio.post('/petugas/pasien', data: payload);
+      final data = response.data is Map && response.data.containsKey('data')
+          ? response.data['data']
+          : response.data;
+      return Patient.fromJson(data);
+    } on DioError catch (e) {
+      final status = e.response?.statusCode;
+      final respData = e.response?.data;
+      final message =
+          'Gagal membuat pasien: status=$status, data=$respData, message=${e.message}';
+      throw Exception(message);
+    } catch (e) {
+      throw Exception('Gagal membuat pasien: $e');
+    }
+  }
+
   Future<Patient> getPatientDetail(int id) async {
     try {
       final response = await dio.get('/petugas/pasien/$id');
@@ -28,7 +45,6 @@ class PatientRemoteDataSource {
     }
   }
 
-  /// Alias / wrapper untuk getPatientDetail
   Future<Patient> getPatientById(int patientId) async {
     return await getPatientDetail(patientId);
   }
