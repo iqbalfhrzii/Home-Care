@@ -5,7 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:homecare_mobile/core/utils/logger.dart';
 import 'package:homecare_mobile/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:homecare_mobile/features/auth/presentation/pages/login_page.dart';
-import 'package:homecare_mobile/features/reports/report_list_page.dart';
+import 'package:homecare_mobile/features/reports/presentation/pages/report_list_page.dart';
 import 'package:homecare_mobile/features/schedules/presentation/pages/schedule_list_page.dart';
 import 'package:homecare_mobile/features/schedules/presentation/pages/schedule_page.dart';
 import 'package:homecare_mobile/pages/home_page.dart';
