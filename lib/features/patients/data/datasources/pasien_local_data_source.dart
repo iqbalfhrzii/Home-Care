@@ -1,5 +1,6 @@
 import 'package:drift/drift.dart';
-import 'package:homecare_mobile/features/patients/domain/models/pasien.dart' as domain;
+import 'package:homecare_mobile/features/patients/domain/models/pasien.dart'
+    as domain;
 import 'package:homecare_mobile/shared/local_db/app_database.dart';
 
 class PasienLocalDataSource {
@@ -41,7 +42,9 @@ class PasienLocalDataSource {
       noRm: noRm,
       nama: data['nama'] ?? '',
       tempatLahir: data['tempat_lahir'] ?? '',
-      tanggalLahir: DateTime.parse(data['tanggal_lahir'] ?? DateTime.now().toIso8601String()),
+      tanggalLahir: DateTime.parse(
+        data['tanggal_lahir'] ?? DateTime.now().toIso8601String(),
+      ),
       jenisKelamin: data['jenis_kelamin'] ?? 'L',
       alamat: data['alamat'] ?? '',
       noTelp: data['no_telp'] ?? '',
@@ -72,9 +75,12 @@ class PasienLocalDataSource {
     return getPasienById(id.toString());
   }
 
-  Future<domain.Pasien> updatePasien(String id, Map<String, dynamic> data) async {
+  Future<domain.Pasien> updatePasien(
+    String id,
+    Map<String, dynamic> data,
+  ) async {
     print('🔄 Updating patient ID: $id with data: $data');
-    
+
     // For update, use Value() for each field
     final companion = PasiensCompanion(
       id: Value(int.parse(id)),
@@ -82,19 +88,23 @@ class PasienLocalDataSource {
       nik: Value(data['nik']),
       noBpjs: Value(data['no_bpjs']),
       tempatLahir: Value(data['tempat_lahir'] ?? ''),
-      tanggalLahir: Value(DateTime.parse(data['tanggal_lahir'] ?? DateTime.now().toIso8601String())),
+      tanggalLahir: Value(
+        DateTime.parse(
+          data['tanggal_lahir'] ?? DateTime.now().toIso8601String(),
+        ),
+      ),
       jenisKelamin: Value(data['jenis_kelamin'] ?? 'L'),
       golonganDarah: Value(data['golongan_darah']),
       alamat: Value(data['alamat'] ?? ''),
       noTelp: Value(data['no_telp'] ?? ''),
       updatedAt: Value(DateTime.now()),
     );
-    
+
     final success = await _database.updatePasien(int.parse(id), companion);
     if (!success) {
       throw Exception('Gagal mengupdate pasien dengan ID $id');
     }
-    
+
     print('✅ Update successful, fetching updated data...');
     final updated = await getPasienById(id);
     print('✅ Updated patient data: ${updated.golonganDarah}');
@@ -110,18 +120,18 @@ class PasienLocalDataSource {
 
   Future<void> markAsRegistered(String id) async {
     print('🏥 Marking patient ID: $id as registered');
-    
+
     final companion = PasiensCompanion(
       id: Value(int.parse(id)),
       isRegistered: Value(true),
       updatedAt: Value(DateTime.now()),
     );
-    
+
     final success = await _database.updatePasien(int.parse(id), companion);
     if (!success) {
       throw Exception('Gagal update status registrasi pasien ID $id');
     }
-    
+
     print('✅ Patient marked as registered successfully');
   }
 

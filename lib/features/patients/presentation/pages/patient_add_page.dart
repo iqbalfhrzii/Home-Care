@@ -37,7 +37,7 @@ class _PatientAddForm extends StatefulWidget {
 
 class _PatientAddFormState extends State<_PatientAddForm> {
   final _formKey = GlobalKey<FormState>();
-  
+
   // Controllers
   final _namaController = TextEditingController();
   final _nikController = TextEditingController();
@@ -46,7 +46,7 @@ class _PatientAddFormState extends State<_PatientAddForm> {
   final _tanggalLahirController = TextEditingController();
   final _alamatController = TextEditingController();
   final _noTelpController = TextEditingController();
-  
+
   String _jenisKelamin = 'L';
   String? _golonganDarah;
   DateTime? _selectedDate;
@@ -84,11 +84,14 @@ class _PatientAddFormState extends State<_PatientAddForm> {
         );
       },
     );
-    
+
     if (picked != null && picked != _selectedDate) {
       setState(() {
         _selectedDate = picked;
-        _tanggalLahirController.text = DateFormat('d MMMM yyyy', 'id_ID').format(picked);
+        _tanggalLahirController.text = DateFormat(
+          'd MMMM yyyy',
+          'id_ID',
+        ).format(picked);
       });
     }
   }
@@ -115,8 +118,12 @@ class _PatientAddFormState extends State<_PatientAddForm> {
           jenisKelamin: _jenisKelamin,
           alamat: _alamatController.text.trim(),
           noTelp: _noTelpController.text.trim(),
-          nik: _nikController.text.trim().isEmpty ? null : _nikController.text.trim(),
-          noBpjs: _noBpjsController.text.trim().isEmpty ? null : _noBpjsController.text.trim(),
+          nik: _nikController.text.trim().isEmpty
+              ? null
+              : _nikController.text.trim(),
+          noBpjs: _noBpjsController.text.trim().isEmpty
+              ? null
+              : _noBpjsController.text.trim(),
           golonganDarah: _golonganDarah,
         ),
       );
@@ -129,7 +136,8 @@ class _PatientAddFormState extends State<_PatientAddForm> {
       backgroundColor: kScaffoldBg,
       body: BlocListener<PatientBloc, PatientState>(
         listener: (context, state) {
-          if (state is PatientOperationSuccess && state.type == PatientOperationType.create) {
+          if (state is PatientOperationSuccess &&
+              state.type == PatientOperationType.create) {
             context.pop(true); // Return true to indicate success
           } else if (state is PatientError) {
             setState(() => _isLoading = false);
@@ -173,7 +181,9 @@ class _PatientAddFormState extends State<_PatientAddForm> {
                         keyboardType: TextInputType.number,
                         maxLength: 16,
                         validator: (value) {
-                          if (value != null && value.isNotEmpty && value.length != 16) {
+                          if (value != null &&
+                              value.isNotEmpty &&
+                              value.length != 16) {
                             return 'NIK harus 16 digit';
                           }
                           return null;
@@ -187,7 +197,9 @@ class _PatientAddFormState extends State<_PatientAddForm> {
                         keyboardType: TextInputType.number,
                         maxLength: 13,
                         validator: (value) {
-                          if (value != null && value.isNotEmpty && value.length != 13) {
+                          if (value != null &&
+                              value.isNotEmpty &&
+                              value.length != 13) {
                             return 'No. BPJS harus 13 digit';
                           }
                           return null;
@@ -431,13 +443,9 @@ class _PatientAddFormState extends State<_PatientAddForm> {
         const SizedBox(height: 8),
         Row(
           children: [
-            Expanded(
-              child: _buildGenderOption('L', 'Laki-laki', Icons.male),
-            ),
+            Expanded(child: _buildGenderOption('L', 'Laki-laki', Icons.male)),
             const SizedBox(width: 12),
-            Expanded(
-              child: _buildGenderOption('P', 'Perempuan', Icons.female),
-            ),
+            Expanded(child: _buildGenderOption('P', 'Perempuan', Icons.female)),
           ],
         ),
       ],
@@ -446,8 +454,10 @@ class _PatientAddFormState extends State<_PatientAddForm> {
 
   Widget _buildGenderOption(String value, String label, IconData icon) {
     final isSelected = _jenisKelamin == value;
-    final color = value == 'L' ? const Color(0xFF3B82F6) : const Color(0xFFEC4899);
-    
+    final color = value == 'L'
+        ? const Color(0xFF3B82F6)
+        : const Color(0xFFEC4899);
+
     return InkWell(
       onTap: () => setState(() => _jenisKelamin = value),
       borderRadius: BorderRadius.circular(12),
@@ -539,10 +549,7 @@ class _PatientAddFormState extends State<_PatientAddForm> {
             : const Icon(Icons.save),
         label: Text(
           _isLoading ? 'Menyimpan...' : 'Simpan Data Pasien',
-          style: const TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.w600,
-          ),
+          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
         ),
         style: ElevatedButton.styleFrom(
           backgroundColor: kSecondaryColor,

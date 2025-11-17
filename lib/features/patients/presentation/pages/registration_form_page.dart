@@ -44,8 +44,13 @@ class _RegistrationFormPageState extends State<RegistrationFormPage> {
   db.Registrasi? _existingRegistration;
 
   DateTime _selectedDateTime = DateTime.now();
-  DateTime _tanggalKunjungan = DateTime.now().add(const Duration(days: 1)); // Default besok
-  TimeOfDay _jamKunjungan = const TimeOfDay(hour: 9, minute: 0); // Default jam 9 pagi
+  DateTime _tanggalKunjungan = DateTime.now().add(
+    const Duration(days: 1),
+  ); // Default besok
+  TimeOfDay _jamKunjungan = const TimeOfDay(
+    hour: 9,
+    minute: 0,
+  ); // Default jam 9 pagi
   String _jenisKunjungan = 'Kunjungan Baru';
   String _tipePasien = 'Umum';
   String _eselon = 'I';
@@ -66,15 +71,17 @@ class _RegistrationFormPageState extends State<RegistrationFormPage> {
     setState(() => _isLoading = true);
     try {
       final database = getIt<db.AppDatabase>();
-      final registration = await database.getRegistrasiById(widget.registrasiId!);
-      
+      final registration = await database.getRegistrasiById(
+        widget.registrasiId!,
+      );
+
       if (registration != null && mounted) {
         setState(() {
           _existingRegistration = registration;
           _noRegController.text = registration.noReg;
           _selectedDateTime = registration.tglJamReg;
           _tanggalKunjungan = registration.tanggalKunjungan;
-          
+
           // Parse jam kunjungan (HH:mm format)
           final timeParts = registration.jamKunjungan.split(':');
           if (timeParts.length == 2) {
@@ -83,11 +90,12 @@ class _RegistrationFormPageState extends State<RegistrationFormPage> {
               minute: int.tryParse(timeParts[1]) ?? 0,
             );
           }
-          
+
           _jenisKunjungan = registration.jenisKunjungan;
           _tipePasien = registration.tipePasien;
           _penanggungNamaController.text = registration.penanggungNama;
-          _penanggungNoPegawaiController.text = registration.penanggungNoPegawai ?? '';
+          _penanggungNoPegawaiController.text =
+              registration.penanggungNoPegawai ?? '';
           _penanggungAlamatController.text = registration.penanggungAlamat;
           _penanggungTeleponController.text = registration.penanggungTelepon;
           _penanggungIdController.text = registration.penanggungId ?? '';
@@ -151,12 +159,13 @@ class _RegistrationFormPageState extends State<RegistrationFormPage> {
   Future<void> _submitRegistration() async {
     if (_formKey.currentState!.validate()) {
       try {
-        final jamKunjunganFormatted = '${_jamKunjungan.hour.toString().padLeft(2, '0')}:${_jamKunjungan.minute.toString().padLeft(2, '0')}';
-        
+        final jamKunjunganFormatted =
+            '${_jamKunjungan.hour.toString().padLeft(2, '0')}:${_jamKunjungan.minute.toString().padLeft(2, '0')}';
+
         // Get database and patient ID
         final database = getIt<db.AppDatabase>();
         final pasienIdInt = int.tryParse(widget.pasienId ?? '0');
-        
+
         if (pasienIdInt == null || pasienIdInt == 0) {
           throw Exception('Invalid patient ID');
         }
@@ -172,14 +181,19 @@ class _RegistrationFormPageState extends State<RegistrationFormPage> {
             jenisKunjungan: drift.Value(_jenisKunjungan),
             tipePasien: drift.Value(_tipePasien),
             penanggungNama: drift.Value(_penanggungNamaController.text),
-            penanggungNoPegawai: drift.Value(_penanggungNoPegawaiController.text),
+            penanggungNoPegawai: drift.Value(
+              _penanggungNoPegawaiController.text,
+            ),
             penanggungAlamat: drift.Value(_penanggungAlamatController.text),
             penanggungTelepon: drift.Value(_penanggungTeleponController.text),
             penanggungId: drift.Value(_penanggungIdController.text),
             eselon: drift.Value(_eselon),
           );
 
-          await database.updateRegistrasi(widget.registrasiId!, registrasiCompanion);
+          await database.updateRegistrasi(
+            widget.registrasiId!,
+            registrasiCompanion,
+          );
           debugPrint('✅ Registration updated with ID: ${widget.registrasiId}');
         } else {
           // INSERT new registration
@@ -192,14 +206,18 @@ class _RegistrationFormPageState extends State<RegistrationFormPage> {
             jenisKunjungan: drift.Value(_jenisKunjungan),
             tipePasien: drift.Value(_tipePasien),
             penanggungNama: drift.Value(_penanggungNamaController.text),
-            penanggungNoPegawai: drift.Value(_penanggungNoPegawaiController.text),
+            penanggungNoPegawai: drift.Value(
+              _penanggungNoPegawaiController.text,
+            ),
             penanggungAlamat: drift.Value(_penanggungAlamatController.text),
             penanggungTelepon: drift.Value(_penanggungTeleponController.text),
             penanggungId: drift.Value(_penanggungIdController.text),
             eselon: drift.Value(_eselon),
           );
 
-          final registrasiId = await database.insertRegistrasi(registrasiCompanion);
+          final registrasiId = await database.insertRegistrasi(
+            registrasiCompanion,
+          );
           debugPrint('✅ Registration saved with ID: $registrasiId');
 
           // Update patient isRegistered flag (only for new registration)
@@ -211,9 +229,11 @@ class _RegistrationFormPageState extends State<RegistrationFormPage> {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text(widget.isEdit
-                  ? 'Registrasi berhasil diupdate'
-                  : 'Registrasi berhasil disimpan'),
+              content: Text(
+                widget.isEdit
+                    ? 'Registrasi berhasil diupdate'
+                    : 'Registrasi berhasil disimpan',
+              ),
               backgroundColor: Colors.green,
             ),
           );
@@ -279,7 +299,7 @@ class _RegistrationFormPageState extends State<RegistrationFormPage> {
                             items: [
                               'Kunjungan Baru',
                               'Kunjungan Lanjutan',
-                              'Kunjungan Darurat'
+                              'Kunjungan Darurat',
                             ],
                             onChanged: (value) {
                               setState(() {
@@ -586,10 +606,7 @@ class _RegistrationFormPageState extends State<RegistrationFormPage> {
         ),
       ),
       items: items.map((item) {
-        return DropdownMenuItem(
-          value: item,
-          child: Text(item),
-        );
+        return DropdownMenuItem(value: item, child: Text(item));
       }).toList(),
       onChanged: onChanged,
     );
@@ -626,7 +643,10 @@ class _RegistrationFormPageState extends State<RegistrationFormPage> {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Text(
-              DateFormat('EEEE, dd MMMM yyyy', 'id_ID').format(_tanggalKunjungan),
+              DateFormat(
+                'EEEE, dd MMMM yyyy',
+                'id_ID',
+              ).format(_tanggalKunjungan),
               style: const TextStyle(fontSize: 16),
             ),
             const Icon(Icons.arrow_drop_down, color: kTextGrey),
@@ -644,7 +664,9 @@ class _RegistrationFormPageState extends State<RegistrationFormPage> {
           initialTime: _jamKunjungan,
           builder: (context, child) {
             return MediaQuery(
-              data: MediaQuery.of(context).copyWith(alwaysUse24HourFormat: true),
+              data: MediaQuery.of(
+                context,
+              ).copyWith(alwaysUse24HourFormat: true),
               child: child!,
             );
           },
@@ -683,9 +705,9 @@ class _RegistrationFormPageState extends State<RegistrationFormPage> {
   Widget _buildBottomButtons() {
     return Container(
       color: kWhite,
-      padding: const EdgeInsets.all(16.0).copyWith(
-        bottom: MediaQuery.of(context).padding.bottom + 16,
-      ),
+      padding: const EdgeInsets.all(
+        16.0,
+      ).copyWith(bottom: MediaQuery.of(context).padding.bottom + 16),
       child: Row(
         children: [
           Expanded(
@@ -709,7 +731,9 @@ class _RegistrationFormPageState extends State<RegistrationFormPage> {
             child: ElevatedButton.icon(
               onPressed: _submitRegistration,
               icon: const Icon(Icons.check),
-              label: Text(widget.isEdit ? 'Update Registrasi' : 'Simpan Registrasi'),
+              label: Text(
+                widget.isEdit ? 'Update Registrasi' : 'Simpan Registrasi',
+              ),
               style: ElevatedButton.styleFrom(
                 backgroundColor: kPrimaryColor,
                 foregroundColor: kWhite,

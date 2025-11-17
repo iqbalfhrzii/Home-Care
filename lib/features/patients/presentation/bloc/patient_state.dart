@@ -17,7 +17,7 @@ class PatientListLoaded extends PatientState {
   final List<Pasien> filteredPatients;
   final String searchQuery;
   final String? activeFilter; // null, 'registered', 'unregistered'
-  
+
   const PatientListLoaded({
     required this.patients,
     required this.filteredPatients,
@@ -43,35 +43,30 @@ class PatientListLoaded extends PatientState {
   int get totalPatients => patients.length;
   int get maleCount => patients.where((p) => p.jenisKelamin == 'L').length;
   int get femaleCount => patients.where((p) => p.jenisKelamin == 'P').length;
-  int get registeredCount => patients.where((p) => p.isRegistered ?? false).length;
-  int get unregisteredCount => patients.where((p) => !(p.isRegistered ?? false)).length;
+  int get registeredCount =>
+      patients.where((p) => p.isRegistered ?? false).length;
+  int get unregisteredCount =>
+      patients.where((p) => !(p.isRegistered ?? false)).length;
 }
 
 class PatientDetailLoaded extends PatientState {
   final Pasien patient;
-  
+
   const PatientDetailLoaded(this.patient);
 }
 
 class PatientOperationSuccess extends PatientState {
   final String message;
   final PatientOperationType type;
-  
-  const PatientOperationSuccess({
-    required this.message,
-    required this.type,
-  });
+
+  const PatientOperationSuccess({required this.message, required this.type});
 }
 
 class PatientError extends PatientState {
   final String message;
   final PatientState? previousState;
-  
+
   const PatientError(this.message, [this.previousState]);
 }
 
-enum PatientOperationType {
-  create,
-  update,
-  delete,
-}
+enum PatientOperationType { create, update, delete }

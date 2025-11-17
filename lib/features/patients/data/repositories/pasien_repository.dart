@@ -11,7 +11,7 @@ class PasienRepository {
   // ========== LOCAL ONLY MODE ==========
   // API calls disabled for patient CRUD
   // API only used for authentication
-  
+
   Future<List<Pasien>> getAllPasien() async {
     print('📂 [LOCAL ONLY] Loading all patients from database...');
     return await _localDataSource.getAllPasien();
@@ -34,7 +34,7 @@ class PasienRepository {
     String? golonganDarah,
   }) async {
     print('📂 [LOCAL ONLY] Creating new patient: $nama');
-    
+
     final data = {
       'nama': nama,
       'tempat_lahir': tempatLahir,
@@ -63,7 +63,7 @@ class PasienRepository {
     String? golonganDarah,
   }) async {
     print('📂 [LOCAL ONLY] Updating patient: $id');
-    
+
     final data = {
       'nama': nama,
       'tempat_lahir': tempatLahir,
@@ -88,15 +88,15 @@ class PasienRepository {
   Future<List<Pasien>> searchPasien(String query) async {
     print('📂 [LOCAL ONLY] Searching patients: $query');
     final allPatients = await _localDataSource.getAllPasien();
-    
+
     if (query.isEmpty) return allPatients;
-    
+
     // Local search by name, RM, phone
     return allPatients.where((patient) {
       final searchLower = query.toLowerCase();
       return patient.nama.toLowerCase().contains(searchLower) ||
-             patient.noRm.toLowerCase().contains(searchLower) ||
-             patient.noTelp.toLowerCase().contains(searchLower);
+          patient.noRm.toLowerCase().contains(searchLower) ||
+          patient.noTelp.toLowerCase().contains(searchLower);
     }).toList();
   }
 

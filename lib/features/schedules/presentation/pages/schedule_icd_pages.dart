@@ -118,13 +118,15 @@ class _ScheduleIcdPageState extends State<ScheduleIcdPage> {
     }
 
     setState(() {
-      _selectedIcds.add(IcdItem(
-        id: icd.id,
-        kode: icd.kode,
-        namaPenyakit: icd.namaPenyakit,
-        deskripsi: icd.deskripsi,
-        isPrimary: _selectedIcds.isEmpty, // First one is primary by default
-      ));
+      _selectedIcds.add(
+        IcdItem(
+          id: icd.id,
+          kode: icd.kode,
+          namaPenyakit: icd.namaPenyakit,
+          deskripsi: icd.deskripsi,
+          isPrimary: _selectedIcds.isEmpty, // First one is primary by default
+        ),
+      );
     });
 
     ScaffoldMessenger.of(context).showSnackBar(
@@ -250,10 +252,7 @@ class _ScheduleIcdPageState extends State<ScheduleIcdPage> {
                   children: [
                     Text(
                       'Diagnosis ICD',
-                      style: TextStyle(
-                        color: Colors.white70,
-                        fontSize: 14,
-                      ),
+                      style: TextStyle(color: Colors.white70, fontSize: 14),
                     ),
                     SizedBox(height: 4),
                     Text(
@@ -363,8 +362,9 @@ class _ScheduleIcdPageState extends State<ScheduleIcdPage> {
                     vertical: 4,
                   ),
                   leading: CircleAvatar(
-                    backgroundColor:
-                        icd.isPrimary ? kSuccessColor : kPrimaryColor,
+                    backgroundColor: icd.isPrimary
+                        ? kSuccessColor
+                        : kPrimaryColor,
                     radius: 20,
                     child: Text(
                       icd.kode.split('.')[0],
@@ -487,15 +487,15 @@ class _ScheduleIcdPageState extends State<ScheduleIcdPage> {
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.search_off,
-                          size: 64, color: kTextGrey.withOpacity(0.5)),
+                      Icon(
+                        Icons.search_off,
+                        size: 64,
+                        color: kTextGrey.withOpacity(0.5),
+                      ),
                       const SizedBox(height: 16),
                       Text(
                         'Tidak ada ICD ditemukan',
-                        style: TextStyle(
-                          color: kTextGrey,
-                          fontSize: 16,
-                        ),
+                        style: TextStyle(color: kTextGrey, fontSize: 16),
                       ),
                     ],
                   ),
@@ -505,8 +505,9 @@ class _ScheduleIcdPageState extends State<ScheduleIcdPage> {
                   itemCount: _filteredIcds.length,
                   itemBuilder: (context, index) {
                     final icd = _filteredIcds[index];
-                    final isSelected =
-                        _selectedIcds.any((item) => item.id == icd.id);
+                    final isSelected = _selectedIcds.any(
+                      (item) => item.id == icd.id,
+                    );
 
                     return Card(
                       margin: const EdgeInsets.only(bottom: 12),
@@ -612,9 +613,9 @@ class _ScheduleIcdPageState extends State<ScheduleIcdPage> {
   Widget _buildBottomButton() {
     return Container(
       color: kWhite,
-      padding: const EdgeInsets.all(16.0).copyWith(
-        bottom: MediaQuery.of(context).padding.bottom + 16,
-      ),
+      padding: const EdgeInsets.all(
+        16.0,
+      ).copyWith(bottom: MediaQuery.of(context).padding.bottom + 16),
       child: ElevatedButton.icon(
         onPressed: _saveIcds,
         icon: const Icon(Icons.save),

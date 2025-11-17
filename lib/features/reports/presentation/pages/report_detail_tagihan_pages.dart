@@ -212,7 +212,7 @@ class _ReportDetailTagihanPageState extends State<ReportDetailTagihanPage> {
   Future<void> _shareViaWhatsApp() async {
     final message = _generateWhatsAppMessage();
     final phoneNumber = _tagihan.noTelepon.replaceAll(RegExp(r'[^0-9]'), '');
-    
+
     // Format nomor telepon ke format internasional
     String formattedPhone = phoneNumber;
     if (phoneNumber.startsWith('0')) {
@@ -222,7 +222,8 @@ class _ReportDetailTagihanPageState extends State<ReportDetailTagihanPage> {
     }
 
     final url = Uri.parse(
-        'https://wa.me/$formattedPhone?text=${Uri.encodeComponent(message)}');
+      'https://wa.me/$formattedPhone?text=${Uri.encodeComponent(message)}',
+    );
 
     try {
       if (await canLaunchUrl(url)) {
@@ -240,10 +241,7 @@ class _ReportDetailTagihanPageState extends State<ReportDetailTagihanPage> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error: $e'),
-            backgroundColor: kDangerColor,
-          ),
+          SnackBar(content: Text('Error: $e'), backgroundColor: kDangerColor),
         );
       }
     }
@@ -255,7 +253,9 @@ class _ReportDetailTagihanPageState extends State<ReportDetailTagihanPage> {
     buffer.writeln('━━━━━━━━━━━━━━━━━━━━');
     buffer.writeln('');
     buffer.writeln('*Invoice:* ${_tagihan.noInvoice}');
-    buffer.writeln('*Tanggal:* ${DateFormat('d MMMM yyyy', 'id_ID').format(_tagihan.tanggalTagihan)}');
+    buffer.writeln(
+      '*Tanggal:* ${DateFormat('d MMMM yyyy', 'id_ID').format(_tagihan.tanggalTagihan)}',
+    );
     buffer.writeln('*Pasien:* ${_tagihan.patientName}');
     buffer.writeln('*No. RM:* ${_tagihan.mrNumber}');
     buffer.writeln('*Diagnosis:* ${_tagihan.primaryIcd}');
@@ -279,22 +279,26 @@ class _ReportDetailTagihanPageState extends State<ReportDetailTagihanPage> {
         }
         buffer.writeln('');
         buffer.writeln(
-            '  Rp ${NumberFormat('#,###', 'id_ID').format(item.subtotal)}');
+          '  Rp ${NumberFormat('#,###', 'id_ID').format(item.subtotal)}',
+        );
       }
     });
 
     buffer.writeln('');
     buffer.writeln('━━━━━━━━━━━━━━━━━━━━');
     buffer.writeln(
-        '*Total Biaya:* Rp ${NumberFormat('#,###', 'id_ID').format(_tagihan.totalBiaya)}');
-    
+      '*Total Biaya:* Rp ${NumberFormat('#,###', 'id_ID').format(_tagihan.totalBiaya)}',
+    );
+
     if (_tagihan.deposit > 0) {
       buffer.writeln(
-          '*Deposit:* Rp ${NumberFormat('#,###', 'id_ID').format(_tagihan.deposit)}');
+        '*Deposit:* Rp ${NumberFormat('#,###', 'id_ID').format(_tagihan.deposit)}',
+      );
       buffer.writeln(
-          '*Sisa Pembayaran:* Rp ${NumberFormat('#,###', 'id_ID').format(_tagihan.sisaBiaya)}');
+        '*Sisa Pembayaran:* Rp ${NumberFormat('#,###', 'id_ID').format(_tagihan.sisaBiaya)}',
+      );
     }
-    
+
     buffer.writeln('*Terbilang:* ${_tagihan.terbilang}');
     buffer.writeln('');
     buffer.writeln('━━━━━━━━━━━━━━━━━━━━');
@@ -310,7 +314,7 @@ class _ReportDetailTagihanPageState extends State<ReportDetailTagihanPage> {
   Future<void> _copyToClipboard() async {
     final message = _generateWhatsAppMessage();
     await Clipboard.setData(ClipboardData(text: message));
-    
+
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -399,9 +403,7 @@ class _ReportDetailTagihanPageState extends State<ReportDetailTagihanPage> {
           backgroundColor: kPrimaryColor,
           foregroundColor: kWhite,
         ),
-        body: const Center(
-          child: CircularProgressIndicator(),
-        ),
+        body: const Center(child: CircularProgressIndicator()),
       );
     }
 
@@ -460,10 +462,7 @@ class _ReportDetailTagihanPageState extends State<ReportDetailTagihanPage> {
                 children: [
                   const Text(
                     'Invoice',
-                    style: TextStyle(
-                      color: Colors.white70,
-                      fontSize: 14,
-                    ),
+                    style: TextStyle(color: Colors.white70, fontSize: 14),
                   ),
                   const SizedBox(height: 4),
                   Text(
@@ -606,10 +605,7 @@ class _ReportDetailTagihanPageState extends State<ReportDetailTagihanPage> {
               children: [
                 const Text(
                   'Diagnosis Utama',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: kTextGrey,
-                  ),
+                  style: TextStyle(fontSize: 12, color: kTextGrey),
                 ),
                 const SizedBox(height: 4),
                 Text(
@@ -661,11 +657,7 @@ class _ReportDetailTagihanPageState extends State<ReportDetailTagihanPage> {
                   ),
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: const Icon(
-                  Icons.receipt_long,
-                  color: kWhite,
-                  size: 20,
-                ),
+                child: const Icon(Icons.receipt_long, color: kWhite, size: 20),
               ),
               const SizedBox(width: 12),
               const Text(
@@ -727,10 +719,7 @@ class _ReportDetailTagihanPageState extends State<ReportDetailTagihanPage> {
                     ),
                     Text(
                       item.kodeLayanan,
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: kTextGrey,
-                      ),
+                      style: const TextStyle(fontSize: 12, color: kTextGrey),
                     ),
                   ],
                 ),
@@ -750,15 +739,15 @@ class _ReportDetailTagihanPageState extends State<ReportDetailTagihanPage> {
             children: [
               Text(
                 '${item.jumlah}x @ Rp ${NumberFormat('#,###', 'id_ID').format(item.hargaSatuan)}',
-                style: const TextStyle(
-                  fontSize: 12,
-                  color: kTextGrey,
-                ),
+                style: const TextStyle(fontSize: 12, color: kTextGrey),
               ),
               if (item.diskon > 0) ...[
                 const SizedBox(width: 8),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 2,
+                  ),
                   decoration: BoxDecoration(
                     color: kDangerColor.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(4),
@@ -871,13 +860,7 @@ class _ReportDetailTagihanPageState extends State<ReportDetailTagihanPage> {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text(
-          label,
-          style: const TextStyle(
-            fontSize: 13,
-            color: kTextGrey,
-          ),
-        ),
+        Text(label, style: const TextStyle(fontSize: 13, color: kTextGrey)),
         Text(
           value,
           style: const TextStyle(

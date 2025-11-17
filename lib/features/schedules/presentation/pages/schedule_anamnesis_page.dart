@@ -13,7 +13,9 @@ const Color kLightGreenBorder = Color(0xFFB4F9C5);
 
 // Halaman utama yang berisi Stepper
 class ScheduleAssessmentPage extends StatefulWidget {
-  const ScheduleAssessmentPage({super.key});
+  final VoidCallback? onCompleted;
+  
+  const ScheduleAssessmentPage({super.key, this.onCompleted});
 
   @override
   State<ScheduleAssessmentPage> createState() => _ScheduleAssessmentPageState();
@@ -212,8 +214,14 @@ class _ScheduleAssessmentPageState extends State<ScheduleAssessmentPage> {
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(const SnackBar(content: Text('Menyimpan seluruh data...')));
-    // Asumsi setelah simpan, kembali ke halaman detail jadwal
-    Navigator.pop(context);
+    
+    // Panggil callback jika ada (dari visit flow)
+    if (widget.onCompleted != null) {
+      widget.onCompleted!();
+    } else {
+      // Jika tidak ada callback, kembali ke halaman sebelumnya
+      Navigator.pop(context);
+    }
   }
 
   // --- WIDGET HELPER UTAMA ---

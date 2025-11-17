@@ -19,7 +19,7 @@ const Color kDangerColor = Color(0xFFEF4444);
 
 class PatientEditPage extends StatelessWidget {
   final Pasien patient;
-  
+
   const PatientEditPage({super.key, required this.patient});
 
   @override
@@ -33,7 +33,7 @@ class PatientEditPage extends StatelessWidget {
 
 class _PatientEditForm extends StatefulWidget {
   final Pasien patient;
-  
+
   const _PatientEditForm({required this.patient});
 
   @override
@@ -42,7 +42,7 @@ class _PatientEditForm extends StatefulWidget {
 
 class _PatientEditFormState extends State<_PatientEditForm> {
   final _formKey = GlobalKey<FormState>();
-  
+
   // Controllers
   late final TextEditingController _namaController;
   late final TextEditingController _nikController;
@@ -51,7 +51,7 @@ class _PatientEditFormState extends State<_PatientEditForm> {
   late final TextEditingController _tanggalLahirController;
   late final TextEditingController _alamatController;
   late final TextEditingController _noTelpController;
-  
+
   late String _jenisKelamin;
   late String? _golonganDarah;
   late DateTime _selectedDate;
@@ -60,15 +60,19 @@ class _PatientEditFormState extends State<_PatientEditForm> {
   @override
   void initState() {
     super.initState();
-    
+
     // Initialize controllers with existing data
     _namaController = TextEditingController(text: widget.patient.nama);
     _nikController = TextEditingController(text: widget.patient.nik ?? '');
-    _noBpjsController = TextEditingController(text: widget.patient.noBpjs ?? '');
-    _tempatLahirController = TextEditingController(text: widget.patient.tempatLahir);
+    _noBpjsController = TextEditingController(
+      text: widget.patient.noBpjs ?? '',
+    );
+    _tempatLahirController = TextEditingController(
+      text: widget.patient.tempatLahir,
+    );
     _alamatController = TextEditingController(text: widget.patient.alamat);
     _noTelpController = TextEditingController(text: widget.patient.noTelp);
-    
+
     _jenisKelamin = widget.patient.jenisKelamin;
     _golonganDarah = widget.patient.golonganDarah;
     _selectedDate = DateTime.parse(widget.patient.tanggalLahir);
@@ -109,11 +113,14 @@ class _PatientEditFormState extends State<_PatientEditForm> {
         );
       },
     );
-    
+
     if (picked != null && picked != _selectedDate) {
       setState(() {
         _selectedDate = picked;
-        _tanggalLahirController.text = DateFormat('d MMMM yyyy', 'id_ID').format(picked);
+        _tanggalLahirController.text = DateFormat(
+          'd MMMM yyyy',
+          'id_ID',
+        ).format(picked);
       });
     }
   }
@@ -131,8 +138,12 @@ class _PatientEditFormState extends State<_PatientEditForm> {
           jenisKelamin: _jenisKelamin,
           alamat: _alamatController.text.trim(),
           noTelp: _noTelpController.text.trim(),
-          nik: _nikController.text.trim().isEmpty ? null : _nikController.text.trim(),
-          noBpjs: _noBpjsController.text.trim().isEmpty ? null : _noBpjsController.text.trim(),
+          nik: _nikController.text.trim().isEmpty
+              ? null
+              : _nikController.text.trim(),
+          noBpjs: _noBpjsController.text.trim().isEmpty
+              ? null
+              : _noBpjsController.text.trim(),
           golonganDarah: _golonganDarah,
         ),
       );
@@ -145,7 +156,8 @@ class _PatientEditFormState extends State<_PatientEditForm> {
       backgroundColor: kScaffoldBg,
       body: BlocListener<PatientBloc, PatientState>(
         listener: (context, state) {
-          if (state is PatientOperationSuccess && state.type == PatientOperationType.update) {
+          if (state is PatientOperationSuccess &&
+              state.type == PatientOperationType.update) {
             context.pop(true);
           } else if (state is PatientError) {
             setState(() => _isLoading = false);
@@ -191,7 +203,9 @@ class _PatientEditFormState extends State<_PatientEditForm> {
                         keyboardType: TextInputType.number,
                         maxLength: 16,
                         validator: (value) {
-                          if (value != null && value.isNotEmpty && value.length != 16) {
+                          if (value != null &&
+                              value.isNotEmpty &&
+                              value.length != 16) {
                             return 'NIK harus 16 digit';
                           }
                           return null;
@@ -205,7 +219,9 @@ class _PatientEditFormState extends State<_PatientEditForm> {
                         keyboardType: TextInputType.number,
                         maxLength: 13,
                         validator: (value) {
-                          if (value != null && value.isNotEmpty && value.length != 13) {
+                          if (value != null &&
+                              value.isNotEmpty &&
+                              value.length != 13) {
                             return 'No. BPJS harus 13 digit';
                           }
                           return null;
@@ -358,10 +374,7 @@ class _PatientEditFormState extends State<_PatientEditForm> {
               children: [
                 const Text(
                   'No. Rekam Medis',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: kTextGrey,
-                  ),
+                  style: TextStyle(fontSize: 12, color: kTextGrey),
                 ),
                 const SizedBox(height: 2),
                 Text(
@@ -490,13 +503,9 @@ class _PatientEditFormState extends State<_PatientEditForm> {
         const SizedBox(height: 8),
         Row(
           children: [
-            Expanded(
-              child: _buildGenderOption('L', 'Laki-laki', Icons.male),
-            ),
+            Expanded(child: _buildGenderOption('L', 'Laki-laki', Icons.male)),
             const SizedBox(width: 12),
-            Expanded(
-              child: _buildGenderOption('P', 'Perempuan', Icons.female),
-            ),
+            Expanded(child: _buildGenderOption('P', 'Perempuan', Icons.female)),
           ],
         ),
       ],
@@ -505,8 +514,10 @@ class _PatientEditFormState extends State<_PatientEditForm> {
 
   Widget _buildGenderOption(String value, String label, IconData icon) {
     final isSelected = _jenisKelamin == value;
-    final color = value == 'L' ? const Color(0xFF3B82F6) : const Color(0xFFEC4899);
-    
+    final color = value == 'L'
+        ? const Color(0xFF3B82F6)
+        : const Color(0xFFEC4899);
+
     return InkWell(
       onTap: () => setState(() => _jenisKelamin = value),
       borderRadius: BorderRadius.circular(12),
@@ -598,10 +609,7 @@ class _PatientEditFormState extends State<_PatientEditForm> {
             : const Icon(Icons.save),
         label: Text(
           _isLoading ? 'Menyimpan...' : 'Update Data Pasien',
-          style: const TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.w600,
-          ),
+          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
         ),
         style: ElevatedButton.styleFrom(
           backgroundColor: kPrimaryColor,

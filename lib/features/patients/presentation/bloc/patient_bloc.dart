@@ -26,10 +26,7 @@ class PatientBloc extends Bloc<PatientEvent, PatientState> {
     emit(const PatientLoading());
     try {
       final patients = await repository.getAllPasien();
-      emit(PatientListLoaded(
-        patients: patients,
-        filteredPatients: patients,
-      ));
+      emit(PatientListLoaded(patients: patients, filteredPatients: patients));
     } catch (e) {
       emit(PatientError('Gagal memuat data pasien: ${e.toString()}'));
     }
@@ -41,7 +38,7 @@ class PatientBloc extends Bloc<PatientEvent, PatientState> {
   ) async {
     final currentState = state;
     print('🔍 Search triggered: "${event.query}"');
-    
+
     if (currentState is PatientListLoaded) {
       if (event.query.isEmpty) {
         print('🔍 Empty query - showing all patients');
@@ -50,11 +47,10 @@ class PatientBloc extends Bloc<PatientEvent, PatientState> {
         if (currentState.activeFilter != null) {
           filtered = _applyFilter(filtered, currentState.activeFilter!);
         }
-        
-        emit(currentState.copyWith(
-          filteredPatients: filtered,
-          searchQuery: '',
-        ));
+
+        emit(
+          currentState.copyWith(filteredPatients: filtered, searchQuery: ''),
+        );
       } else {
         // Filter locally
         var filtered = currentState.patients.where((patient) {
@@ -72,20 +68,24 @@ class PatientBloc extends Bloc<PatientEvent, PatientState> {
           filtered = _applyFilter(filtered, currentState.activeFilter!);
         }
 
-        emit(currentState.copyWith(
-          filteredPatients: filtered,
-          searchQuery: event.query,
-        ));
+        emit(
+          currentState.copyWith(
+            filteredPatients: filtered,
+            searchQuery: event.query,
+          ),
+        );
 
         // Optionally search from API for more results
         if (event.searchFromApi) {
           try {
             final patients = await repository.searchPasien(event.query);
-            emit(currentState.copyWith(
-              patients: patients,
-              filteredPatients: patients,
-              searchQuery: event.query,
-            ));
+            emit(
+              currentState.copyWith(
+                patients: patients,
+                filteredPatients: patients,
+                searchQuery: event.query,
+              ),
+            );
           } catch (e) {
             // Keep local filtered results on API error
             // Optionally emit error if needed
@@ -100,15 +100,15 @@ class PatientBloc extends Bloc<PatientEvent, PatientState> {
     Emitter<PatientState> emit,
   ) async {
     final currentState = state;
-    
+
     if (currentState is PatientListLoaded) {
       List<Pasien> filtered = currentState.patients;
-      
+
       // Apply filter
       if (event.filterType != null) {
         filtered = _applyFilter(filtered, event.filterType!);
       }
-      
+
       // Apply search if active
       if (currentState.searchQuery.isNotEmpty) {
         filtered = filtered.where((patient) {
@@ -119,12 +119,14 @@ class PatientBloc extends Bloc<PatientEvent, PatientState> {
               (patient.noBpjs?.toLowerCase().contains(query) ?? false);
         }).toList();
       }
-      
-      emit(currentState.copyWith(
-        filteredPatients: filtered,
-        activeFilter: event.filterType,
-        clearFilter: event.filterType == null,
-      ));
+
+      emit(
+        currentState.copyWith(
+          filteredPatients: filtered,
+          activeFilter: event.filterType,
+          clearFilter: event.filterType == null,
+        ),
+      );
     }
   }
 
@@ -158,7 +160,7 @@ class PatientBloc extends Bloc<PatientEvent, PatientState> {
   ) async {
     final currentState = state;
     emit(const PatientLoading());
-    
+
     try {
       await repository.createPasien(
         nama: event.nama,
@@ -174,20 +176,18 @@ class PatientBloc extends Bloc<PatientEvent, PatientState> {
 
       // Reload patient list
       final patients = await repository.getAllPasien();
-      emit(PatientListLoaded(
-        patients: patients,
-        filteredPatients: patients,
-      ));
+      emit(PatientListLoaded(patients: patients, filteredPatients: patients));
 
-      emit(const PatientOperationSuccess(
-        message: 'Pasien berhasil ditambahkan',
-        type: PatientOperationType.create,
-      ));
+      emit(
+        const PatientOperationSuccess(
+          message: 'Pasien berhasil ditambahkan',
+          type: PatientOperationType.create,
+        ),
+      );
     } catch (e) {
-      emit(PatientError(
-        'Gagal menambahkan pasien: ${e.toString()}',
-        currentState,
-      ));
+      emit(
+        PatientError('Gagal menambahkan pasien: ${e.toString()}', currentState),
+      );
     }
   }
 
@@ -197,7 +197,7 @@ class PatientBloc extends Bloc<PatientEvent, PatientState> {
   ) async {
     final currentState = state;
     emit(const PatientLoading());
-    
+
     try {
       await repository.updatePasien(
         id: event.id,
@@ -215,24 +215,22 @@ class PatientBloc extends Bloc<PatientEvent, PatientState> {
       // Reload patient list or detail
       if (currentState is PatientListLoaded) {
         final patients = await repository.getAllPasien();
-        emit(PatientListLoaded(
-          patients: patients,
-          filteredPatients: patients,
-        ));
+        emit(PatientListLoaded(patients: patients, filteredPatients: patients));
       } else if (currentState is PatientDetailLoaded) {
         final patient = await repository.getPasienById(event.id);
         emit(PatientDetailLoaded(patient));
       }
 
-      emit(const PatientOperationSuccess(
-        message: 'Pasien berhasil diperbarui',
-        type: PatientOperationType.update,
-      ));
+      emit(
+        const PatientOperationSuccess(
+          message: 'Pasien berhasil diperbarui',
+          type: PatientOperationType.update,
+        ),
+      );
     } catch (e) {
-      emit(PatientError(
-        'Gagal memperbarui pasien: ${e.toString()}',
-        currentState,
-      ));
+      emit(
+        PatientError('Gagal memperbarui pasien: ${e.toString()}', currentState),
+      );
     }
   }
 
@@ -241,36 +239,34 @@ class PatientBloc extends Bloc<PatientEvent, PatientState> {
     Emitter<PatientState> emit,
   ) async {
     final currentState = state;
-    
+
     try {
       // Show loading only if not already loading
       if (state is! PatientLoading) {
         emit(const PatientLoading());
       }
-      
+
       await repository.deletePasien(event.id);
       print('✅ Patient deleted successfully: ${event.id}');
 
       // Reload patient list
       final patients = await repository.getAllPasien();
-      
+
       // Emit success with loaded data (single emit to prevent loops)
-      emit(const PatientOperationSuccess(
-        message: 'Pasien berhasil dihapus',
-        type: PatientOperationType.delete,
-      ));
-      
+      emit(
+        const PatientOperationSuccess(
+          message: 'Pasien berhasil dihapus',
+          type: PatientOperationType.delete,
+        ),
+      );
+
       // Then emit the new list
-      emit(PatientListLoaded(
-        patients: patients,
-        filteredPatients: patients,
-      ));
+      emit(PatientListLoaded(patients: patients, filteredPatients: patients));
     } catch (e) {
       print('❌ Delete patient error: $e');
-      emit(PatientError(
-        'Gagal menghapus pasien: ${e.toString()}',
-        currentState,
-      ));
+      emit(
+        PatientError('Gagal menghapus pasien: ${e.toString()}', currentState),
+      );
     }
   }
 
@@ -280,22 +276,22 @@ class PatientBloc extends Bloc<PatientEvent, PatientState> {
   ) async {
     final currentState = state;
     print('🔄 RefreshPatients called');
-    
+
     try {
       final patients = await repository.getAllPasien();
-      
+
       // Preserve search and filter state if exists
       if (currentState is PatientListLoaded) {
         print('🔄 Preserving search: "${currentState.searchQuery}"');
         print('🔄 Preserving filter: ${currentState.activeFilter}');
-        
+
         List<Pasien> filtered = patients;
-        
+
         // Re-apply active filter
         if (currentState.activeFilter != null) {
           filtered = _applyFilter(filtered, currentState.activeFilter!);
         }
-        
+
         // Re-apply search query
         if (currentState.searchQuery.isNotEmpty) {
           filtered = filtered.where((patient) {
@@ -307,20 +303,19 @@ class PatientBloc extends Bloc<PatientEvent, PatientState> {
           }).toList();
           print('🔄 After re-applying search: ${filtered.length} results');
         }
-        
-        emit(PatientListLoaded(
-          patients: patients,
-          filteredPatients: filtered,
-          searchQuery: currentState.searchQuery,
-          activeFilter: currentState.activeFilter,
-        ));
+
+        emit(
+          PatientListLoaded(
+            patients: patients,
+            filteredPatients: filtered,
+            searchQuery: currentState.searchQuery,
+            activeFilter: currentState.activeFilter,
+          ),
+        );
       } else {
         print('🔄 First load, no filters to preserve');
         // First load, no filters to preserve
-        emit(PatientListLoaded(
-          patients: patients,
-          filteredPatients: patients,
-        ));
+        emit(PatientListLoaded(patients: patients, filteredPatients: patients));
       }
     } catch (e) {
       print('❌ RefreshPatients error: $e');

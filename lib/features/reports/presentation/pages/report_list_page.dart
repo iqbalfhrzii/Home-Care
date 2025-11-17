@@ -121,11 +121,13 @@ class _ReportListPageState extends State<ReportListPage> {
     final query = _searchController.text.toLowerCase();
     setState(() {
       _filteredBillings = _allBillings.where((billing) {
-        final matchesSearch = billing.noInvoice.toLowerCase().contains(query) ||
+        final matchesSearch =
+            billing.noInvoice.toLowerCase().contains(query) ||
             billing.patientName.toLowerCase().contains(query) ||
             billing.mrNumber.toLowerCase().contains(query);
 
-        final matchesFilter = _selectedFilter == 'semua' ||
+        final matchesFilter =
+            _selectedFilter == 'semua' ||
             billing.statusPembayaran == _selectedFilter;
 
         return matchesSearch && matchesFilter;
@@ -185,10 +187,7 @@ class _ReportListPageState extends State<ReportListPage> {
                 children: [
                   const Text(
                     'Tagihan & Pembayaran',
-                    style: TextStyle(
-                      color: Colors.white70,
-                      fontSize: 14,
-                    ),
+                    style: TextStyle(color: Colors.white70, fontSize: 14),
                   ),
                   const SizedBox(height: 4),
                   const Text(
@@ -210,9 +209,15 @@ class _ReportListPageState extends State<ReportListPage> {
 
   Widget _buildSummaryCards() {
     final total = _allBillings.length;
-    final lunas = _allBillings.where((b) => b.statusPembayaran == 'lunas').length;
-    final belumLunas = _allBillings.where((b) => b.statusPembayaran == 'belum_lunas').length;
-    final pending = _allBillings.where((b) => b.statusPembayaran == 'pending').length;
+    final lunas = _allBillings
+        .where((b) => b.statusPembayaran == 'lunas')
+        .length;
+    final belumLunas = _allBillings
+        .where((b) => b.statusPembayaran == 'belum_lunas')
+        .length;
+    final pending = _allBillings
+        .where((b) => b.statusPembayaran == 'pending')
+        .length;
 
     return Padding(
       padding: const EdgeInsets.all(16.0),
@@ -331,15 +336,15 @@ class _ReportListPageState extends State<ReportListPage> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.receipt_long_outlined,
-                  size: 64, color: kTextGrey.withOpacity(0.5)),
+              Icon(
+                Icons.receipt_long_outlined,
+                size: 64,
+                color: kTextGrey.withOpacity(0.5),
+              ),
               const SizedBox(height: 16),
               Text(
                 'Tidak ada tagihan ditemukan',
-                style: TextStyle(
-                  color: kTextGrey,
-                  fontSize: 16,
-                ),
+                style: TextStyle(color: kTextGrey, fontSize: 16),
               ),
             ],
           ),
@@ -350,25 +355,21 @@ class _ReportListPageState extends State<ReportListPage> {
     return SliverPadding(
       padding: const EdgeInsets.symmetric(horizontal: 16.0),
       sliver: SliverList(
-        delegate: SliverChildBuilderDelegate(
-          (context, index) {
-            final billing = _filteredBillings[index];
-            return _BillingCard(
-              billing: billing,
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => ReportDetailTagihanPage(
-                      billingId: billing.id,
-                    ),
-                  ),
-                );
-              },
-            );
-          },
-          childCount: _filteredBillings.length,
-        ),
+        delegate: SliverChildBuilderDelegate((context, index) {
+          final billing = _filteredBillings[index];
+          return _BillingCard(
+            billing: billing,
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) =>
+                      ReportDetailTagihanPage(billingId: billing.id),
+                ),
+              );
+            },
+          );
+        }, childCount: _filteredBillings.length),
       ),
     );
   }
@@ -414,13 +415,7 @@ class _SummaryCard extends StatelessWidget {
               color: color,
             ),
           ),
-          Text(
-            title,
-            style: const TextStyle(
-              fontSize: 12,
-              color: kTextGrey,
-            ),
-          ),
+          Text(title, style: const TextStyle(fontSize: 12, color: kTextGrey)),
         ],
       ),
     );
@@ -473,10 +468,7 @@ class _BillingCard extends StatelessWidget {
   final BillingData billing;
   final VoidCallback onTap;
 
-  const _BillingCard({
-    required this.billing,
-    required this.onTap,
-  });
+  const _BillingCard({required this.billing, required this.onTap});
 
   Color _getStatusColor(String status) {
     switch (status) {
@@ -591,10 +583,7 @@ class _BillingCard extends StatelessWidget {
                         children: [
                           const Text(
                             'Total Biaya',
-                            style: TextStyle(
-                              fontSize: 13,
-                              color: kTextGrey,
-                            ),
+                            style: TextStyle(fontSize: 13, color: kTextGrey),
                           ),
                           Text(
                             'Rp ${NumberFormat('#,###', 'id_ID').format(billing.totalBiaya)}',
@@ -613,10 +602,7 @@ class _BillingCard extends StatelessWidget {
                           children: [
                             const Text(
                               'Deposit',
-                              style: TextStyle(
-                                fontSize: 13,
-                                color: kTextGrey,
-                              ),
+                              style: TextStyle(fontSize: 13, color: kTextGrey),
                             ),
                             Text(
                               'Rp ${NumberFormat('#,###', 'id_ID').format(billing.deposit)}',
@@ -658,25 +644,18 @@ class _BillingCard extends StatelessWidget {
                 const SizedBox(height: 12),
                 Row(
                   children: [
-                    Icon(Icons.calendar_today,
-                        size: 14, color: kTextGrey),
+                    Icon(Icons.calendar_today, size: 14, color: kTextGrey),
                     const SizedBox(width: 6),
                     Text(
                       DateFormat('d MMM yyyy').format(billing.tanggalTagihan),
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: kTextGrey,
-                      ),
+                      style: const TextStyle(fontSize: 12, color: kTextGrey),
                     ),
                     const SizedBox(width: 16),
                     Icon(Icons.badge, size: 14, color: kTextGrey),
                     const SizedBox(width: 6),
                     Text(
                       billing.mrNumber,
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: kTextGrey,
-                      ),
+                      style: const TextStyle(fontSize: 12, color: kTextGrey),
                     ),
                   ],
                 ),

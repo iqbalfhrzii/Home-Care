@@ -122,10 +122,7 @@ class AttachIcdRequest {
   @JsonKey(name: 'is_primary')
   final bool isPrimary;
 
-  AttachIcdRequest({
-    required this.icdId,
-    required this.isPrimary,
-  });
+  AttachIcdRequest({required this.icdId, required this.isPrimary});
 
   factory AttachIcdRequest.fromJson(Map<String, dynamic> json) =>
       _$AttachIcdRequestFromJson(json);

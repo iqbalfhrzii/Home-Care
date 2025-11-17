@@ -49,12 +49,14 @@ class PasienDataSource {
   // Delete patient
   Future<void> deletePasien(String id) async {
     try {
-      await _dio.delete('/pasien/$id').timeout(
-        const Duration(seconds: 10),
-        onTimeout: () {
-          throw Exception('Delete request timeout');
-        },
-      );
+      await _dio
+          .delete('/pasien/$id')
+          .timeout(
+            const Duration(seconds: 10),
+            onTimeout: () {
+              throw Exception('Delete request timeout');
+            },
+          );
     } catch (e) {
       print('❌ Delete API Error: $e');
       rethrow;

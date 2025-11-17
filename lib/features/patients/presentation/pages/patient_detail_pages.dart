@@ -1,656 +1,309 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:intl/intl.dart';
 import 'package:go_router/go_router.dart';
 import 'package:homecare_mobile/core/router/app_router.dart';
+import 'package:homecare_mobile/features/patients/domain/models/pasien.dart';
+import 'package:homecare_mobile/features/patients/presentation/bloc/patient_bloc.dart';
+import 'package:homecare_mobile/shared/app_injections.dart';
+import 'package:homecare_mobile/shared/local_db/app_database.dart' as db;
 
-// --- Palet Warna (dari desain Anda) ---
-const Color kPrimaryColor = Color(0xFF002F67);
-const Color kScaffoldBg = Color(0xFFF8F9FA);
-const Color kWhiteColor = Colors.white;
-const Color kCardBorder = Color(0xFFE2E8F0);
-const Color kIconBg = Color(0xFFEFF6FF); // Latar belakang ikon
-const Color kTextTitle = Color(0xFF002F67); // Warna teks judul section
-const Color kTextLabel = Color(0xFF6B7280); // Warna label abu-abu
-const Color kTextValue = Color(0xFF1F2937); // Warna nilai
-const Color kButtonGreen = Color(0xFF16A34A);
+// --- Palet Warna ---
+const Color kPrimaryColor = Color(0xFF004B8C);
+const Color kPrimaryLight = Color(0xFF0063B2);
+const Color kSecondaryColor = Color(0xFF8BC43E);
+const Color kScaffoldBg = Color(0xFFF5F7FA);
+const Color kWhite = Colors.white;
+const Color kTextDark = Color(0xFF1E293B);
+const Color kTextGrey = Color(0xFF94A3B8);
 const Color kButtonRed = Color(0xFFDC2626);
+const Color kSuccessColor = Color(0xFF22C55E);
+const Color kDangerColor = Color(0xFFEF4444);
 
-// --- Model Data (Contoh) ---
-// Anda harus mengganti ini dengan model data asli Anda
-class PatientRegistration {
-  final String namaLengkap;
-  final String noRekamMedis;
-  final String noRegistrasi;
-  final String noTelepon;
-  final String alamat;
-  final DateTime tanggalRegistrasi;
-  final TimeOfDay jamRegistrasi;
-  final String jenisKunjungan;
-  final String kodeIcd;
-  final String noInvoice;
-  final DateTime tanggalInvoice;
-  final String namaPenanggung;
-  final String noPegawai;
-  final String eselon;
-  final String noTeleponPenanggung;
-  final String alamatPenanggung;
-  final String statusPersetujuan; // 'Menunggu Persetujuan', 'Disetujui'
+class PatientDetailPage extends StatelessWidget {
+  final String? patientId;
+  final Pasien? pasien;
 
-  PatientRegistration({
-    required this.namaLengkap,
-    required this.noRekamMedis,
-    required this.noRegistrasi,
-    required this.noTelepon,
-    required this.alamat,
-    required this.tanggalRegistrasi,
-    required this.jamRegistrasi,
-    required this.jenisKunjungan,
-    required this.kodeIcd,
-    required this.noInvoice,
-    required this.tanggalInvoice,
-    required this.namaPenanggung,
-    required this.noPegawai,
-    required this.eselon,
-    required this.noTeleponPenanggung,
-    required this.alamatPenanggung,
-    required this.statusPersetujuan,
-  });
-}
-// ---------------------------------------------
-
-class PatientDetailPage extends StatefulWidget {
-  // Optional patient id passed from list (routing compatibility)
-  final int? patientId;
-  // Accept a minimal map for patient data when navigating from list
-  final Map<String, String>? patientData;
-
-  const PatientDetailPage({super.key, this.patientId, this.patientData});
+  const PatientDetailPage({super.key, this.patientId, this.pasien});
 
   @override
-  State<PatientDetailPage> createState() => _PatientDetailPageState();
+  Widget build(BuildContext context) {
+    return BlocProvider(
+      create: (context) {
+        final bloc = getIt<PatientBloc>();
+        if (pasien == null && patientId != null) {
+          bloc.add(LoadPatientDetail(patientId!));
+        }
+        return bloc;
+      },
+      child: _PatientDetailView(initialPatient: pasien),
+    );
+  }
 }
 
-class _PatientDetailPageState extends State<PatientDetailPage> {
-  late PatientRegistration patient;
-  bool _statusChanged = false;
-  late String _originalStatus;
+class _PatientDetailView extends StatefulWidget {
+  final Pasien? initialPatient;
+
+  const _PatientDetailView({this.initialPatient});
+
+  @override
+  State<_PatientDetailView> createState() => _PatientDetailViewState();
+}
+
+class _PatientDetailViewState extends State<_PatientDetailView> {
+  db.Registrasi? _latestRegistration;
+  bool _loadingRegistration = false;
 
   @override
   void initState() {
     super.initState();
-    // default dummy patient
-    patient = PatientRegistration(
-      namaLengkap: 'Dewi Lestari',
-      noRekamMedis: 'MRN001237',
-      noRegistrasi: 'R09254414',
-      noTelepon: '081445566778',
-      alamat: 'Jl. Kuningan No. 22, Jakarta Selatan',
-      tanggalRegistrasi: DateTime(2025, 11, 11),
-      jamRegistrasi: const TimeOfDay(hour: 11, minute: 30),
-      jenisKunjungan: 'IGD',
-      kodeIcd: 'S06',
-      noInvoice: 'INV-2025-004',
-      tanggalInvoice: DateTime(2025, 11, 11),
-      namaPenanggung: 'Allianz',
-      noPegawai: 'PEG004',
-      eselon: 'Eselon III',
-      noTeleponPenanggung: '02133445566',
-      alamatPenanggung: 'Jl. Gatot Subroto No. 111, Jakarta',
-      statusPersetujuan: 'Menunggu Persetujuan',
-    );
+    _loadRegistrationData();
+  }
 
-    // override with passed data if any
-    final pd = widget.patientData;
-    if (pd != null) {
-      patient = PatientRegistration(
-        namaLengkap: pd['name'] ?? patient.namaLengkap,
-        noRekamMedis: pd['mrn'] ?? patient.noRekamMedis,
-        noRegistrasi: patient.noRegistrasi,
-        noTelepon: pd['phone'] ?? patient.noTelepon,
-        alamat: pd['address'] ?? patient.alamat,
-        tanggalRegistrasi: patient.tanggalRegistrasi,
-        jamRegistrasi: patient.jamRegistrasi,
-        jenisKunjungan: patient.jenisKunjungan,
-        kodeIcd: patient.kodeIcd,
-        noInvoice: patient.noInvoice,
-        tanggalInvoice: patient.tanggalInvoice,
-        namaPenanggung: patient.namaPenanggung,
-        noPegawai: patient.noPegawai,
-        eselon: patient.eselon,
-        noTeleponPenanggung: patient.noTeleponPenanggung,
-        alamatPenanggung: patient.alamatPenanggung,
-        statusPersetujuan: patient.statusPersetujuan,
-      );
+  Future<void> _loadRegistrationData() async {
+    final patient = widget.initialPatient;
+    if (patient == null) return;
+
+    setState(() => _loadingRegistration = true);
+    try {
+      final database = getIt<db.AppDatabase>();
+      final pasienIdInt = int.tryParse(patient.id);
+      if (pasienIdInt != null) {
+        final registration = await database.getLatestRegistrasiByPasienId(
+          pasienIdInt,
+        );
+        if (mounted) {
+          setState(() {
+            _latestRegistration = registration;
+            _loadingRegistration = false;
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint('❌ Error loading registration: $e');
+      if (mounted) {
+        setState(() => _loadingRegistration = false);
+      }
     }
-    _originalStatus = patient.statusPersetujuan;
+  }
+
+  String _formatDate(String isoDate) {
+    try {
+      final date = DateTime.parse(isoDate);
+      return DateFormat('d MMMM yyyy', 'id_ID').format(date);
+    } catch (e) {
+      return isoDate;
+    }
+  }
+
+  String _formatDateTime(DateTime dateTime) {
+    try {
+      return DateFormat('d MMMM yyyy, HH:mm', 'id_ID').format(dateTime);
+    } catch (e) {
+      return dateTime.toString();
+    }
+  }
+
+  int _calculateAge(String isoDate) {
+    try {
+      final today = DateTime.now();
+      final birth = DateTime.parse(isoDate);
+      int age = today.year - birth.year;
+      final monthDiff = today.month - birth.month;
+      if (monthDiff < 0 || (monthDiff == 0 && today.day < birth.day)) {
+        age--;
+      }
+      return age;
+    } catch (e) {
+      return 0;
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    return WillPopScope(
-      onWillPop: () async {
-        if (_statusChanged) {
-          // return the changed status to caller when popping with back
-          if (!mounted) return true;
-          Navigator.pop(context, {
-            'action': 'status_changed',
-            'status': patient.statusPersetujuan,
-          });
-          return false; // we already popped
+    return BlocConsumer<PatientBloc, PatientState>(
+      listener: (context, state) {
+        if (state is PatientOperationSuccess) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(state.message),
+              backgroundColor: kSuccessColor,
+            ),
+          );
+          if (state.type == PatientOperationType.delete) {
+            Navigator.of(context).pop(true);
+          }
+        } else if (state is PatientError) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(state.message),
+              backgroundColor: kDangerColor,
+            ),
+          );
+        } else if (state is PatientDetailLoaded) {
+          // Reload registration data when patient detail is reloaded
+          _loadRegistrationData();
         }
-        return true;
       },
-      child: Scaffold(
-        backgroundColor: kScaffoldBg,
-        appBar: AppBar(
-          title: const Text(
-            'Detail Pasien',
-            style: TextStyle(color: kWhiteColor, fontWeight: FontWeight.bold),
-          ),
-          backgroundColor: kPrimaryColor,
-          iconTheme: const IconThemeData(color: kWhiteColor),
-          bottom: PreferredSize(
-            preferredSize: const Size.fromHeight(20.0),
-            child: Container(
-              padding: const EdgeInsets.only(bottom: 8.0),
-              alignment: Alignment.centerLeft,
-              child: const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 16.0),
-                child: Text(
-                  'Informasi lengkap pasien',
-                  style: TextStyle(color: kWhiteColor, fontSize: 14),
-                ),
-              ),
-            ),
-          ),
-        ),
-        body: ListView(
-          padding: const EdgeInsets.all(16.0),
-          children: [
-            _buildStatusHeader(patient.statusPersetujuan),
-            const SizedBox(height: 16),
-            _buildPatientDataCard(),
-            const SizedBox(height: 16),
-            _buildVisitDataCard(context),
-            const SizedBox(height: 16),
-            _buildInvoiceDataCard(),
-            const SizedBox(height: 16),
-            _buildGuarantorDataCard(),
-            const SizedBox(height: 16),
-            _buildNotesCard(),
-          ],
-        ),
-        bottomNavigationBar: _buildBottomButtons(context),
-      ),
-    );
-  }
+      builder: (context, state) {
+        Pasien? currentPatient = widget.initialPatient;
 
-  // --- WIDGET HEADER STATUS ---
-  Widget _buildStatusHeader(String status) {
-    bool isPending = status == 'Menunggu Persetujuan';
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: BoxDecoration(
-        color: kWhiteColor,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: kCardBorder),
-      ),
-      child: Row(
-        children: [
-          const Icon(Icons.access_time_filled_outlined, color: Colors.orange),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Status Persetujuan',
-                  style: TextStyle(color: kTextLabel, fontSize: 12),
-                ),
-                Text(
-                  status,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 14,
-                    color: kTextValue,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          if (isPending)
-            ElevatedButton(
-              onPressed: () {
-                setState(() {
-                  patient = PatientRegistration(
-                    namaLengkap: patient.namaLengkap,
-                    noRekamMedis: patient.noRekamMedis,
-                    noRegistrasi: patient.noRegistrasi,
-                    noTelepon: patient.noTelepon,
-                    alamat: patient.alamat,
-                    tanggalRegistrasi: patient.tanggalRegistrasi,
-                    jamRegistrasi: patient.jamRegistrasi,
-                    jenisKunjungan: patient.jenisKunjungan,
-                    kodeIcd: patient.kodeIcd,
-                    noInvoice: patient.noInvoice,
-                    tanggalInvoice: patient.tanggalInvoice,
-                    namaPenanggung: patient.namaPenanggung,
-                    noPegawai: patient.noPegawai,
-                    eselon: patient.eselon,
-                    noTeleponPenanggung: patient.noTeleponPenanggung,
-                    alamatPenanggung: patient.alamatPenanggung,
-                    statusPersetujuan: 'Disetujui',
-                  );
-                  _statusChanged = patient.statusPersetujuan != _originalStatus;
-                });
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Status: Disetujui')),
-                );
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: kButtonGreen,
-                foregroundColor: kWhiteColor,
-              ),
-              child: const Text('Setujui'),
-            )
-          else
-            OutlinedButton(
-              onPressed: () async {
-                final confirm = await showDialog<bool>(
-                  context: context,
-                  builder: (dCtx) => AlertDialog(
-                    title: const Text('Batalkan Persetujuan'),
-                    content: const Text('Yakin ingin membatalkan persetujuan?'),
-                    actions: [
-                      TextButton(
-                        onPressed: () => Navigator.pop(dCtx, false),
-                        child: const Text('Batal'),
-                      ),
-                      TextButton(
-                        onPressed: () => Navigator.pop(dCtx, true),
-                        child: const Text('Ya'),
-                      ),
-                    ],
-                  ),
-                );
-                if (confirm == true) {
-                  if (!mounted) return;
-                  setState(() {
-                    patient = PatientRegistration(
-                      namaLengkap: patient.namaLengkap,
-                      noRekamMedis: patient.noRekamMedis,
-                      noRegistrasi: patient.noRegistrasi,
-                      noTelepon: patient.noTelepon,
-                      alamat: patient.alamat,
-                      tanggalRegistrasi: patient.tanggalRegistrasi,
-                      jamRegistrasi: patient.jamRegistrasi,
-                      jenisKunjungan: patient.jenisKunjungan,
-                      kodeIcd: patient.kodeIcd,
-                      noInvoice: patient.noInvoice,
-                      tanggalInvoice: patient.tanggalInvoice,
-                      namaPenanggung: patient.namaPenanggung,
-                      noPegawai: patient.noPegawai,
-                      eselon: patient.eselon,
-                      noTeleponPenanggung: patient.noTeleponPenanggung,
-                      alamatPenanggung: patient.alamatPenanggung,
-                      statusPersetujuan: 'Menunggu Persetujuan',
-                    );
-                    _statusChanged =
-                        patient.statusPersetujuan != _originalStatus;
-                  });
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Persetujuan dibatalkan')),
-                  );
-                }
-              },
-              style: OutlinedButton.styleFrom(
-                foregroundColor: kButtonRed,
-                side: const BorderSide(color: kButtonRed),
-              ),
-              child: const Text('Batalkan Persetujuan'),
-            ),
-        ],
-      ),
-    );
-  }
+        if (state is PatientDetailLoaded) {
+          currentPatient = state.patient;
+        }
 
-  // --- SECTION WIDGETS ---
-
-  Widget _buildPatientDataCard() {
-    return _buildSectionCard(
-      title: 'Data Pasien',
-      icon: Icons.person_outline,
-      child: Column(
-        children: [
-          _buildInfoEntry(label: 'Nama Lengkap', value: patient.namaLengkap),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              Expanded(
-                child: _buildInfoEntry(
-                  label: 'No. Rekam Medis',
-                  value: patient.noRekamMedis,
-                ),
-              ),
-              Expanded(
-                child: _buildInfoEntry(
-                  label: 'No. Registrasi',
-                  value: patient.noRegistrasi,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          _buildInfoEntry(
-            label: 'No. Telepon',
-            value: patient.noTelepon,
-            icon: Icons.phone_outlined,
-          ),
-          const SizedBox(height: 16),
-          _buildInfoEntry(
-            label: 'Alamat',
-            value: patient.alamat,
-            icon: Icons.location_on_outlined,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildVisitDataCard(BuildContext context) {
-    return _buildSectionCard(
-      title: 'Data Kunjungan',
-      icon: Icons.file_present_outlined,
-      child: Column(
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: _buildInfoEntry(
-                  label: 'Tanggal Registrasi',
-                  value: DateFormat(
-                    'y-MM-dd',
-                  ).format(patient.tanggalRegistrasi),
-                ),
-              ),
-              Expanded(
-                child: _buildInfoEntry(
-                  label: 'Jam Registrasi',
-                  value: patient.jamRegistrasi.format(context),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              Expanded(
-                child: _buildInfoEntry(
-                  label: 'Jenis Kunjungan',
-                  value: '', // Kosongkan value, akan diganti chip
-                  customChild: Align(
-                    alignment: Alignment.centerLeft,
-                    child: Chip(
-                      label: Text(patient.jenisKunjungan),
-                      backgroundColor: const Color.fromRGBO(0, 47, 103, 0.1),
-                      labelStyle: const TextStyle(
-                        color: kPrimaryColor,
-                        fontWeight: FontWeight.bold,
-                      ),
-                      padding: const EdgeInsets.symmetric(horizontal: 8),
-                    ),
-                  ),
-                ),
-              ),
-              Expanded(
-                child: _buildInfoEntry(
-                  label: 'Kode ICD',
-                  value: patient.kodeIcd,
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildInvoiceDataCard() {
-    return _buildSectionCard(
-      title: 'Data Invoice',
-      icon: Icons.receipt_long_outlined,
-      child: Row(
-        children: [
-          Expanded(
-            child: _buildInfoEntry(
-              label: 'No. Invoice',
-              value: patient.noInvoice,
-            ),
-          ),
-          Expanded(
-            child: _buildInfoEntry(
-              label: 'Tanggal Invoice',
-              value: DateFormat('y-MM-dd').format(patient.tanggalInvoice),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildGuarantorDataCard() {
-    return _buildSectionCard(
-      title: 'Data Penanggung',
-      icon: Icons.shield_outlined,
-      child: Column(
-        children: [
-          _buildInfoEntry(
-            label: 'Nama Penanggung',
-            value: patient.namaPenanggung,
-          ),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              Expanded(
-                child: _buildInfoEntry(
-                  label: 'No. Pegawai',
-                  value: patient.noPegawai,
-                ),
-              ),
-              Expanded(
-                child: _buildInfoEntry(label: 'Eselon', value: patient.eselon),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          _buildInfoEntry(
-            label: 'No. Telepon',
-            value: patient.noTeleponPenanggung,
-            icon: Icons.phone_outlined,
-          ),
-          const SizedBox(height: 16),
-          _buildInfoEntry(
-            label: 'Alamat',
-            value: patient.alamatPenanggung,
-            icon: Icons.location_on_outlined,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildNotesCard() {
-    return _buildSectionCard(
-      title: 'Catatan',
-      icon: Icons.description_outlined,
-      child: const Text(
-        'Pastikan semua data telah terverifikasi sebelum menyetujui pendaftaran pasien. Status persetujuan dapat diubah kapan saja sesuai kebutuhan.',
-        style: TextStyle(color: kTextLabel, fontSize: 13, height: 1.5),
-      ),
-    );
-  }
-
-  Widget _buildBottomButtons(BuildContext context) {
-    return Container(
-      color: kWhiteColor,
-      padding: const EdgeInsets.all(
-        16.0,
-      ).copyWith(bottom: MediaQuery.of(context).padding.bottom + 16),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          OutlinedButton.icon(
-            onPressed: () async {
-              // Return a 'delete' action to caller
-              final confirmed = await showDialog<bool>(
-                context: context,
-                builder: (dialogCtx) => AlertDialog(
-                  title: const Text('Hapus Pasien'),
-                  content: const Text('Yakin ingin menghapus data pasien ini?'),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.pop(dialogCtx, false),
-                      child: const Text('Batal'),
-                    ),
-                    TextButton(
-                      onPressed: () => Navigator.pop(dialogCtx, true),
-                      child: const Text('Hapus'),
-                    ),
-                  ],
-                ),
-              );
-              if (confirmed == true) {
-                if (!mounted) return;
-                Navigator.pop(context, {'action': 'delete'});
-              }
-            },
-            icon: const Icon(Icons.delete_outline),
-            label: const Text('Hapus Data Pasien'),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: kButtonRed,
-              side: const BorderSide(color: kButtonRed),
-              minimumSize: const Size(double.infinity, 48),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
-            ),
-          ),
-          const SizedBox(height: 12),
-          ElevatedButton.icon(
-            onPressed: () async {
-              // Open AddPatientRegistrationPage in edit mode using go_router
-              final id = widget.patientId ?? 1;
-              final result = await context.push<Map<String, String>>(
-                '${AppRouter.patients}/$id/edit',
-                extra: {
-                  'name': patient.namaLengkap,
-                  'mrn': patient.noRekamMedis,
-                  'phone': patient.noTelepon,
-                  'address': patient.alamat,
-                },
-              );
-              // If result returned, update local state
-              if (result != null && mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('Data ${result['name']} diupdate')),
-                );
-                // Optionally pop with updated data
-                if (!mounted) return;
-                Navigator.pop(context, {'action': 'edit', 'data': result});
-              }
-            },
-            icon: const Icon(Icons.edit_outlined),
-            label: const Text('Edit Data Pasien'),
-            style: ElevatedButton.styleFrom(
+        if (state is PatientLoading && currentPatient == null) {
+          return Scaffold(
+            backgroundColor: kScaffoldBg,
+            appBar: AppBar(
+              title: const Text('Detail Pasien'),
               backgroundColor: kPrimaryColor,
-              foregroundColor: kWhiteColor,
-              minimumSize: const Size(double.infinity, 48),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
+              foregroundColor: kWhite,
+            ),
+            body: const Center(
+              child: CircularProgressIndicator(color: kPrimaryColor),
+            ),
+          );
+        }
+
+        if (state is PatientError && currentPatient == null) {
+          return Scaffold(
+            backgroundColor: kScaffoldBg,
+            appBar: AppBar(
+              title: const Text('Detail Pasien'),
+              backgroundColor: kPrimaryColor,
+              foregroundColor: kWhite,
+            ),
+            body: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(
+                    Icons.error_outline,
+                    size: 64,
+                    color: kDangerColor,
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    state.message,
+                    style: const TextStyle(color: kTextGrey),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 16),
+                  ElevatedButton.icon(
+                    onPressed: () => Navigator.of(context).pop(),
+                    icon: const Icon(Icons.arrow_back),
+                    label: const Text('Kembali'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: kPrimaryColor,
+                      foregroundColor: kWhite,
+                    ),
+                  ),
+                ],
               ),
             ),
-          ),
-        ],
-      ),
-    );
-  }
+          );
+        }
 
-  // --- WIDGET HELPER ---
+        if (currentPatient == null) {
+          return Scaffold(
+            backgroundColor: kScaffoldBg,
+            appBar: AppBar(
+              title: const Text('Detail Pasien'),
+              backgroundColor: kPrimaryColor,
+              foregroundColor: kWhite,
+            ),
+            body: const Center(child: Text('Data pasien tidak ditemukan')),
+          );
+        }
 
-  Widget _buildSectionCard({
-    required String title,
-    required IconData icon,
-    required Widget child,
-  }) {
-    return Card(
-      elevation: 0,
-      color: kWhiteColor,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: const BorderSide(color: kCardBorder),
-      ),
-      margin: EdgeInsets.zero,
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: kIconBg,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Icon(icon, color: kTextTitle, size: 20),
-                ),
-                const SizedBox(width: 12),
-                Text(
-                  title,
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: kTextTitle,
+        return WillPopScope(
+          onWillPop: () async {
+            // Reload patient list saat kembali
+            Navigator.of(context).pop(true);
+            return false;
+          },
+          child: Scaffold(
+            backgroundColor: kScaffoldBg,
+            body: CustomScrollView(
+              slivers: [
+                _buildSliverAppBar(context, currentPatient),
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24.0),
+                    child: Column(
+                      children: [
+                        _buildInfoCard(currentPatient),
+                        const SizedBox(height: 16),
+                        if (currentPatient.isRegistered ?? false) ...[
+                          _buildRegistrationCard(),
+                          const SizedBox(height: 16),
+                        ],
+                        _buildActionButtons(context, currentPatient),
+                      ],
+                    ),
                   ),
                 ),
               ],
             ),
-            const Divider(height: 24, thickness: 0.5),
-            child,
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 
-  Widget _buildInfoEntry({
-    required String label,
-    required String value,
-    IconData? icon,
-    Widget? customChild,
-  }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(label, style: const TextStyle(color: kTextLabel, fontSize: 12)),
-        const SizedBox(height: 4),
-        if (customChild != null)
-          customChild
-        else
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
+  Widget _buildSliverAppBar(BuildContext context, Pasien patient) {
+    return SliverAppBar(
+      expandedHeight: 200,
+      pinned: true,
+      backgroundColor: kPrimaryColor,
+      foregroundColor: kWhite,
+      flexibleSpace: FlexibleSpaceBar(
+        title: Text(
+          patient.nama,
+          style: const TextStyle(
+            color: kWhite,
+            fontWeight: FontWeight.bold,
+            fontSize: 18,
+          ),
+        ),
+        background: Container(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [kPrimaryColor, kPrimaryLight],
+            ),
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              if (icon != null)
-                Icon(icon, color: kTextLabel, size: 16)
-              else
-                const SizedBox(width: 16), // Placeholder for alignment
-              const SizedBox(width: 8),
-              Expanded(
+              const SizedBox(height: 60),
+              Container(
+                width: 80,
+                height: 80,
+                decoration: BoxDecoration(
+                  color: kWhite.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: kWhite.withOpacity(0.3), width: 2),
+                ),
+                child: const Icon(Icons.person, size: 48, color: kWhite),
+              ),
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  color: kWhite.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: kWhite.withOpacity(0.3)),
+                ),
                 child: Text(
-                  value,
+                  patient.noRm,
                   style: const TextStyle(
-                    color: kTextValue,
+                    color: kWhite,
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
                   ),
@@ -658,6 +311,531 @@ class _PatientDetailPageState extends State<PatientDetailPage> {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildInfoCard(Pasien patient) {
+    return Container(
+      decoration: BoxDecoration(
+        color: kWhite,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: kPrimaryColor.withOpacity(0.08),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Informasi Pasien',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: kTextDark,
+            ),
+          ),
+          const SizedBox(height: 20),
+          _buildInfoRow(
+            'Nama Lengkap',
+            patient.nama,
+            Icons.person_outline,
+            kPrimaryColor,
+          ),
+          _buildInfoRow(
+            'No. Rekam Medis',
+            patient.noRm,
+            Icons.badge_outlined,
+            const Color(0xFF3B82F6),
+          ),
+          _buildInfoRow(
+            'NIK',
+            patient.nik ?? '-',
+            Icons.credit_card_outlined,
+            const Color(0xFF8B5CF6),
+          ),
+          _buildInfoRow(
+            'No. BPJS',
+            patient.noBpjs ?? '-',
+            Icons.medical_information_outlined,
+            const Color(0xFF10B981),
+          ),
+          _buildInfoRow(
+            'Jenis Kelamin',
+            patient.jenisKelamin == 'L' ? 'Laki-laki' : 'Perempuan',
+            patient.jenisKelamin == 'L' ? Icons.male : Icons.female,
+            patient.jenisKelamin == 'L'
+                ? const Color(0xFF3B82F6)
+                : const Color(0xFFEC4899),
+          ),
+          _buildInfoRow(
+            'Tempat Lahir',
+            patient.tempatLahir,
+            Icons.location_city_outlined,
+            const Color(0xFFF59E0B),
+          ),
+          _buildInfoRow(
+            'Tanggal Lahir',
+            '${_formatDate(patient.tanggalLahir)} (${_calculateAge(patient.tanggalLahir)} tahun)',
+            Icons.cake_outlined,
+            const Color(0xFFEF4444),
+          ),
+          _buildInfoRow(
+            'Golongan Darah',
+            patient.golonganDarah ?? '-',
+            Icons.bloodtype_outlined,
+            const Color(0xFFDC2626),
+          ),
+          _buildInfoRow(
+            'No. Telepon',
+            patient.noTelp,
+            Icons.phone_outlined,
+            const Color(0xFF22C55E),
+          ),
+          _buildInfoRow(
+            'Alamat',
+            patient.alamat,
+            Icons.home_outlined,
+            const Color(0xFF6366F1),
+            isLast: true,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInfoRow(
+    String label,
+    String value,
+    IconData icon,
+    Color iconColor, {
+    bool isLast = false,
+  }) {
+    return Padding(
+      padding: EdgeInsets.only(bottom: isLast ? 0 : 16),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: iconColor.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(icon, size: 20, color: iconColor),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: const TextStyle(
+                    color: kTextGrey,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  value,
+                  style: const TextStyle(
+                    color: kTextDark,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRegistrationCard() {
+    if (_loadingRegistration) {
+      return Container(
+        decoration: BoxDecoration(
+          color: kWhite,
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.04),
+              blurRadius: 12,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        padding: const EdgeInsets.all(20),
+        child: const Center(
+          child: CircularProgressIndicator(color: kPrimaryColor),
+        ),
+      );
+    }
+
+    if (_latestRegistration == null) {
+      return const SizedBox.shrink();
+    }
+
+    final reg = _latestRegistration!;
+    return Container(
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFF22C55E), Color(0xFF16A34A)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF22C55E).withOpacity(0.3),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(Icons.check_circle, color: kWhite, size: 24),
+              ),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Text(
+                  'Informasi Registrasi',
+                  style: TextStyle(
+                    color: kWhite,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          _buildRegInfoRow('No. Registrasi', reg.noReg),
+          _buildRegInfoRow(
+            'Tanggal Registrasi',
+            _formatDateTime(reg.tglJamReg),
+          ),
+          _buildRegInfoRow(
+            'Jadwal Kunjungan',
+            '${_formatDate(reg.tanggalKunjungan.toIso8601String())} - ${reg.jamKunjungan}',
+          ),
+          _buildRegInfoRow('Jenis Kunjungan', reg.jenisKunjungan),
+          _buildRegInfoRow('Tipe Pasien', reg.tipePasien),
+          const Divider(color: Colors.white54, height: 24),
+          const Text(
+            'Penanggung Jawab',
+            style: TextStyle(
+              color: kWhite,
+              fontSize: 15,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 8),
+          _buildRegInfoRow('Nama', reg.penanggungNama),
+          _buildRegInfoRow('Telepon', reg.penanggungTelepon),
+          _buildRegInfoRow('Alamat', reg.penanggungAlamat),
+          if (reg.penanggungNoPegawai != null &&
+              reg.penanggungNoPegawai!.isNotEmpty)
+            _buildRegInfoRow('No. Pegawai', reg.penanggungNoPegawai!),
+          if (reg.eselon != null && reg.eselon!.isNotEmpty)
+            _buildRegInfoRow('Eselon', reg.eselon!),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRegInfoRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 140,
+            child: Text(
+              label,
+              style: TextStyle(color: kWhite.withOpacity(0.9), fontSize: 13),
+            ),
+          ),
+          const Text(': ', style: TextStyle(color: kWhite, fontSize: 13)),
+          Expanded(
+            child: Text(
+              value,
+              style: const TextStyle(
+                color: kWhite,
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildActionButtons(BuildContext context, Pasien patient) {
+    final bool isRegistered = patient.isRegistered ?? false;
+    final bool hasRegistrationData = _latestRegistration != null;
+
+    return Column(
+      children: [
+        // Registrasi Button (Register or Edit)
+        Container(
+          width: double.infinity,
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: isRegistered
+                  ? [
+                      const Color(0xFF3B82F6),
+                      const Color(0xFF2563EB),
+                    ] // Blue for Edit
+                  : [
+                      kSecondaryColor,
+                      kSecondaryColor.withOpacity(0.8),
+                    ], // Green for Register
+            ),
+            borderRadius: BorderRadius.circular(16),
+            boxShadow: [
+              BoxShadow(
+                color:
+                    (isRegistered ? const Color(0xFF3B82F6) : kSecondaryColor)
+                        .withOpacity(0.3),
+                blurRadius: 12,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              borderRadius: BorderRadius.circular(16),
+              onTap: () async {
+                // Navigate to registration form
+                // If edit mode and has registration data, pass registration ID
+                final extra = {
+                  'pasienId': patient.id,
+                  'pasienNama': patient.nama,
+                  if (hasRegistrationData)
+                    'registrasiId': _latestRegistration!.id,
+                  if (hasRegistrationData) 'isEdit': true,
+                };
+
+                final result = await context.push<bool>(
+                  '${AppRouter.patients}/register/${patient.id}',
+                  extra: extra,
+                );
+                if (result == true && context.mounted) {
+                  // Reload patient detail to show updated registration status
+                  context.read<PatientBloc>().add(
+                    LoadPatientDetail(patient.id),
+                  );
+
+                  // Also refresh the patient list to update counters
+                  context.read<PatientBloc>().add(const RefreshPatients());
+
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        isRegistered
+                            ? 'Registrasi untuk ${patient.nama} berhasil diupdate'
+                            : 'Registrasi untuk ${patient.nama} berhasil',
+                      ),
+                      backgroundColor: kSuccessColor,
+                    ),
+                  );
+                }
+              },
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      isRegistered
+                          ? Icons.edit_calendar
+                          : Icons.app_registration,
+                      color: kWhite,
+                      size: 24,
+                    ),
+                    const SizedBox(width: 12),
+                    Text(
+                      isRegistered
+                          ? 'Edit Registrasi Kunjungan'
+                          : 'Registrasikan Kunjungan',
+                      style: const TextStyle(
+                        color: kWhite,
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+
+        // Edit & Delete Buttons
+        Row(
+          children: [
+            // Edit Button
+            Expanded(
+              child: Container(
+                decoration: BoxDecoration(
+                  border: Border.all(color: kPrimaryColor.withOpacity(0.3)),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(14),
+                    onTap: () async {
+                      final result = await context.push<bool>(
+                        '${AppRouter.patients}/${patient.id}/edit',
+                        extra: patient,
+                      );
+                      if (result == true && context.mounted) {
+                        context.read<PatientBloc>().add(
+                          LoadPatientDetail(patient.id),
+                        );
+                      }
+                    },
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: const [
+                          Icon(
+                            Icons.edit_outlined,
+                            color: kPrimaryColor,
+                            size: 20,
+                          ),
+                          SizedBox(width: 8),
+                          Text(
+                            'Edit Data',
+                            style: TextStyle(
+                              color: kPrimaryColor,
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+
+            // Delete Button
+            Expanded(
+              child: Container(
+                decoration: BoxDecoration(
+                  border: Border.all(color: kButtonRed.withOpacity(0.3)),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(14),
+                    onTap: () {
+                      showDialog(
+                        context: context,
+                        builder: (dialogContext) => AlertDialog(
+                          title: const Text('Hapus Data Pasien?'),
+                          content: RichText(
+                            text: TextSpan(
+                              style: DefaultTextStyle.of(dialogContext).style,
+                              children: [
+                                const TextSpan(
+                                  text:
+                                      'Apakah Anda yakin ingin menghapus data ',
+                                ),
+                                TextSpan(
+                                  text: patient.nama,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                const TextSpan(
+                                  text:
+                                      '?\nTindakan ini tidak dapat dibatalkan.',
+                                ),
+                              ],
+                            ),
+                          ),
+                          actions: [
+                            TextButton(
+                              child: const Text('Batal'),
+                              onPressed: () =>
+                                  Navigator.of(dialogContext).pop(),
+                            ),
+                            TextButton(
+                              style: TextButton.styleFrom(
+                                foregroundColor: Colors.red,
+                              ),
+                              child: const Text('Hapus'),
+                              onPressed: () {
+                                Navigator.of(dialogContext).pop();
+                                context.read<PatientBloc>().add(
+                                  DeletePatient(patient.id),
+                                );
+                              },
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: const [
+                          Icon(
+                            Icons.delete_outline,
+                            color: kButtonRed,
+                            size: 20,
+                          ),
+                          SizedBox(width: 8),
+                          Text(
+                            'Hapus',
+                            style: TextStyle(
+                              color: kButtonRed,
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
       ],
     );
   }

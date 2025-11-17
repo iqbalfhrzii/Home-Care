@@ -133,16 +133,18 @@ class _ScheduleTindakanPageState extends State<ScheduleTindakanPage> {
 
   void _addTindakan(TindakanItem tindakan) {
     setState(() {
-      _selectedTindakan.add(TindakanItem(
-        id: tindakan.id,
-        kode: tindakan.kode,
-        namaTindakan: tindakan.namaTindakan,
-        kategori: tindakan.kategori,
-        harga: tindakan.harga,
-        jumlah: 1,
-        hargaSatuan: tindakan.harga,
-        diskon: 0,
-      ));
+      _selectedTindakan.add(
+        TindakanItem(
+          id: tindakan.id,
+          kode: tindakan.kode,
+          namaTindakan: tindakan.namaTindakan,
+          kategori: tindakan.kategori,
+          harga: tindakan.harga,
+          jumlah: 1,
+          hargaSatuan: tindakan.harga,
+          diskon: 0,
+        ),
+      );
     });
 
     ScaffoldMessenger.of(context).showSnackBar(
@@ -162,15 +164,19 @@ class _ScheduleTindakanPageState extends State<ScheduleTindakanPage> {
 
   void _showEditDialog(int index) {
     final tindakan = _selectedTindakan[index];
-    final jumlahController =
-        TextEditingController(text: tindakan.jumlah.toString());
-    final hargaController =
-        TextEditingController(text: tindakan.hargaSatuan.toString());
-    final diskonController =
-        TextEditingController(text: tindakan.diskon.toString());
+    final jumlahController = TextEditingController(
+      text: tindakan.jumlah.toString(),
+    );
+    final hargaController = TextEditingController(
+      text: tindakan.hargaSatuan.toString(),
+    );
+    final diskonController = TextEditingController(
+      text: tindakan.diskon.toString(),
+    );
     final petugasController = TextEditingController(text: tindakan.petugasNama);
-    final keteranganController =
-        TextEditingController(text: tindakan.keterangan);
+    final keteranganController = TextEditingController(
+      text: tindakan.keterangan,
+    );
 
     showDialog(
       context: context,
@@ -349,10 +355,7 @@ class _ScheduleTindakanPageState extends State<ScheduleTindakanPage> {
                   children: [
                     Text(
                       'Tindakan Medis',
-                      style: TextStyle(
-                        color: Colors.white70,
-                        fontSize: 14,
-                      ),
+                      style: TextStyle(color: Colors.white70, fontSize: 14),
                     ),
                     SizedBox(height: 4),
                     Text(
@@ -373,16 +376,21 @@ class _ScheduleTindakanPageState extends State<ScheduleTindakanPage> {
             children: [
               Expanded(
                 child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
                   decoration: BoxDecoration(
                     color: kWhite.withOpacity(0.2),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Row(
                     children: [
-                      const Icon(Icons.medical_services,
-                          color: kWhite, size: 20),
+                      const Icon(
+                        Icons.medical_services,
+                        color: kWhite,
+                        size: 20,
+                      ),
                       const SizedBox(width: 8),
                       Text(
                         '${_selectedTindakan.length} Tindakan',
@@ -397,7 +405,10 @@ class _ScheduleTindakanPageState extends State<ScheduleTindakanPage> {
               ),
               const SizedBox(width: 8),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
                 decoration: BoxDecoration(
                   color: kWhite.withOpacity(0.2),
                   borderRadius: BorderRadius.circular(12),
@@ -499,17 +510,11 @@ class _ScheduleTindakanPageState extends State<ScheduleTindakanPage> {
                   subtitle: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        tindakan.kode,
-                        style: const TextStyle(fontSize: 12),
-                      ),
+                      Text(tindakan.kode, style: const TextStyle(fontSize: 12)),
                       const SizedBox(height: 4),
                       Text(
                         'Rp ${tindakan.hargaSatuan.toString().replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (Match m) => '${m[1]}.')} x ${tindakan.jumlah}',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: kTextGrey,
-                        ),
+                        style: TextStyle(fontSize: 12, color: kTextGrey),
                       ),
                       if (tindakan.diskon > 0)
                         Text(
@@ -603,15 +608,15 @@ class _ScheduleTindakanPageState extends State<ScheduleTindakanPage> {
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.search_off,
-                          size: 64, color: kTextGrey.withOpacity(0.5)),
+                      Icon(
+                        Icons.search_off,
+                        size: 64,
+                        color: kTextGrey.withOpacity(0.5),
+                      ),
                       const SizedBox(height: 16),
                       Text(
                         'Tidak ada tindakan ditemukan',
-                        style: TextStyle(
-                          color: kTextGrey,
-                          fontSize: 16,
-                        ),
+                        style: TextStyle(color: kTextGrey, fontSize: 16),
                       ),
                     ],
                   ),
@@ -681,10 +686,12 @@ class _ScheduleTindakanPageState extends State<ScheduleTindakanPage> {
                                             vertical: 2,
                                           ),
                                           decoration: BoxDecoration(
-                                            color:
-                                                kPrimaryColor.withOpacity(0.1),
-                                            borderRadius:
-                                                BorderRadius.circular(4),
+                                            color: kPrimaryColor.withOpacity(
+                                              0.1,
+                                            ),
+                                            borderRadius: BorderRadius.circular(
+                                              4,
+                                            ),
                                           ),
                                           child: Text(
                                             tindakan.kategori,
@@ -724,9 +731,9 @@ class _ScheduleTindakanPageState extends State<ScheduleTindakanPage> {
   Widget _buildBottomButton() {
     return Container(
       color: kWhite,
-      padding: const EdgeInsets.all(16.0).copyWith(
-        bottom: MediaQuery.of(context).padding.bottom + 16,
-      ),
+      padding: const EdgeInsets.all(
+        16.0,
+      ).copyWith(bottom: MediaQuery.of(context).padding.bottom + 16),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [

@@ -19,7 +19,8 @@ class Pasiens extends Table {
   TextColumn get golonganDarah => text().nullable().withLength(max: 3)();
   TextColumn get alamat => text()();
   TextColumn get noTelp => text().withLength(min: 1, max: 20)();
-  BoolColumn get isRegistered => boolean().withDefault(const Constant(false))(); // Status registrasi
+  BoolColumn get isRegistered =>
+      boolean().withDefault(const Constant(false))(); // Status registrasi
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
   DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
 }
@@ -31,8 +32,10 @@ class Registrasis extends Table {
   IntColumn get pasienId => integer().references(Pasiens, #id)();
   DateTimeColumn get tglJamReg => dateTime()(); // Registration date/time
   DateTimeColumn get tanggalKunjungan => dateTime()(); // Scheduled visit date
-  TextColumn get jamKunjungan => text().withLength(min: 5, max: 5)(); // HH:mm format
-  TextColumn get jenisKunjungan => text()(); // Kunjungan Pertama / Kunjungan Ulang
+  TextColumn get jamKunjungan =>
+      text().withLength(min: 5, max: 5)(); // HH:mm format
+  TextColumn get jenisKunjungan =>
+      text()(); // Kunjungan Pertama / Kunjungan Ulang
   TextColumn get tipePasien => text()(); // Pasien Umum / BPJS / Asuransi
   TextColumn get penanggungNama => text()();
   TextColumn get penanggungNoPegawai => text().nullable()();
@@ -50,8 +53,12 @@ class Kunjungans extends Table {
   TextColumn get noKunjungan => text().withLength(min: 1, max: 50)();
   IntColumn get pasienId => integer().references(Pasiens, #id)();
   DateTimeColumn get tanggalKunjungan => dateTime()();
-  TextColumn get status => text().withDefault(const Constant('dalam_proses'))(); // dalam_proses, selesai
-  IntColumn get progressStep => integer().withDefault(const Constant(0))(); // 0-3 (0=baru, 1=anamnesa, 2=diagnosa, 3=tindakan)
+  TextColumn get status => text().withDefault(
+    const Constant('dalam_proses'),
+  )(); // dalam_proses, selesai
+  IntColumn get progressStep => integer().withDefault(
+    const Constant(0),
+  )(); // 0-3 (0=baru, 1=anamnesa, 2=diagnosa, 3=tindakan)
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
   DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
 }
@@ -80,7 +87,8 @@ class Diagnosas extends Table {
   IntColumn get kunjunganId => integer().references(Kunjungans, #id)();
   TextColumn get kodeIcd => text().withLength(min: 1, max: 20)();
   TextColumn get namaIcd => text()();
-  BoolColumn get isPrimary => boolean().withDefault(const Constant(false))(); // Primary diagnosis
+  BoolColumn get isPrimary =>
+      boolean().withDefault(const Constant(false))(); // Primary diagnosis
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
 }
 
@@ -105,23 +113,28 @@ class Tagihans extends Table {
   IntColumn get pasienId => integer().references(Pasiens, #id)();
   DateTimeColumn get tanggalTagihan => dateTime()();
   IntColumn get totalBiaya => integer()(); // Total cost
-  IntColumn get deposit => integer().withDefault(const Constant(0))(); // Deposit paid
+  IntColumn get deposit =>
+      integer().withDefault(const Constant(0))(); // Deposit paid
   IntColumn get sisaBiaya => integer()(); // Remaining balance
-  TextColumn get statusPembayaran => text().withDefault(const Constant('pending'))(); // pending, belum_lunas, lunas
+  TextColumn get statusPembayaran => text().withDefault(
+    const Constant('pending'),
+  )(); // pending, belum_lunas, lunas
   TextColumn get catatan => text().nullable()();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
   DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
 }
 
-@DriftDatabase(tables: [
-  Pasiens,
-  Registrasis,
-  Kunjungans,
-  Anamnesas,
-  Diagnosas,
-  TindakanKunjungans,
-  Tagihans,
-])
+@DriftDatabase(
+  tables: [
+    Pasiens,
+    Registrasis,
+    Kunjungans,
+    Anamnesas,
+    Diagnosas,
+    TindakanKunjungans,
+    Tagihans,
+  ],
+)
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
 
@@ -136,20 +149,22 @@ class AppDatabase extends _$AppDatabase {
 
   Future<List<Pasien>> searchPasiens(String query) {
     final lowerQuery = query.toLowerCase();
-    return (select(pasiens)
-          ..where((p) =>
+    return (select(pasiens)..where(
+          (p) =>
               p.nama.lower().like('%$lowerQuery%') |
               p.noRm.lower().like('%$lowerQuery%') |
               p.noTelp.like('%$lowerQuery%') |
               p.nik.lower().like('%$lowerQuery%') |
-              p.noBpjs.lower().like('%$lowerQuery%')))
+              p.noBpjs.lower().like('%$lowerQuery%'),
+        ))
         .get();
   }
 
   // Get pasiens by registration status
   Future<List<Pasien>> getPasiensByRegistrationStatus(bool isRegistered) {
-    return (select(pasiens)..where((p) => p.isRegistered.equals(isRegistered)))
-        .get();
+    return (select(
+      pasiens,
+    )..where((p) => p.isRegistered.equals(isRegistered))).get();
   }
 
   // Count pasiens by registration status
@@ -165,8 +180,9 @@ class AppDatabase extends _$AppDatabase {
       into(pasiens).insert(companion);
 
   Future<bool> updatePasien(int id, PasiensCompanion companion) async {
-    final updated = await (update(pasiens)..where((p) => p.id.equals(id)))
-        .write(companion);
+    final updated = await (update(
+      pasiens,
+    )..where((p) => p.id.equals(id))).write(companion);
     return updated > 0;
   }
 
@@ -180,8 +196,9 @@ class AppDatabase extends _$AppDatabase {
       (select(registrasis)..where((r) => r.id.equals(id))).getSingleOrNull();
 
   Future<List<Registrasi>> getRegistrasiByPasienId(int pasienId) {
-    return (select(registrasis)..where((r) => r.pasienId.equals(pasienId)))
-        .get();
+    return (select(
+      registrasis,
+    )..where((r) => r.pasienId.equals(pasienId))).get();
   }
 
   Future<Registrasi?> getLatestRegistrasiByPasienId(int pasienId) =>
@@ -195,9 +212,9 @@ class AppDatabase extends _$AppDatabase {
       into(registrasis).insert(companion);
 
   Future<bool> updateRegistrasi(int id, RegistrasisCompanion companion) async {
-    final updated =
-        await (update(registrasis)..where((r) => r.id.equals(id)))
-            .write(companion);
+    final updated = await (update(
+      registrasis,
+    )..where((r) => r.id.equals(id))).write(companion);
     return updated > 0;
   }
 
@@ -211,8 +228,9 @@ class AppDatabase extends _$AppDatabase {
       (select(kunjungans)..where((k) => k.id.equals(id))).getSingleOrNull();
 
   Future<List<Kunjungan>> getKunjungansByPasienId(int pasienId) {
-    return (select(kunjungans)..where((k) => k.pasienId.equals(pasienId)))
-        .get();
+    return (select(
+      kunjungans,
+    )..where((k) => k.pasienId.equals(pasienId))).get();
   }
 
   Future<List<Kunjungan>> getKunjungansByStatus(String status) {
@@ -223,62 +241,64 @@ class AppDatabase extends _$AppDatabase {
       into(kunjungans).insert(companion);
 
   Future<bool> updateKunjungan(int id, KunjungansCompanion companion) async {
-    final updated = await (update(kunjungans)..where((k) => k.id.equals(id)))
-        .write(companion);
+    final updated = await (update(
+      kunjungans,
+    )..where((k) => k.id.equals(id))).write(companion);
     return updated > 0;
   }
 
   // ========== ANAMNESA OPERATIONS ==========
-  Future<Anamnesa?> getAnamnesaByKunjunganId(int kunjunganId) =>
-      (select(anamnesas)..where((a) => a.kunjunganId.equals(kunjunganId)))
-          .getSingleOrNull();
+  Future<Anamnesa?> getAnamnesaByKunjunganId(int kunjunganId) => (select(
+    anamnesas,
+  )..where((a) => a.kunjunganId.equals(kunjunganId))).getSingleOrNull();
 
   Future<int> insertAnamnesa(AnamnesasCompanion companion) =>
       into(anamnesas).insert(companion);
 
   Future<bool> updateAnamnesa(int id, AnamnesasCompanion companion) async {
-    final updated = await (update(anamnesas)..where((a) => a.id.equals(id)))
-        .write(companion);
+    final updated = await (update(
+      anamnesas,
+    )..where((a) => a.id.equals(id))).write(companion);
     return updated > 0;
   }
 
   // ========== DIAGNOSA OPERATIONS ==========
   Future<List<Diagnosa>> getDiagnosasByKunjunganId(int kunjunganId) {
-    return (select(diagnosas)..where((d) => d.kunjunganId.equals(kunjunganId)))
-        .get();
+    return (select(
+      diagnosas,
+    )..where((d) => d.kunjunganId.equals(kunjunganId))).get();
   }
 
   Future<Diagnosa?> getPrimaryDiagnosa(int kunjunganId) =>
-      (select(diagnosas)
-            ..where((d) =>
-                d.kunjunganId.equals(kunjunganId) & d.isPrimary.equals(true)))
+      (select(diagnosas)..where(
+            (d) => d.kunjunganId.equals(kunjunganId) & d.isPrimary.equals(true),
+          ))
           .getSingleOrNull();
 
   Future<int> insertDiagnosa(DiagnosasCompanion companion) =>
       into(diagnosas).insert(companion);
 
   Future<bool> deleteDiagnosa(int id) async {
-    final deleted = await (delete(diagnosas)..where((d) => d.id.equals(id)))
-        .go();
+    final deleted = await (delete(
+      diagnosas,
+    )..where((d) => d.id.equals(id))).go();
     return deleted > 0;
   }
 
   // ========== TINDAKAN KUNJUNGAN OPERATIONS ==========
-  Future<List<TindakanKunjungan>> getTindakansByKunjunganId(
-      int kunjunganId) {
-    return (select(tindakanKunjungans)
-          ..where((t) => t.kunjunganId.equals(kunjunganId)))
-        .get();
+  Future<List<TindakanKunjungan>> getTindakansByKunjunganId(int kunjunganId) {
+    return (select(
+      tindakanKunjungans,
+    )..where((t) => t.kunjunganId.equals(kunjunganId))).get();
   }
 
-  Future<int> insertTindakanKunjungan(
-          TindakanKunjungansCompanion companion) =>
+  Future<int> insertTindakanKunjungan(TindakanKunjungansCompanion companion) =>
       into(tindakanKunjungans).insert(companion);
 
   Future<bool> deleteTindakanKunjungan(int id) async {
-    final deleted = await (delete(tindakanKunjungans)
-          ..where((t) => t.id.equals(id)))
-        .go();
+    final deleted = await (delete(
+      tindakanKunjungans,
+    )..where((t) => t.id.equals(id))).go();
     return deleted > 0;
   }
 
@@ -288,21 +308,23 @@ class AppDatabase extends _$AppDatabase {
   Future<Tagihan?> getTagihanById(int id) =>
       (select(tagihans)..where((t) => t.id.equals(id))).getSingleOrNull();
 
-  Future<Tagihan?> getTagihanByKunjunganId(int kunjunganId) =>
-      (select(tagihans)..where((t) => t.kunjunganId.equals(kunjunganId)))
-          .getSingleOrNull();
+  Future<Tagihan?> getTagihanByKunjunganId(int kunjunganId) => (select(
+    tagihans,
+  )..where((t) => t.kunjunganId.equals(kunjunganId))).getSingleOrNull();
 
   Future<List<Tagihan>> getTagihansByStatus(String status) {
-    return (select(tagihans)..where((t) => t.statusPembayaran.equals(status)))
-        .get();
+    return (select(
+      tagihans,
+    )..where((t) => t.statusPembayaran.equals(status))).get();
   }
 
   Future<int> insertTagihan(TagihansCompanion companion) =>
       into(tagihans).insert(companion);
 
   Future<bool> updateTagihan(int id, TagihansCompanion companion) async {
-    final updated = await (update(tagihans)..where((t) => t.id.equals(id)))
-        .write(companion);
+    final updated = await (update(
+      tagihans,
+    )..where((t) => t.id.equals(id))).write(companion);
     return updated > 0;
   }
 

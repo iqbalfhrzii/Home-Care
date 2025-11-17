@@ -11,13 +11,13 @@ class LoadPatients extends PatientEvent {
 class SearchPatients extends PatientEvent {
   final String query;
   final bool searchFromApi;
-  
+
   const SearchPatients(this.query, {this.searchFromApi = false});
 }
 
 class LoadPatientDetail extends PatientEvent {
   final String id;
-  
+
   const LoadPatientDetail(this.id);
 }
 
@@ -31,7 +31,7 @@ class CreatePatient extends PatientEvent {
   final String? nik;
   final String? noBpjs;
   final String? golonganDarah;
-  
+
   const CreatePatient({
     required this.nama,
     required this.tempatLahir,
@@ -56,7 +56,7 @@ class UpdatePatient extends PatientEvent {
   final String? nik;
   final String? noBpjs;
   final String? golonganDarah;
-  
+
   const UpdatePatient({
     required this.id,
     required this.nama,
@@ -73,7 +73,7 @@ class UpdatePatient extends PatientEvent {
 
 class DeletePatient extends PatientEvent {
   final String id;
-  
+
   const DeletePatient(this.id);
 }
 
@@ -82,7 +82,8 @@ class RefreshPatients extends PatientEvent {
 }
 
 class FilterPatients extends PatientEvent {
-  final String? filterType; // null = all, 'registered' = sudah teregistrasi, 'unregistered' = belum teregistrasi
-  
+  final String?
+  filterType; // null = all, 'registered' = sudah teregistrasi, 'unregistered' = belum teregistrasi
+
   const FilterPatients(this.filterType);
 }

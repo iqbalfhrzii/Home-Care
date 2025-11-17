@@ -12,19 +12,17 @@ final getIt = GetIt.instance;
 Future<void> initAppInjections() async {
   // Use existing configured Dio instance from core/network/dio.dart
   // It already has baseUrl, interceptors, and logger configured
-  
+
   // Register Local Database
   getIt.registerLazySingleton<AppDatabase>(() => AppDatabase());
-  
+
   // Seed database with sample data
   final seeder = DatabaseSeeder(getIt<AppDatabase>());
   await seeder.seedPasienData();
-  
+
   // Register Data Sources
-  getIt.registerLazySingleton<PasienDataSource>(
-    () => PasienDataSource(dio),
-  );
-  
+  getIt.registerLazySingleton<PasienDataSource>(() => PasienDataSource(dio));
+
   getIt.registerLazySingleton<PasienLocalDataSource>(
     () => PasienLocalDataSource(getIt<AppDatabase>()),
   );

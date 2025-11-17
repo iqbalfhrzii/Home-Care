@@ -1,16 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:homecare_mobile/features/schedules/presentation/pages/schedule_anamnesis_page.dart';
+import 'package:homecare_mobile/features/schedules/presentation/pages/visit_flow_page.dart';
 
-// --- Ambil dari file/tema Anda ---
-const Color kPrimaryColor = Color(0xFF002F67);
+// --- Modern Design System Colors ---
+const Color kPrimaryColor = Color(0xFF004B8C);
+const Color kPrimaryLight = Color(0xFF0063B2);
 const Color kAccentColor = Color(0xFF3F51B5);
 const Color kWhiteColor = Colors.white;
 const Color kBadgeGreen = Color(0xFFE0F2E9);
 const Color kBadgeGreenText = Color(0xFF006437);
 const Color kBadgeOrange = Color(0xFFFFF4E6);
 const Color kBadgeOrangeText = Color(0xFFB45309);
-const Color kScaffoldBg = Color(0xFFF8F9FA);
+const Color kScaffoldBg = Color(0xFFF5F7FA);
+const Color kSuccessColor = Color(0xFF22C55E);
+const Color kTextDark = Color(0xFF1E293B);
+const Color kTextGrey = Color(0xFF94A3B8);
 
 // --- Model Data (Contoh dari file sebelumnya) ---
 // Anda harus mengimpor ini dari lokasi aslinya
@@ -61,71 +65,291 @@ class SchedulePage extends StatelessWidget {
 
     return Scaffold(
       backgroundColor: kScaffoldBg,
-      appBar: AppBar(
-        title: const Text(
-          'Detail Kunjungan',
-          style: TextStyle(color: kWhiteColor, fontWeight: FontWeight.bold),
-        ),
-        backgroundColor: kPrimaryColor,
-        iconTheme: const IconThemeData(color: kWhiteColor),
-        elevation: 1,
+      body: CustomScrollView(
+        slivers: [
+          _buildSliverAppBar(context, sched),
+          SliverList(
+            delegate: SliverChildListDelegate([_buildContent(context, sched)]),
+          ),
+        ],
       ),
-      body: ListView(
-        padding: const EdgeInsets.all(16.0),
+    );
+  }
+
+  Widget _buildSliverAppBar(BuildContext context, Schedule schedule) {
+    return SliverAppBar(
+      expandedHeight: 180,
+      floating: false,
+      pinned: true,
+      backgroundColor: kPrimaryColor,
+      flexibleSpace: FlexibleSpaceBar(
+        background: Container(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [kPrimaryColor, kPrimaryLight],
+            ),
+          ),
+          child: SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 60, 16, 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Detail Kunjungan',
+                    style: TextStyle(color: Colors.white70, fontSize: 14),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    schedule.patientName,
+                    style: const TextStyle(
+                      color: kWhiteColor,
+                      fontSize: 24,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 6,
+                        ),
+                        decoration: BoxDecoration(
+                          color: kWhiteColor.withOpacity(0.2),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(
+                              Icons.badge_outlined,
+                              color: kWhiteColor,
+                              size: 16,
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              schedule.rmNumber,
+                              style: const TextStyle(
+                                color: kWhiteColor,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 6,
+                        ),
+                        decoration: BoxDecoration(
+                          color: kWhiteColor.withOpacity(0.2),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(
+                              Icons.calendar_today,
+                              color: kWhiteColor,
+                              size: 16,
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              DateFormat('d MMM yyyy').format(schedule.date),
+                              style: const TextStyle(
+                                color: kWhiteColor,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildContent(BuildContext context, Schedule schedule) {
+    return Padding(
+      padding: const EdgeInsets.all(16.0),
+      child: Column(
         children: [
-          // --- 1. Kartu Header Pasien ---
-          _PatientHeaderCard(schedule: sched),
+          // --- Status Card ---
+          _buildStatusCard(schedule),
 
           const SizedBox(height: 24),
 
-          // --- 2. Judul Form ---
-          Text(
-            'Form Kunjungan',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              color: Colors.grey.shade800,
-            ),
+          // --- Section Title ---
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [kPrimaryColor, kPrimaryLight],
+                  ),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(
+                  Icons.assignment_outlined,
+                  color: kWhiteColor,
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 12),
+              const Text(
+                'Formulir Kunjungan',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: kTextDark,
+                ),
+              ),
+            ],
           ),
 
           const SizedBox(height: 16),
 
-          // --- 3. Daftar Aksi Form ---
-          _FormActionCard(
-            icon: Icons.description_outlined,
-            title: 'Anamnesa',
-            subtitle: 'Riwayat keluhan dan gejala pasien',
-            onTap: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) => const ScheduleAssessmentPage(),
+          // --- Tombol Mulai Kunjungan (Terintegrasi) ---
+          Container(
+            margin: const EdgeInsets.only(bottom: 16),
+            child: ElevatedButton.icon(
+              onPressed: () {
+                // Navigate to integrated visit flow
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => VisitFlowPage(
+                      registrasiId:
+                          int.tryParse(
+                            schedule.rmNumber.replaceAll(RegExp(r'[^0-9]'), ''),
+                          ) ??
+                          0,
+                      patientName: schedule.patientName,
+                      noRm: schedule.rmNumber,
+                    ),
+                  ),
+                );
+              },
+              icon: const Icon(Icons.play_arrow, size: 24),
+              label: const Text(
+                'Mulai Kunjungan (3 Langkah)',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: kPrimaryColor,
+                foregroundColor: kWhiteColor,
+                minimumSize: const Size(double.infinity, 56),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
                 ),
-              );
-            },
+                elevation: 2,
+              ),
+            ),
           ),
-          _FormActionCard(
-            icon: Icons.medical_services_outlined,
-            title: 'Tindakan',
-            subtitle: 'Tindakan medis yang diberikan',
-            onTap: () {
-              // TODO: Navigasi ke halaman Tindakan
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Navigasi ke halaman Tindakan...'),
+
+          // --- Section Title ---
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [kPrimaryColor, kPrimaryLight],
+                  ),
+                  borderRadius: BorderRadius.circular(10),
                 ),
-              );
-            },
+                child: const Icon(
+                  Icons.assignment_outlined,
+                  color: kWhiteColor,
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 12),
+              const Text(
+                'Formulir Kunjungan Terintegrasi',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                  color: kTextGrey,
+                ),
+              ),
+            ],
           ),
-          _FormActionCard(
-            icon: Icons.list_alt_outlined,
-            title: 'ICD',
-            subtitle: 'Kode diagnosis penyakit',
-            onTap: () {
-              // TODO: Navigasi ke halaman ICD
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Navigasi ke halaman ICD...')),
-              );
-            },
+
+          const SizedBox(height: 8),
+
+          Text(
+            'Gunakan tombol "Mulai Kunjungan" di atas untuk melakukan proses kunjungan lengkap (Anamnesa → ICD → Tindakan)',
+            style: TextStyle(
+              fontSize: 12,
+              color: kTextGrey,
+              fontStyle: FontStyle.italic,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatusCard(Schedule schedule) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: kWhiteColor,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: kPrimaryColor.withOpacity(0.08),
+            blurRadius: 20,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [kPrimaryColor, kPrimaryLight],
+              ),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Icon(
+              Icons.how_to_reg_outlined,
+              color: kWhiteColor,
+              size: 28,
+            ),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Status Kunjungan',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: kTextGrey,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                _StatusBadge(status: schedule.status),
+              ],
+            ),
           ),
         ],
       ),
@@ -133,123 +357,7 @@ class SchedulePage extends StatelessWidget {
   }
 }
 
-// --- WIDGET UNTUK KARTU HEADER PASIEN ---
-
-class _PatientHeaderCard extends StatelessWidget {
-  final Schedule schedule;
-  const _PatientHeaderCard({required this.schedule});
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      elevation: 1,
-      color: kWhiteColor,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          children: [
-            Row(
-              children: [
-                CircleAvatar(
-                  radius: 24,
-                  backgroundColor: kAccentColor.withAlpha((0.1 * 255).round()),
-                  child: const Icon(
-                    Icons.person_outline,
-                    color: kAccentColor,
-                    size: 28,
-                  ),
-                ),
-                const SizedBox(width: 16),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      schedule.patientName,
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF1E293B),
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      schedule.rmNumber,
-                      style: const TextStyle(fontSize: 14, color: Colors.grey),
-                    ),
-                  ],
-                ),
-                const Spacer(),
-                _StatusBadge(status: schedule.status),
-              ],
-            ),
-            const Divider(height: 24, thickness: 0.5),
-            Row(
-              children: [
-                Icon(
-                  Icons.calendar_today_outlined,
-                  color: Colors.grey.shade600,
-                  size: 16,
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  DateFormat('d MMMM yyyy').format(schedule.date),
-                  style: TextStyle(fontSize: 14, color: Colors.grey.shade800),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// --- WIDGET UNTUK KARTU AKSI FORM ---
-
-class _FormActionCard extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final VoidCallback onTap;
-
-  const _FormActionCard({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      elevation: 1,
-      color: kWhiteColor,
-      margin: const EdgeInsets.only(bottom: 12),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: ListTile(
-        contentPadding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
-        leading: Container(
-          padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(
-            color: kAccentColor.withAlpha((0.1 * 255).round()),
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: Icon(icon, color: kAccentColor, size: 24),
-        ),
-        title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
-        subtitle: Text(
-          subtitle,
-          style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
-        ),
-        trailing: const Icon(Icons.chevron_right, color: Colors.grey),
-        onTap: onTap,
-      ),
-    );
-  }
-}
-
-// --- WIDGET BADGE STATUS (dari file sebelumnya) ---
+// --- WIDGET BADGE STATUS ---
 
 class _StatusBadge extends StatelessWidget {
   final String status;
