@@ -13,6 +13,7 @@ import 'package:homecare_mobile/shared/presentation/pages/main_page.dart';
 import 'package:homecare_mobile/shared/presentation/pages/splash_page.dart';
 import 'package:homecare_mobile/features/patients/presentation/pages/patient_list_pages.dart';
 import 'package:homecare_mobile/features/patients/presentation/pages/patient_detail_pages.dart';
+import 'package:homecare_mobile/features/patients/presentation/pages/add_patient_page.dart';
 
 class AppRouter {
   static const String splash = '/';
@@ -76,15 +77,31 @@ class AppRouter {
             name: 'patientList',
             pageBuilder: (context, state) => NoTransitionPage(
               key: state.pageKey,
-              child: const PatientListPage(),
+              child: PatientMasterListPage(),
             ),
             routes: [
+              GoRoute(
+                path: 'add',
+                name: 'patientAdd',
+                builder: (context, state) {
+                  return const AddPatientRegistrationPage();
+                },
+              ),
               GoRoute(
                 path: ':id',
                 name: 'patientDetail',
                 builder: (context, state) {
                   final id = int.parse(state.pathParameters['id']!);
-                  return PatientDetailPage(patientId: id);
+                  final extra = state.extra as Map<String, String>?;
+                  return PatientDetailPage(patientId: id, patientData: extra);
+                },
+              ),
+              GoRoute(
+                path: ':id/edit',
+                name: 'patientEdit',
+                builder: (context, state) {
+                  final extra = state.extra as Map<String, String>?;
+                  return AddPatientRegistrationPage(initialData: extra);
                 },
               ),
             ],

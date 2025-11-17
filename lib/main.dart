@@ -5,10 +5,14 @@ import 'package:homecare_mobile/core/router/app_router.dart';
 import 'package:homecare_mobile/core/utils/injections.dart';
 import 'package:homecare_mobile/core/utils/logger.dart';
 import 'package:homecare_mobile/features/auth/presentation/bloc/auth_bloc.dart';
+import 'package:intl/date_symbol_data_local.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await initInjections();
+
+  // Initialize locale data for DateFormat
+  await initializeDateFormatting('id_ID', null);
 
   logger.i('App started');
   runApp(const MyApp());

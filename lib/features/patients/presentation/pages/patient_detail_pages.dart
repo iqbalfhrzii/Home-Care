@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:homecare_mobile/features/patients/presentation/pages/add_patient_page.dart';
+import 'package:go_router/go_router.dart';
+import 'package:homecare_mobile/core/router/app_router.dart';
 
 // --- Palet Warna (dari desain Anda) ---
 const Color kPrimaryColor = Color(0xFF002F67);
@@ -537,22 +538,23 @@ class _PatientDetailPageState extends State<PatientDetailPage> {
           const SizedBox(height: 12),
           ElevatedButton.icon(
             onPressed: () async {
-              // Open AddPatientRegistrationPage in edit mode
-              final result = await Navigator.of(context)
-                  .push<Map<String, String>>(
-                    MaterialPageRoute(
-                      builder: (_) => AddPatientRegistrationPage(
-                        initialData: {
-                          'name': patient.namaLengkap,
-                          'mrn': patient.noRekamMedis,
-                          'phone': patient.noTelepon,
-                          'address': patient.alamat,
-                        },
-                      ),
-                    ),
-                  );
-              // If result returned, send back 'edit' action with data
-              if (result != null) {
+              // Open AddPatientRegistrationPage in edit mode using go_router
+              final id = widget.patientId ?? 1;
+              final result = await context.push<Map<String, String>>(
+                '${AppRouter.patients}/$id/edit',
+                extra: {
+                  'name': patient.namaLengkap,
+                  'mrn': patient.noRekamMedis,
+                  'phone': patient.noTelepon,
+                  'address': patient.alamat,
+                },
+              );
+              // If result returned, update local state
+              if (result != null && mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Data ${result['name']} diupdate')),
+                );
+                // Optionally pop with updated data
                 if (!mounted) return;
                 Navigator.pop(context, {'action': 'edit', 'data': result});
               }
