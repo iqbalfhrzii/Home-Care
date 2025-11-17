@@ -1,128 +1,279 @@
-// lib/pages/homecare_referral_detail_page.dart
-// import 'package:auto_route/auto_route.dart';
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
+import 'package:homecare_mobile/features/schedules/presentation/pages/schedule_anamnesis_page.dart';
 
-// @RoutePage()
+// --- Ambil dari file/tema Anda ---
+const Color kPrimaryColor = Color(0xFF002F67);
+const Color kAccentColor = Color(0xFF3F51B5);
+const Color kWhiteColor = Colors.white;
+const Color kBadgeGreen = Color(0xFFE0F2E9);
+const Color kBadgeGreenText = Color(0xFF006437);
+const Color kBadgeOrange = Color(0xFFFFF4E6);
+const Color kBadgeOrangeText = Color(0xFFB45309);
+const Color kScaffoldBg = Color(0xFFF8F9FA);
+
+// --- Model Data (Contoh dari file sebelumnya) ---
+// Anda harus mengimpor ini dari lokasi aslinya
+class Schedule {
+  final String patientName;
+  final String rmNumber;
+  final DateTime date;
+  final String status;
+
+  Schedule({
+    required this.patientName,
+    required this.rmNumber,
+    required this.date,
+    required this.status,
+  });
+}
+// ---------------------------------------------
+
 class SchedulePage extends StatelessWidget {
-  final int id;
-  const SchedulePage({super.key, required this.id});
+  // Halaman ini may accept either a Schedule object or an id (from router)
+  final Schedule? schedule;
+  final int? id;
+  final Map<String, dynamic>? scheduleData;
+
+  const SchedulePage({super.key, this.schedule, this.id, this.scheduleData});
 
   @override
   Widget build(BuildContext context) {
-    // Dummy data (sementara hardcoded)
-    final Map<String, dynamic> referral = {
-      "time": "10:30",
-      "name": "Bp. Arya Andhika",
-      "address": "Jl. Giri Rejo II, Balikpapan",
-      "status": "Pending",
-      "complaint": "Pasien mengeluhkan sakit kepala sejak 2 hari lalu.",
-      "assignedStaff": "dr. Budi Santoso",
-    };
+    final sched =
+        schedule ??
+        (scheduleData != null
+            ? Schedule(
+                patientName:
+                    scheduleData!['patientName'] ?? 'Pasien #${id ?? '-'}',
+                rmNumber:
+                    scheduleData!['rmNumber'] ??
+                    'RM-LOCAL-${id ?? DateTime.now().millisecondsSinceEpoch}',
+                date: scheduleData!['date'] ?? DateTime.now(),
+                status: scheduleData!['status'] ?? 'disetujui',
+              )
+            : Schedule(
+                patientName: 'Pasien #${id ?? '-'}',
+                rmNumber:
+                    'RM-LOCAL-${id ?? DateTime.now().millisecondsSinceEpoch}',
+                date: DateTime.now(),
+                status: 'disetujui',
+              ));
 
     return Scaffold(
-      appBar: AppBar(title: Text("Detail Rujukan $id"), centerTitle: true),
-      body: Padding(
+      backgroundColor: kScaffoldBg,
+      appBar: AppBar(
+        title: const Text(
+          'Detail Kunjungan',
+          style: TextStyle(color: kWhiteColor, fontWeight: FontWeight.bold),
+        ),
+        backgroundColor: kPrimaryColor,
+        iconTheme: const IconThemeData(color: kWhiteColor),
+        elevation: 1,
+      ),
+      body: ListView(
         padding: const EdgeInsets.all(16.0),
-        child: ListView(
+        children: [
+          // --- 1. Kartu Header Pasien ---
+          _PatientHeaderCard(schedule: sched),
+
+          const SizedBox(height: 24),
+
+          // --- 2. Judul Form ---
+          Text(
+            'Form Kunjungan',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: Colors.grey.shade800,
+            ),
+          ),
+
+          const SizedBox(height: 16),
+
+          // --- 3. Daftar Aksi Form ---
+          _FormActionCard(
+            icon: Icons.description_outlined,
+            title: 'Anamnesa',
+            subtitle: 'Riwayat keluhan dan gejala pasien',
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => const ScheduleAssessmentPage(),
+                ),
+              );
+            },
+          ),
+          _FormActionCard(
+            icon: Icons.medical_services_outlined,
+            title: 'Tindakan',
+            subtitle: 'Tindakan medis yang diberikan',
+            onTap: () {
+              // TODO: Navigasi ke halaman Tindakan
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Navigasi ke halaman Tindakan...'),
+                ),
+              );
+            },
+          ),
+          _FormActionCard(
+            icon: Icons.list_alt_outlined,
+            title: 'ICD',
+            subtitle: 'Kode diagnosis penyakit',
+            onTap: () {
+              // TODO: Navigasi ke halaman ICD
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Navigasi ke halaman ICD...')),
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// --- WIDGET UNTUK KARTU HEADER PASIEN ---
+
+class _PatientHeaderCard extends StatelessWidget {
+  final Schedule schedule;
+  const _PatientHeaderCard({required this.schedule});
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      elevation: 1,
+      color: kWhiteColor,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
           children: [
-            // Jam kunjungan
             Row(
               children: [
-                const Icon(Icons.access_time, color: Colors.blue),
+                CircleAvatar(
+                  radius: 24,
+                  backgroundColor: kAccentColor.withAlpha((0.1 * 255).round()),
+                  child: const Icon(
+                    Icons.person_outline,
+                    color: kAccentColor,
+                    size: 28,
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      schedule.patientName,
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF1E293B),
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      schedule.rmNumber,
+                      style: const TextStyle(fontSize: 14, color: Colors.grey),
+                    ),
+                  ],
+                ),
+                const Spacer(),
+                _StatusBadge(status: schedule.status),
+              ],
+            ),
+            const Divider(height: 24, thickness: 0.5),
+            Row(
+              children: [
+                Icon(
+                  Icons.calendar_today_outlined,
+                  color: Colors.grey.shade600,
+                  size: 16,
+                ),
                 const SizedBox(width: 8),
                 Text(
-                  referral['time'],
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                  ),
+                  DateFormat('d MMMM yyyy').format(schedule.date),
+                  style: TextStyle(fontSize: 14, color: Colors.grey.shade800),
                 ),
               ],
-            ),
-            const SizedBox(height: 16),
-
-            // Nama pasien
-            Text(
-              referral['name'],
-              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
-
-            // Alamat
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Icon(Icons.location_on, color: Colors.red),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    referral['address'],
-                    style: const TextStyle(fontSize: 16),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-
-            // Status
-            Row(
-              children: [
-                const Text(
-                  "Status: ",
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500),
-                ),
-                Chip(
-                  label: Text(referral['status']),
-                  backgroundColor: referral['status'] == "Pending"
-                      ? Colors.blue[50]
-                      : Colors.green[50],
-                  labelStyle: TextStyle(
-                    color: referral['status'] == "Pending"
-                        ? Colors.blue
-                        : Colors.green,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-
-            // Keluhan
-            const Text(
-              "Keluhan:",
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-            ),
-            const SizedBox(height: 6),
-            Text(referral['complaint']),
-            const SizedBox(height: 16),
-
-            // Petugas medis
-            const Text(
-              "Petugas Medis:",
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-            ),
-            const SizedBox(height: 6),
-            Text(referral['assignedStaff']),
-            const SizedBox(height: 32),
-
-            // Tombol Aksi
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: referral['status'] == "Pending"
-                    ? Colors.blue
-                    : Colors.green,
-                minimumSize: const Size(double.infinity, 48),
-              ),
-              onPressed: () {
-                // nanti bisa navigasi ke halaman visit / laporan
-              },
-              child: Text(
-                referral['status'] == "Pending"
-                    ? "Start Visit"
-                    : "Lihat Laporan",
-                style: const TextStyle(fontSize: 16),
-              ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+// --- WIDGET UNTUK KARTU AKSI FORM ---
+
+class _FormActionCard extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final VoidCallback onTap;
+
+  const _FormActionCard({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      elevation: 1,
+      color: kWhiteColor,
+      margin: const EdgeInsets.only(bottom: 12),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+        leading: Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: kAccentColor.withAlpha((0.1 * 255).round()),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Icon(icon, color: kAccentColor, size: 24),
+        ),
+        title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
+        subtitle: Text(
+          subtitle,
+          style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+        ),
+        trailing: const Icon(Icons.chevron_right, color: Colors.grey),
+        onTap: onTap,
+      ),
+    );
+  }
+}
+
+// --- WIDGET BADGE STATUS (dari file sebelumnya) ---
+
+class _StatusBadge extends StatelessWidget {
+  final String status;
+  const _StatusBadge({required this.status});
+
+  @override
+  Widget build(BuildContext context) {
+    final bool isApproved = status == 'disetujui';
+    final Color color = isApproved ? kBadgeGreen : kBadgeOrange;
+    final Color textColor = isApproved ? kBadgeGreenText : kBadgeOrangeText;
+    final String text = isApproved ? 'Disetujui' : 'Belum Disetujui';
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: color,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Text(
+        text,
+        style: TextStyle(
+          color: textColor,
+          fontSize: 12,
+          fontWeight: FontWeight.w500,
         ),
       ),
     );

@@ -1,16 +1,40 @@
 import 'package:flutter/material.dart';
-import 'package:homecare_mobile/features/patients/data/datasources/patient_remote_datasource.dart';
-import 'package:homecare_mobile/features/patients/domain/models/patient.dart';
-import 'package:homecare_mobile/features/patients/presentation/pages/patient_pages.dart';
-import 'package:homecare_mobile/shared/local_db/db_provider.dart';
-import 'package:homecare_mobile/features/patients/data/datasources/patient_local_datasource.dart';
+import 'package:intl/intl.dart';
 import 'package:homecare_mobile/features/patients/presentation/pages/add_patient_page.dart';
-import 'package:homecare_mobile/features/patients/presentation/pages/patient_local_detail_page.dart';
+import 'package:homecare_mobile/features/patients/presentation/pages/patient_detail_pages.dart';
+import 'package:homecare_mobile/shared/widgets/summary_card.dart';
 
-const Color _kPrimaryColor = Color(0xFF002F67);
-const Color _kAccentColor = Color(0xFF3F51B5);
-const Color _kWhiteColor = Colors.white;
-const double _kSpacing = 16.0;
+// --- Palet Warna (dari desain Anda) ---
+const Color kPrimaryColor = Color(0xFF002F67);
+const Color kAccentColor = Color(0xFF3F51B5);
+const Color kWhiteColor = Colors.white;
+const Color kScaffoldBg = Color(0xFFF8F9FA);
+const Color kFabGreen = Color(0xFF16A34A);
+
+const Color kBadgeGreenBg = Color(0xFFE0F2E9);
+const Color kBadgeGreenText = Color(0xFF006437);
+const Color kBadgeOrangeBg = Color(0xFFFFF4E6);
+const Color kBadgeOrangeText = Color(0xFFB45309);
+
+class RegistrationEntry {
+  final String patientName;
+  final String mrn;
+  final String registrationId;
+  final DateTime dateTime;
+  final String phone;
+  final String visitType;
+  final String status; // 'disetujui' atau 'pending'
+
+  RegistrationEntry({
+    required this.patientName,
+    required this.mrn,
+    required this.registrationId,
+    required this.dateTime,
+    required this.phone,
+    required this.visitType,
+    required this.status,
+  });
+}
 
 class PatientListPage extends StatefulWidget {
   const PatientListPage({super.key});
@@ -19,218 +43,271 @@ class PatientListPage extends StatefulWidget {
   State<PatientListPage> createState() => _PatientListPageState();
 }
 
-class _PatientListPageState extends State<PatientListPage> {
-  late Future<List<Patient>> _patientsFuture;
-  late PatientLocalDataSource _local;
-  static const int _localIdBase = 100000;
+class _PatientListPageState extends State<PatientListPage>
+    with SingleTickerProviderStateMixin {
+  final List<RegistrationEntry> _allRegistrations = [
+    RegistrationEntry(
+      patientName: 'Rudi Santoso',
+      mrn: 'MRN001234',
+      registrationId: 'R09254411',
+      dateTime: DateTime(2025, 11, 11, 8, 30),
+      phone: '081234567890',
+      visitType: 'Rawat Jalan',
+      status: 'disetujui',
+    ),
+    RegistrationEntry(
+      patientName: 'Siti Nurhaliza',
+      mrn: 'MRN001235',
+      registrationId: 'R09254412',
+      dateTime: DateTime(2025, 11, 11, 9, 15),
+      phone: '081298765432',
+      visitType: 'Rawat Inap',
+      status: 'pending',
+    ),
+    RegistrationEntry(
+      patientName: 'Ahmad Hidayat',
+      mrn: 'MRN001236',
+      registrationId: 'R09254413',
+      dateTime: DateTime(2025, 11, 11, 10, 0),
+      phone: '081345678567',
+      visitType: 'Rawat Jalan',
+      status: 'disetujui',
+    ),
+    RegistrationEntry(
+      patientName: 'Dewi Lestari',
+      mrn: 'MRN001237',
+      registrationId: 'R09254414',
+      dateTime: DateTime(2025, 11, 11, 11, 30),
+      phone: '081445566778',
+      visitType: 'IGD',
+      status: 'pending',
+    ),
+  ];
+
+  late List<RegistrationEntry> _filteredRegistrations;
+  late TabController _tabController;
+  final TextEditingController _searchController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
-    _local = PatientLocalDataSource(provideDb());
-    _patientsFuture = _loadLocalThenRemote();
+    _filteredRegistrations = List.from(_allRegistrations);
+    _tabController = TabController(length: 3, vsync: this);
+    _searchController.addListener(_filterList);
+    _tabController.addListener(_filterList);
   }
 
-  Future<List<Patient>> _loadLocalThenRemote() async {
-    // 1. Load local first
-    final localRows = await _local.getAllPatients();
-    final localPatients = localRows
-        .map(
-          (e) => Patient(
-            id: _localIdBase + e.id,
-            noRM: e.noRm,
-            namaPasien: e.namaPasien,
-            tanggalLahir: e.tanggalLahir?.toIso8601String(),
-            alamat: e.alamat,
-            statusRujukan: e.statusRujukan,
-          ),
-        )
-        .toList();
-
-    _fetchRemoteAndMerge(localPatients);
-
-    return localPatients;
+  @override
+  void dispose() {
+    _searchController.removeListener(_filterList);
+    _searchController.dispose();
+    _tabController.dispose();
+    super.dispose();
   }
 
-  void _fetchRemoteAndMerge(List<Patient> localPatients) {
-    PatientRemoteDataSource()
-        .getAllPatients()
-        .then((remote) {
-          final merged = _mergeRemoteAndLocal(remote, localPatients);
-          if (mounted) {
-            setState(() {
-              _patientsFuture = Future.value(merged);
-            });
-            if (remote.isNotEmpty) {
-              _showSnackbar(
-                'Data Pasien Diperbarui (Lokal & Server Dimuat)',
-                Colors.green,
-              );
-            }
-          }
-        })
-        .catchError((e) {
-          debugPrint('Gagal mengambil data remote: $e');
-          if (mounted) {
-            _showSnackbar(
-              'Gagal sinkronisasi data server. Menampilkan data lokal.',
-              Colors.orange,
-            );
-          }
-        });
-  }
+  void _filterList() {
+    final searchQuery = _searchController.text.toLowerCase();
+    final tabIndex = _tabController.index;
 
-  List<Patient> _mergeRemoteAndLocal(
-    List<Patient> remote,
-    List<Patient> local,
-  ) {
-    final map = <String, Patient>{for (final l in local) l.noRM: l};
+    setState(() {
+      _filteredRegistrations = _allRegistrations.where((entry) {
+        bool statusMatch;
+        if (tabIndex == 1) {
+          statusMatch = entry.status == 'disetujui';
+        } else if (tabIndex == 2) {
+          statusMatch = entry.status == 'pending';
+        } else {
+          statusMatch = true;
+        }
 
-    // Remote takes precedence
-    for (final r in remote) {
-      map[r.noRM] = r;
-    }
+        final bool searchMatch =
+            searchQuery.isEmpty ||
+            entry.patientName.toLowerCase().contains(searchQuery) ||
+            entry.mrn.toLowerCase().contains(searchQuery) ||
+            entry.registrationId.toLowerCase().contains(searchQuery);
 
-    final merged = <Patient>[];
-    final processedNoRMs = <String>{};
-
-    for (final r in remote) {
-      // Pastikan hanya remote yang terupdate atau lokal yang belum ada di remote
-      if (map.containsKey(r.noRM) && !processedNoRMs.contains(r.noRM)) {
-        merged.add(map[r.noRM]!);
-        processedNoRMs.add(r.noRM);
-      }
-    }
-    for (final l in local) {
-      if (!processedNoRMs.contains(l.noRM)) {
-        merged.add(l);
-        processedNoRMs.add(l.noRM);
-      }
-    }
-
-    return merged;
-  }
-
-  void _showSnackbar(String message, Color color) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: color,
-        duration: const Duration(seconds: 2),
-      ),
-    );
+        return statusMatch && searchMatch;
+      }).toList();
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: kScaffoldBg,
       appBar: AppBar(
-        title: const Text(
-          'Daftar Pasien',
-          style: TextStyle(color: _kWhiteColor, fontWeight: FontWeight.bold),
-        ),
-        backgroundColor: _kPrimaryColor,
-        iconTheme: const IconThemeData(color: _kWhiteColor),
-        elevation: 4,
+        title: const Text('Daftar Pasien'),
+        backgroundColor: kPrimaryColor,
+        elevation: 1,
       ),
-      floatingActionButton: _buildFloatingActionButton(),
-      body: FutureBuilder<List<Patient>>(
-        future: _patientsFuture,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(
-              child: CircularProgressIndicator(color: _kPrimaryColor),
+      body: Column(
+        children: [
+          _buildHeader(),
+          _buildSearchBar(),
+          TabBar(
+            controller: _tabController,
+            tabs: const [
+              Tab(text: 'Semua'),
+              Tab(text: 'Disetujui'),
+              Tab(text: 'Pending'),
+            ],
+            labelColor: kPrimaryColor,
+            unselectedLabelColor: Colors.grey,
+            indicatorColor: kPrimaryColor,
+          ),
+          Expanded(
+            child: TabBarView(
+              controller: _tabController,
+              children: [
+                _PatientListView(
+                  patients: _filteredRegistrations,
+                  onTap: _onEntryTap,
+                ),
+                _PatientListView(
+                  patients: _filteredRegistrations
+                      .where((e) => e.status == 'disetujui')
+                      .toList(),
+                  onTap: _onEntryTap,
+                ),
+                _PatientListView(
+                  patients: _filteredRegistrations
+                      .where((e) => e.status == 'pending')
+                      .toList(),
+                  onTap: _onEntryTap,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: _onAddPressed,
+        backgroundColor: kFabGreen,
+        child: const Icon(Icons.add, color: kWhiteColor),
+      ),
+    );
+  }
+
+  Future<void> _onEntryTap(RegistrationEntry entry) async {
+    final res = await Navigator.of(context).push<Map<String, dynamic>>(
+      MaterialPageRoute(
+        builder: (_) => PatientDetailPage(
+          patientData: {'name': entry.patientName, 'mrn': entry.mrn},
+        ),
+      ),
+    );
+    if (res != null) {
+      if (res['action'] == 'delete') {
+        setState(
+          () => _allRegistrations.removeWhere(
+            (e) => e.registrationId == entry.registrationId,
+          ),
+        );
+        _filterList();
+      } else if (res['action'] == 'edit' &&
+          res['data'] is Map<String, String>) {
+        final updated = res['data'] as Map<String, String>;
+        setState(() {
+          final idx = _allRegistrations.indexWhere(
+            (e) => e.registrationId == entry.registrationId,
+          );
+          if (idx != -1) {
+            _allRegistrations[idx] = RegistrationEntry(
+              patientName: updated['name'] ?? entry.patientName,
+              mrn: updated['mrn'] ?? entry.mrn,
+              registrationId: entry.registrationId,
+              dateTime: entry.dateTime,
+              phone: updated['phone'] ?? entry.phone,
+              visitType: entry.visitType,
+              status: entry.status,
             );
           }
-
-          if (snapshot.hasError) {
-            return _buildErrorWidget(snapshot.error.toString());
-          }
-
-          final patients = snapshot.data ?? [];
-          if (patients.isEmpty) {
-            return _buildEmptyState();
-          }
-
-          return _buildPatientList(patients);
-        },
-      ),
-    );
+        });
+        _filterList();
+      }
+    }
   }
 
-  Widget _buildFloatingActionButton() {
-    return FloatingActionButton(
-      heroTag: 'addPatient',
-      onPressed: () async {
-        final shouldReload = await Navigator.push<bool>(
-          context,
-          MaterialPageRoute(builder: (_) => const AddPatientPage()),
-        );
-
-        if (shouldReload == true && mounted) {
-          setState(() {
-            _patientsFuture = _loadLocalThenRemote();
-          });
-        }
-      },
-      backgroundColor: _kAccentColor,
-      foregroundColor: _kWhiteColor,
-      elevation: 6,
-      child: const Icon(Icons.person_add),
+  Future<void> _onAddPressed() async {
+    final result = await Navigator.of(context).push<Map<String, String>>(
+      MaterialPageRoute(builder: (_) => const AddPatientRegistrationPage()),
     );
+    if (result != null) {
+      final name = result['name'] ?? 'Pasien Baru';
+      final mrn = result['mrn'] ?? '';
+      final newEntry = RegistrationEntry(
+        patientName: name,
+        mrn: mrn,
+        registrationId: 'LOCAL-${DateTime.now().millisecondsSinceEpoch}',
+        dateTime: DateTime.now(),
+        phone: '-',
+        visitType: '',
+        status: 'pending',
+      );
+      setState(() => _allRegistrations.insert(0, newEntry));
+      _filterList();
+    }
   }
 
-  Widget _buildErrorWidget(String error) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(_kSpacing),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.error_outline, color: Colors.red, size: 48),
-            const SizedBox(height: _kSpacing),
-            Text(
-              'Gagal memuat data utama.',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: Colors.grey.shade700,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Detail: $error',
-              textAlign: TextAlign.center,
-              style: const TextStyle(color: Colors.red),
-            ),
-          ],
+  Widget _buildHeader() {
+    return Container(
+      padding: const EdgeInsets.all(16.0).copyWith(bottom: 8),
+      decoration: const BoxDecoration(
+        color: kPrimaryColor,
+        borderRadius: BorderRadius.only(
+          bottomLeft: Radius.circular(16),
+          bottomRight: Radius.circular(16),
         ),
       ),
-    );
-  }
-
-  Widget _buildEmptyState() {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(_kSpacing),
+      child: SafeArea(
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Icon(Icons.people_outline, color: Colors.grey.shade400, size: 64),
-            const SizedBox(height: _kSpacing),
             const Text(
-              'Data Pasien Kosong',
+              'Daftar Pasien',
               style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w600,
-                color: Colors.grey,
+                color: kWhiteColor,
+                fontSize: 22,
+                fontWeight: FontWeight.bold,
               ),
             ),
             const SizedBox(height: 4),
             const Text(
-              'Silakan tambahkan pasien baru melalui tombol tambah (+).',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.grey),
+              'Kelola dan pantau status pendaftaran',
+              style: TextStyle(color: kWhiteColor, fontSize: 14),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Flexible(
+                  child: SummaryCard(
+                    count: '${_allRegistrations.length}',
+                    label: 'Total',
+                    icon: Icons.people,
+                    color: kAccentColor,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Flexible(
+                  child: SummaryCard(
+                    count:
+                        '${_allRegistrations.where((e) => e.status == "disetujui").length}',
+                    label: 'Disetujui',
+                    icon: Icons.check_circle,
+                    color: kFabGreen,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Flexible(
+                  child: SummaryCard(
+                    count:
+                        '${_allRegistrations.where((e) => e.status == "pending").length}',
+                    label: 'Pending',
+                    icon: Icons.pending,
+                    color: kBadgeOrangeText,
+                  ),
+                ),
+              ],
             ),
           ],
         ),
@@ -238,96 +315,159 @@ class _PatientListPageState extends State<PatientListPage> {
     );
   }
 
-  Widget _buildPatientList(List<Patient> patients) {
-    return ListView.builder(
-      itemCount: patients.length,
-      padding: const EdgeInsets.symmetric(
-        vertical: 8,
-      ), // Padding atas dan bawah
-      itemBuilder: (context, index) {
-        final p = patients[index];
-        final isLocal = p.id >= _localIdBase;
-
-        return Padding(
-          padding: const EdgeInsets.symmetric(
-            horizontal: _kSpacing,
-            vertical: 6,
+  Widget _buildSearchBar() {
+    return Container(
+      color: kWhiteColor,
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+      child: TextField(
+        controller: _searchController,
+        decoration: InputDecoration(
+          hintText: 'Cari nama atau No. RM...',
+          prefixIcon: const Icon(Icons.search),
+          filled: true,
+          fillColor: kScaffoldBg,
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide.none,
           ),
-          child: Card(
-            elevation: 4, // Bayangan yang lebih jelas
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: InkWell(
-              borderRadius: BorderRadius.circular(10),
-              onTap: () => _handlePatientTap(p),
-              child: ListTile(
-                leading: CircleAvatar(
-                  backgroundColor: isLocal
-                      ? Colors.orange.shade100
-                      : _kPrimaryColor,
-                  child: Icon(
-                    isLocal ? Icons.cloud_off : Icons.person,
-                    color: isLocal ? Colors.orange.shade700 : _kWhiteColor,
-                  ),
-                ),
-                title: Text(
-                  p.namaPasien,
-                  style: const TextStyle(fontWeight: FontWeight.bold),
-                ),
-                subtitle: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+          contentPadding: const EdgeInsets.symmetric(vertical: 0),
+        ),
+      ),
+    );
+  }
+}
+
+class _PatientListView extends StatelessWidget {
+  final List<RegistrationEntry> patients;
+  final Future<void> Function(RegistrationEntry)? onTap;
+  const _PatientListView({required this.patients, this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    if (patients.isEmpty) {
+      return const Center(
+        child: Text(
+          'Tidak ada data pasien ditemukan.',
+          style: TextStyle(color: Colors.grey),
+        ),
+      );
+    }
+
+    return ListView.separated(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      itemCount: patients.length,
+      separatorBuilder: (_, __) => const SizedBox(height: 8),
+      itemBuilder: (context, index) {
+        final patient = patients[index];
+        return Card(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(12.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
                   children: [
-                    Text('No RM: ${p.noRM}'),
-                    Row(
-                      children: [
-                        Text('Status: ${p.statusRujukan.toUpperCase()}'),
-                        const SizedBox(width: 8),
-                        if (isLocal)
-                          const Tooltip(
-                            message: 'Pasien lokal (belum disinkronkan)',
-                            child: Icon(
-                              Icons.sync_problem,
-                              color: Colors.orange,
-                              size: 16,
+                    CircleAvatar(
+                      backgroundColor: kAccentColor.withAlpha(
+                        (0.1 * 255).round(),
+                      ),
+                      child: const Icon(
+                        Icons.person_outline,
+                        color: kAccentColor,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            patient.patientName,
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF1E293B),
                             ),
                           ),
-                      ],
+                          const SizedBox(height: 4),
+                          Text(
+                            patient.mrn,
+                            style: const TextStyle(color: Colors.grey),
+                          ),
+                        ],
+                      ),
+                    ),
+                    _StatusBadge(status: patient.status),
+                  ],
+                ),
+                const Divider(height: 20),
+                Row(
+                  children: [
+                    const Icon(
+                      Icons.calendar_today_outlined,
+                      size: 14,
+                      color: Colors.grey,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      DateFormat('d MMMM yyyy').format(patient.dateTime),
+                      style: TextStyle(color: Colors.grey.shade800),
+                    ),
+                    const Spacer(),
+                    TextButton(
+                      onPressed: () async {
+                        if (onTap != null) await onTap!(patient);
+                      },
+                      child: const Text('Detail'),
                     ),
                   ],
                 ),
-                trailing: const Icon(Icons.chevron_right),
-              ),
+              ],
             ),
           ),
         );
       },
     );
   }
+}
 
-  void _handlePatientTap(Patient p) async {
-    final isLocal = p.id >= _localIdBase;
+class _StatusBadge extends StatelessWidget {
+  final String status;
+  const _StatusBadge({required this.status});
 
-    if (isLocal) {
-      final shouldReload = await Navigator.push<bool>(
-        context,
-        MaterialPageRoute(
-          builder: (context) => PatientLocalDetailPage(patient: p),
-        ),
-      );
+  @override
+  Widget build(BuildContext context) {
+    final bool isApproved = status == 'disetujui';
+    final Color color = isApproved ? kBadgeGreenBg : kBadgeOrangeBg;
+    final Color textColor = isApproved ? kBadgeGreenText : kBadgeOrangeText;
+    final String text = isApproved ? 'Disetujui' : 'Pending';
+    final IconData icon = isApproved
+        ? Icons.check_circle_outline
+        : Icons.pending_outlined;
 
-      if (shouldReload == true && mounted) {
-        setState(() {
-          _patientsFuture = _loadLocalThenRemote();
-        });
-      }
-    } else {
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => PatientDetailPage(patientId: p.id),
-        ),
-      );
-    }
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: color,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: textColor, size: 14),
+          const SizedBox(width: 6),
+          Text(
+            text,
+            style: TextStyle(
+              color: textColor,
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
