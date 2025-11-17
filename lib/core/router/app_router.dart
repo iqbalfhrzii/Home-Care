@@ -12,7 +12,7 @@ import 'package:homecare_mobile/pages/home_page.dart';
 import 'package:homecare_mobile/shared/presentation/pages/main_page.dart';
 import 'package:homecare_mobile/shared/presentation/pages/splash_page.dart';
 import 'package:homecare_mobile/features/patients/presentation/pages/patient_list_pages.dart';
-import 'package:homecare_mobile/features/patients/presentation/pages/patient_pages.dart';
+import 'package:homecare_mobile/features/patients/presentation/pages/patient_detail_pages.dart';
 
 class AppRouter {
   static const String splash = '/';

@@ -25,7 +25,7 @@ class PatientRemoteDataSource {
           ? response.data['data']
           : response.data;
       return Patient.fromJson(data);
-    } on DioError catch (e) {
+    } on DioException catch (e) {
       final status = e.response?.statusCode;
       final respData = e.response?.data;
       final message =
