@@ -13,7 +13,10 @@ import 'package:homecare_mobile/shared/presentation/pages/main_page.dart';
 import 'package:homecare_mobile/shared/presentation/pages/splash_page.dart';
 import 'package:homecare_mobile/features/patients/presentation/pages/patient_list_pages.dart';
 import 'package:homecare_mobile/features/patients/presentation/pages/patient_detail_pages.dart';
-import 'package:homecare_mobile/features/patients/presentation/pages/add_patient_page.dart';
+import 'package:homecare_mobile/features/patients/domain/models/pasien.dart';
+import 'package:homecare_mobile/features/patients/presentation/pages/patient_add_page.dart';
+import 'package:homecare_mobile/features/patients/presentation/pages/patient_edit_page.dart';
+import 'package:homecare_mobile/features/patients/presentation/pages/registration_form_page.dart';
 
 class AppRouter {
   static const String splash = '/';
@@ -84,24 +87,50 @@ class AppRouter {
                 path: 'add',
                 name: 'patientAdd',
                 builder: (context, state) {
-                  return const AddPatientRegistrationPage();
+                  return const PatientAddPage();
                 },
               ),
               GoRoute(
                 path: ':id',
                 name: 'patientDetail',
                 builder: (context, state) {
-                  final id = int.parse(state.pathParameters['id']!);
-                  final extra = state.extra as Map<String, String>?;
-                  return PatientDetailPage(patientId: id, patientData: extra);
+                  final id = state.pathParameters['id']!;
+                  final extra = state.extra;
+                  if (extra is Pasien) {
+                    return PatientDetailPage(pasien: extra);
+                  }
+                  return PatientDetailPage(patientId: id);
                 },
               ),
               GoRoute(
                 path: ':id/edit',
                 name: 'patientEdit',
                 builder: (context, state) {
-                  final extra = state.extra as Map<String, String>?;
-                  return AddPatientRegistrationPage(initialData: extra);
+                  final extra = state.extra;
+                  if (extra is Pasien) {
+                    return PatientEditPage(patient: extra);
+                  }
+                  // Fallback if no patient data provided
+                  return const Scaffold(
+                    body: Center(child: Text('Data pasien tidak ditemukan')),
+                  );
+                },
+              ),
+              GoRoute(
+                path: 'register/:id',
+                name: 'patientRegister',
+                builder: (context, state) {
+                  final id = state.pathParameters['id']!;
+                  final extra = state.extra as Map<String, dynamic>?;
+                  final name = extra?['pasienNama'] as String?;
+                  final registrasiId = extra?['registrasiId'] as int?;
+                  final isEdit = extra?['isEdit'] as bool? ?? false;
+                  return RegistrationFormPage(
+                    pasienId: id,
+                    pasienNama: name,
+                    registrasiId: registrasiId,
+                    isEdit: isEdit,
+                  );
                 },
               ),
             ],
