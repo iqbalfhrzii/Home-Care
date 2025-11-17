@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:go_router/go_router.dart';
+import 'package:homecare_mobile/core/router/app_router.dart';
 import 'package:intl/intl.dart';
 import 'package:homecare_mobile/features/auth/presentation/widgets/logout_confirmation_dialog.dart';
 
@@ -11,6 +14,45 @@ const Color kWhite = Colors.white;
 const Color kTextDark = Color(0xFF1E293B);
 const Color kTextGrey = Color(0xFF94A3B8);
 
+// --- Tipe Data untuk Mock (Diambil dari React) ---
+class StatInfo {
+  final int id;
+  final String label;
+  final String value;
+  final String change;
+  final String trend;
+  final IconData icon;
+  final LinearGradient gradient;
+  final Color shadow;
+
+  StatInfo({
+    required this.id,
+    required this.label,
+    required this.value,
+    required this.change,
+    required this.trend,
+    required this.icon,
+    required this.gradient,
+    required this.shadow,
+  });
+}
+
+class NotificationInfo {
+  final String id;
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final String type;
+
+  NotificationInfo({
+    required this.id,
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.type,
+  });
+}
+
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
 
@@ -22,6 +64,76 @@ class _HomePageState extends State<HomePage> {
   late DateTime _selectedDate;
   List<DateTime> _weekDays = [];
 
+  // --- Mock Data (Diambil dari React) ---
+  final List<NotificationInfo> notifications = [
+    NotificationInfo(
+      id: '1',
+      icon: Icons.home_work_outlined, // HomeIcon
+      title: 'Kunjungan ke rumah Akmal',
+      subtitle: 'RM-2024-002',
+      type: 'visit',
+    ),
+    NotificationInfo(
+      id: '2',
+      icon: Icons.playlist_add_check_rounded, // ClipboardCheck
+      title: 'Input Anamnesa Akmal',
+      subtitle: 'REG-2024-003 - Belum diisi',
+      type: 'anamnesa',
+    ),
+  ];
+
+  final List<StatInfo> stats = [
+    StatInfo(
+      id: 1,
+      label: 'Total Pasien',
+      value: '45',
+      change: '+12%',
+      trend: 'up',
+      icon: Icons.people_outline, // Users
+      gradient: const LinearGradient(
+        colors: [Color(0xFF3B82F6), Color(0xFF2563EB)],
+      ),
+      shadow: const Color(0xFF3B82F6).withOpacity(0.3),
+    ),
+    StatInfo(
+      id: 2,
+      label: 'Kunjungan Hari Ini',
+      value: '8',
+      change: '+5',
+      trend: 'up',
+      icon: Icons.playlist_add_check_rounded, // ClipboardCheck
+      gradient: const LinearGradient(
+        colors: [Color(0xFF22C55E), Color(0xFF16A34A)],
+      ),
+      shadow: const Color(0xFF22C55E).withOpacity(0.3),
+    ),
+    StatInfo(
+      id: 3,
+      label: 'Tagihan Pending',
+      value: '3',
+      change: '-2',
+      trend: 'down',
+      icon: Icons.article_outlined, // FileText
+      gradient: const LinearGradient(
+        colors: [Color(0xFFF97316), Color(0xFFEA580C)],
+      ),
+      shadow: const Color(0xFFF97316).withOpacity(0.3),
+    ),
+    StatInfo(
+      id: 4,
+      label: 'Data Lengkap',
+      value: '75%',
+      change: '+8%',
+      trend: 'up',
+      icon: Icons.monitor_heart_outlined, // Activity
+      gradient: const LinearGradient(
+        colors: [Color(0xFFA855F7), Color(0xFF9333EA)],
+      ),
+      shadow: const Color(0xFFA855F7).withOpacity(0.3),
+    ),
+  ];
+  // --- Akhir Mock Data ---
+
   @override
   void initState() {
     super.initState();
@@ -30,61 +142,45 @@ class _HomePageState extends State<HomePage> {
   }
 
   // --- LOGIKA KALENDER ---
-
-  // Generate 7 hari dalam satu minggu (Senin - Minggu)
   List<DateTime> _generateWeekDays(DateTime today) {
-    // 1. Cari hari Senin di minggu ini
-    // today.weekday mengembalikan 1 untuk Senin, 7 untuk Minggu
     int daysToSubtract = today.weekday - 1;
     DateTime startOfWeek = today.subtract(Duration(days: daysToSubtract));
-
-    // 2. Buat list 7 hari dari Senin sampai Minggu
     return List.generate(7, (index) => startOfWeek.add(Duration(days: index)));
   }
 
-  // Cek apakah dua DateTime merujuk ke hari yang sama
   bool _isSameDay(DateTime a, DateTime b) {
     return a.year == b.year && a.month == b.month && a.day == b.day;
   }
 
-  // Fungsi untuk pindah minggu (maju/mundur)
   void _changeWeek(int direction) {
     setState(() {
-      // Ambil hari Senin dari minggu yang sedang ditampilkan
       DateTime currentWeekStart = _weekDays.first;
-      // Tambah atau kurangi 7 hari
       DateTime newWeekStart = currentWeekStart.add(
         Duration(days: 7 * direction),
       );
-
-      // Buat ulang 7 hari untuk minggu baru
       _weekDays = _generateWeekDays(newWeekStart);
-
-      // Cek apakah minggu baru adalah minggu ini
       DateTime startOfThisWeek = _generateWeekDays(DateTime.now()).first;
       if (_isSameDay(_weekDays.first, startOfThisWeek)) {
-        _selectedDate = DateTime.now(); // Pilih hari ini
+        _selectedDate = DateTime.now();
       } else {
-        _selectedDate = _weekDays.first; // Pilih hari Senin
+        _selectedDate = _weekDays.first;
       }
     });
   }
 
-  // Fungsi untuk menampilkan pop-up kalender
   Future<void> _pickDate() async {
     final DateTime? pickedDate = await showDatePicker(
       context: context,
       initialDate: _selectedDate,
       firstDate: DateTime(2020),
       lastDate: DateTime(2101),
-      // Styling popup kalender agar sesuai tema
       builder: (context, child) {
         return Theme(
           data: ThemeData.light().copyWith(
             colorScheme: const ColorScheme.light(
-              primary: kPrimaryColor, // Warna header
-              onPrimary: kWhite, // Warna teks di header
-              onSurface: kTextDark, // Warna teks di dalam
+              primary: kPrimaryColor,
+              onPrimary: kWhite,
+              onSurface: kTextDark,
             ),
             buttonTheme: const ButtonThemeData(
               textTheme: ButtonTextTheme.primary,
@@ -98,9 +194,7 @@ class _HomePageState extends State<HomePage> {
     if (pickedDate != null && !_isSameDay(pickedDate, _selectedDate)) {
       setState(() {
         _selectedDate = pickedDate;
-        _weekDays = _generateWeekDays(
-          pickedDate,
-        ); // Pindah ke minggu yang dipilih
+        _weekDays = _generateWeekDays(pickedDate);
       });
     }
   }
@@ -120,7 +214,12 @@ class _HomePageState extends State<HomePage> {
             const SizedBox(height: 24),
             _buildNextVisitCard(),
             const SizedBox(height: 24),
-            _buildImportantNotifications(),
+            // --- PERUBAHAN ---
+            _buildInsights(), // Ditambahkan
+            const SizedBox(height: 24),
+            _buildImportantNotifications(), // Diperbarui
+            const SizedBox(height: 24),
+            _buildQuickActions(context), // Ditambahkan
             const SizedBox(height: 100), // Padding di bawah
           ],
         ),
@@ -187,6 +286,7 @@ class _HomePageState extends State<HomePage> {
                     ),
                   ],
                 ),
+                // --- Tombol Ikon di Header ---
                 Row(
                   children: [
                     Container(
@@ -195,7 +295,9 @@ class _HomePageState extends State<HomePage> {
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: IconButton(
-                        onPressed: () {},
+                        onPressed: () {
+                          // TODO: Navigasi ke halaman notifikasi
+                        },
                         icon: const Icon(
                           Icons.notifications_outlined,
                           color: kWhite,
@@ -522,6 +624,44 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  // <<< WIDGET BARU >>>
+  Widget _buildInsights() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: const [
+              Icon(Icons.trending_up, color: kPrimaryColor, size: 20),
+              SizedBox(width: 8),
+              Text(
+                'Insight & Analytics',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: kTextDark,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          GridView.count(
+            crossAxisCount: 2,
+            crossAxisSpacing: 16,
+            mainAxisSpacing: 16,
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            children: stats.map((stat) {
+              return _StatCard(stat: stat);
+            }).toList(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // <<< WIDGET DIPERBARUI >>>
   Widget _buildImportantNotifications() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -538,48 +678,74 @@ class _HomePageState extends State<HomePage> {
             ),
           ),
           const SizedBox(height: 16),
-          Row(
-            children: [
-              Expanded(
-                child: _NotificationCard(
-                  title: 'Kunjungan ke rumah Akmal',
-                  actionText: 'Menuju Tugas',
-                  icon: Icons.home_work_outlined,
-                  onTap: () {},
-                ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: _NotificationCard(
-                  title: 'Input Anamnesa Akmal',
-                  actionText: 'Menuju Tugas',
-                  icon: Icons.edit_document,
-                  onTap: () {},
-                ),
-              ),
-            ],
+          // Menggunakan GridView agar lebih dinamis
+          GridView.count(
+            crossAxisCount: 2,
+            crossAxisSpacing: 16,
+            mainAxisSpacing: 16,
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            childAspectRatio: 0.95,
+            children: notifications.map((notif) {
+              return _NotificationCard(
+                notification: notif,
+                onTap: () {
+                  // TODO: Logika navigasi notifikasi
+                },
+              );
+            }).toList(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // <<< WIDGET BARU >>>
+  Widget _buildQuickActions(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'QUICK ACTIONS',
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w900,
+              color: kTextGrey,
+              letterSpacing: 1.0,
+            ),
           ),
           const SizedBox(height: 16),
-          Row(
+          GridView.count(
+            crossAxisCount: 2,
+            crossAxisSpacing: 16,
+            mainAxisSpacing: 16,
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            childAspectRatio: 1.1,
             children: [
-              Expanded(
-                child: _NotificationCard(
-                  title: 'High Priority Task',
-                  actionText: 'Go to task',
-                  icon: Icons.star_border_rounded,
-                  isAlert: true,
-                  onTap: () {},
-                ),
+              _QuickActionButton(
+                label: 'Pasien',
+                icon: Icons.people_outline,
+                onTap: () => context.go(AppRouter.patients),
               ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: _NotificationCard(
-                  title: 'Personal Things',
-                  actionText: 'On-hold',
-                  icon: Icons.person_outline,
-                  isPrimaryAction: false,
-                  onTap: () {},
-                ),
+              _QuickActionButton(
+                label: 'Jadwal',
+                icon: Icons.playlist_add_check_rounded,
+                onTap: () => context.go(AppRouter.schedules),
+              ),
+              _QuickActionButton(
+                label: 'Laporan',
+                icon: Icons.article_outlined,
+                onTap: () => context.go(AppRouter.reports),
+              ),
+              _QuickActionButton(
+                label: 'Stats',
+                icon: Icons.monitor_heart_outlined,
+                onTap: () {
+                  // TODO: Tambahkan rute statistik jika ada
+                },
               ),
             ],
           ),
@@ -589,31 +755,16 @@ class _HomePageState extends State<HomePage> {
   }
 }
 
-// --- WIDGET KARTU NOTIFIKASI (FUTURISTIC STYLE) ---
-class _NotificationCard extends StatelessWidget {
-  final String title;
-  final String actionText;
-  final IconData icon;
-  final VoidCallback onTap;
-  final bool isPrimaryAction;
-  final bool isAlert;
-
-  const _NotificationCard({
-    required this.title,
-    required this.actionText,
-    required this.icon,
-    required this.onTap,
-    this.isPrimaryAction = true,
-    this.isAlert = false,
-  });
+// --- WIDGET KARTU STATISTIK (INSIGHT) ---
+class _StatCard extends StatelessWidget {
+  final StatInfo stat;
+  const _StatCard({required this.stat});
 
   @override
   Widget build(BuildContext context) {
-    final accentColor = isAlert ? Colors.redAccent : kPrimaryColor;
-
+    final bool isPositive = stat.trend == 'up';
     return Container(
       padding: const EdgeInsets.all(16),
-      height: 140,
       decoration: BoxDecoration(
         color: kWhite,
         borderRadius: BorderRadius.circular(20),
@@ -624,65 +775,208 @@ class _NotificationCard extends StatelessWidget {
             offset: const Offset(0, 5),
           ),
         ],
-        border: isAlert
-            ? Border.all(color: Colors.redAccent.withOpacity(0.3))
-            : null,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        mainAxisSize: MainAxisSize.min,
         children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              gradient: stat.gradient,
+              borderRadius: BorderRadius.circular(12),
+              boxShadow: [
+                BoxShadow(
+                  color: stat.shadow,
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: Icon(stat.icon, color: kWhite, size: 20),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            stat.label,
+            style: const TextStyle(color: kTextGrey, fontSize: 12),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          const SizedBox(height: 4),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: accentColor.withOpacity(0.1),
-                  shape: BoxShape.circle,
+              Flexible(
+                child: Text(
+                  stat.value,
+                  style: const TextStyle(
+                    color: kTextDark,
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
-                child: Icon(icon, size: 20, color: accentColor),
               ),
-              if (isAlert)
-                const Icon(Icons.circle, size: 8, color: Colors.redAccent),
+              const SizedBox(width: 4),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: isPositive
+                      ? kSecondaryColor.withOpacity(0.1)
+                      : Colors.red.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  stat.change,
+                  style: TextStyle(
+                    color: isPositive ? kSecondaryColor : Colors.red,
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
             ],
           ),
-          const SizedBox(height: 8),
+        ],
+      ),
+    );
+  }
+}
+
+// --- WIDGET KARTU NOTIFIKASI (STYLE BARU DARI REACT) ---
+class _NotificationCard extends StatelessWidget {
+  final NotificationInfo notification;
+  final VoidCallback onTap;
+
+  const _NotificationCard({required this.notification, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: kWhite,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withOpacity(0.08),
+            blurRadius: 15,
+            offset: const Offset(0, 5),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                colors: [kPrimaryColor, kPrimaryLight],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(notification.icon, color: kWhite, size: 20),
+          ),
+          const SizedBox(height: 10),
           Text(
-            title,
+            notification.title,
             style: const TextStyle(
-              fontSize: 14,
+              fontSize: 13,
               fontWeight: FontWeight.w600,
               color: kTextDark,
-              height: 1.2,
             ),
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
           ),
+          const SizedBox(height: 2),
+          Text(
+            notification.subtitle,
+            style: const TextStyle(color: kTextGrey, fontSize: 11),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          const SizedBox(height: 10),
           InkWell(
             onTap: onTap,
             child: Row(
-              children: [
+              mainAxisSize: MainAxisSize.min,
+              children: const [
                 Text(
-                  actionText,
+                  'Menuju Tugas',
                   style: TextStyle(
-                    fontSize: 12,
+                    fontSize: 11,
                     fontWeight: FontWeight.bold,
-                    color: isPrimaryAction
-                        ? (isAlert ? Colors.redAccent : kSecondaryColor)
-                        : kTextGrey,
+                    color: kSecondaryColor,
                   ),
                 ),
-                const SizedBox(width: 4),
+                SizedBox(width: 4),
                 Icon(
                   Icons.arrow_forward_rounded,
-                  size: 16,
-                  color: isPrimaryAction
-                      ? (isAlert ? Colors.redAccent : kSecondaryColor)
-                      : kTextGrey,
+                  size: 14,
+                  color: kSecondaryColor,
                 ),
               ],
             ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// --- WIDGET TOMBOL QUICK ACTION ---
+class _QuickActionButton extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final VoidCallback onTap;
+
+  const _QuickActionButton({
+    required this.label,
+    required this.icon,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return ElevatedButton(
+      onPressed: onTap,
+      style: ElevatedButton.styleFrom(
+        backgroundColor: kWhite,
+        foregroundColor: kPrimaryColor,
+        elevation: 0,
+        shadowColor: Colors.transparent,
+        padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(color: Colors.grey.shade200),
+        ),
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: kPrimaryColor.withOpacity(0.1),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(icon, size: 28, color: kPrimaryColor),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: kTextDark,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
         ],
       ),

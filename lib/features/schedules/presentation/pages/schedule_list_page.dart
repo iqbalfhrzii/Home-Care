@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-// Impor SchedulePage, yang SEHARUSNYA juga berisi definisi class Schedule
+// Import halaman detail. Pastikan file ini ada dan class 'Schedule' didefinisikan di sana.
 import 'package:homecare_mobile/features/schedules/presentation/pages/schedule_page.dart';
 
 // --- Palet Warna Baru (Futuristic) ---
@@ -13,8 +13,8 @@ const Color kTextDark = Color(0xFF1E293B);
 const Color kTextGrey = Color(0xFF94A3B8);
 
 // --- 1. Model Data ---
-// CLASS SCHEDULE DIHAPUS DARI SINI
-// Kita asumsikan class Schedule didapat dari import 'schedule_page.dart'
+// Diasumsikan class Schedule diimpor dari 'schedule_page.dart'
+// Jika tidak, Anda bisa letakkan class Schedule di file model terpisah.
 
 class ScheduleListPage extends StatefulWidget {
   const ScheduleListPage({super.key});
@@ -24,8 +24,7 @@ class ScheduleListPage extends StatefulWidget {
 }
 
 class _ScheduleListPageState extends State<ScheduleListPage> {
-  // --- Data Dummy ---
-  // Pastikan class Schedule yang diimpor memiliki constructor yang sama
+  // --- Data Dummy (Hanya yang 'disetujui') ---
   final List<Schedule> _allSchedules = [
     Schedule(
       patientName: 'Ahmad Santoso',
@@ -34,23 +33,33 @@ class _ScheduleListPageState extends State<ScheduleListPage> {
       status: 'disetujui',
     ),
     Schedule(
-      patientName: 'Siti Nurhaliza',
-      rmNumber: 'RM-2024-002',
-      date: DateTime(2024, 11, 8),
-      status: 'belum_disetujui',
-    ),
-    Schedule(
       patientName: 'Budi Hartono',
       rmNumber: 'RM-2024-003',
       date: DateTime(2024, 11, 9),
       status: 'disetujui',
     ),
-    // ... sisa data dummy
+    Schedule(
+      patientName: 'Rudi Setiawan',
+      rmNumber: 'RM-2024-005',
+      date: DateTime(2024, 11, 10),
+      status: 'disetujui',
+    ),
+    Schedule(
+      patientName: 'Linda Wijaya',
+      rmNumber: 'RM-2024-006',
+      date: DateTime(2024, 11, 10),
+      status: 'disetujui',
+    ),
+    Schedule(
+      patientName: 'Maya Sari',
+      rmNumber: 'RM-2024-008',
+      date: DateTime(2024, 11, 11),
+      status: 'disetujui',
+    ),
   ];
 
   // --- State ---
   List<Schedule> _filteredSchedules = [];
-  String _selectedStatus = 'semua';
   DateTime? _selectedDate;
   final TextEditingController _dateController = TextEditingController();
 
@@ -66,17 +75,20 @@ class _ScheduleListPageState extends State<ScheduleListPage> {
     super.dispose();
   }
 
+  // --- Logika Filter (Disederhanakan) ---
   void _filterSchedules() {
     setState(() {
+      if (_selectedDate == null) {
+        _filteredSchedules =
+            _allSchedules; // Tampilkan semua jika tanggal kosong
+        return;
+      }
+
       _filteredSchedules = _allSchedules.where((schedule) {
-        final statusMatch =
-            _selectedStatus == 'semua' || schedule.status == _selectedStatus;
-        final dateMatch =
-            _selectedDate == null ||
-            (schedule.date.year == _selectedDate!.year &&
-                schedule.date.month == _selectedDate!.month &&
-                schedule.date.day == _selectedDate!.day);
-        return statusMatch && dateMatch;
+        // Filter berdasarkan Tanggal
+        return (schedule.date.year == _selectedDate!.year &&
+            schedule.date.month == _selectedDate!.month &&
+            schedule.date.day == _selectedDate!.day);
       }).toList();
     });
   }
@@ -113,6 +125,14 @@ class _ScheduleListPageState extends State<ScheduleListPage> {
     }
   }
 
+  void _clearDateFilter() {
+    setState(() {
+      _selectedDate = null;
+      _dateController.clear();
+    });
+    _filterSchedules();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -121,41 +141,70 @@ class _ScheduleListPageState extends State<ScheduleListPage> {
         children: [
           Column(
             children: [
+              // 1. Header Futuristik
               _buildHeader(),
+
+              // Spacer untuk memberi ruang bagi Filter yang floating
               const SizedBox(height: 60),
+
+              // 3. List Jadwal
               Expanded(
-                child: ListView.separated(
-                  padding: const EdgeInsets.fromLTRB(24, 16, 24, 100),
-                  itemCount: _filteredSchedules.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 16),
-                  itemBuilder: (context, index) {
-                    final schedule = _filteredSchedules[index];
-                    return _ScheduleCard(schedule: schedule);
-                  },
-                ),
+                child: _filteredSchedules.isEmpty
+                    ? Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.calendar_today_outlined,
+                              size: 60,
+                              color: kTextGrey.withOpacity(0.5),
+                            ),
+                            const SizedBox(height: 16),
+                            const Text(
+                              'Tidak ada jadwal',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: kTextDark,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              _selectedDate == null
+                                  ? 'Belum ada data kunjungan.'
+                                  : 'Tidak ada jadwal di tanggal ini.',
+                              style: const TextStyle(color: kTextGrey),
+                            ),
+                          ],
+                        ),
+                      )
+                    : ListView.separated(
+                        padding: const EdgeInsets.fromLTRB(
+                          24,
+                          24,
+                          24,
+                          100,
+                        ), // Tambah padding atas
+                        itemCount: _filteredSchedules.length,
+                        separatorBuilder: (_, __) => const SizedBox(height: 16),
+                        itemBuilder: (context, index) {
+                          final schedule = _filteredSchedules[index];
+                          return _ScheduleCard(schedule: schedule);
+                        },
+                      ),
               ),
             ],
           ),
+
+          // 2. Filter Section (Floating)
           Positioned(
             top: 130, // Posisi overlap dengan header
             left: 24,
             right: 24,
             child: _FilterSection(
-              statusValue: _selectedStatus,
               dateController: _dateController,
-              onStatusChanged: (newValue) {
-                if (newValue == null) return;
-                setState(() => _selectedStatus = newValue);
-                _filterSchedules();
-              },
               onDateTap: () => _pickDate(context),
-              onClearDate: () {
-                setState(() {
-                  _selectedDate = null;
-                  _dateController.clear();
-                });
-                _filterSchedules();
-              },
+              onClearDate: _clearDateFilter,
             ),
           ),
         ],
@@ -240,18 +289,14 @@ class _ScheduleListPageState extends State<ScheduleListPage> {
   }
 }
 
-// --- WIDGET FILTER ---
+// --- WIDGET FILTER (Disederhanakan) ---
 class _FilterSection extends StatelessWidget {
-  final String statusValue;
   final TextEditingController dateController;
-  final Function(String?) onStatusChanged;
   final VoidCallback onDateTap;
   final VoidCallback onClearDate;
 
   const _FilterSection({
-    required this.statusValue,
     required this.dateController,
-    required this.onStatusChanged,
     required this.onDateTap,
     required this.onClearDate,
   });
@@ -275,7 +320,7 @@ class _FilterSection extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            'Filter Pencarian',
+            'Filter Berdasarkan Tanggal',
             style: TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.w700,
@@ -283,99 +328,50 @@ class _FilterSection extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 12),
-          Row(
-            children: [
-              // Dropdown Status
-              Expanded(
-                flex: 4,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  decoration: BoxDecoration(
-                    color: kScaffoldBg,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: DropdownButtonHideUnderline(
-                    child: DropdownButton<String>(
-                      value: statusValue,
-                      icon: const Icon(
-                        Icons.keyboard_arrow_down_rounded,
-                        color: kPrimaryColor,
-                      ),
-                      isExpanded: true,
-                      style: const TextStyle(
-                        color: kTextDark,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                      ),
-                      onChanged: onStatusChanged,
-                      items: const [
-                        DropdownMenuItem(value: 'semua', child: Text('Semua')),
-                        DropdownMenuItem(
-                          value: 'disetujui',
-                          child: Text('Disetujui'),
-                        ),
-                        DropdownMenuItem(
-                          value: 'belum_disetujui',
-                          child: Text('Pending'),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
+          // Date Picker (Sekarang Full Width)
+          GestureDetector(
+            onTap: onDateTap,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+              decoration: BoxDecoration(
+                color: kScaffoldBg,
+                borderRadius: BorderRadius.circular(12),
               ),
-              const SizedBox(width: 12),
-              // Date Picker
-              Expanded(
-                flex: 5,
-                child: GestureDetector(
-                  onTap: onDateTap,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 14,
-                    ),
-                    decoration: BoxDecoration(
-                      color: kScaffoldBg,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(
-                          Icons.calendar_today_rounded,
-                          size: 16,
-                          color: kPrimaryColor,
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            dateController.text.isEmpty
-                                ? 'Pilih Tanggal'
-                                : dateController.text,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: dateController.text.isEmpty
-                                  ? kTextGrey
-                                  : kTextDark,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                        ),
-                        if (dateController.text.isNotEmpty)
-                          GestureDetector(
-                            onTap: onClearDate,
-                            child: const Icon(
-                              Icons.close_rounded,
-                              size: 16,
-                              color: Colors.redAccent,
-                            ),
-                          ),
-                      ],
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.calendar_today_rounded,
+                    size: 18,
+                    color: kPrimaryColor,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      dateController.text.isEmpty
+                          ? 'Pilih Tanggal Kunjungan'
+                          : dateController.text,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: dateController.text.isEmpty
+                            ? kTextGrey
+                            : kTextDark,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                      ),
                     ),
                   ),
-                ),
+                  if (dateController.text.isNotEmpty)
+                    GestureDetector(
+                      onTap: onClearDate,
+                      child: const Icon(
+                        Icons.close_rounded,
+                        size: 18,
+                        color: Colors.redAccent,
+                      ),
+                    ),
+                ],
               ),
-            ],
+            ),
           ),
         ],
       ),
@@ -383,7 +379,7 @@ class _FilterSection extends StatelessWidget {
   }
 }
 
-// --- WIDGET CARD JADWAL ---
+// --- WIDGET CARD JADWAL (Badge Dihilangkan) ---
 class _ScheduleCard extends StatelessWidget {
   final Schedule schedule;
   const _ScheduleCard({required this.schedule});
@@ -392,12 +388,9 @@ class _ScheduleCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return InkWell(
       onTap: () {
-        // --- PERBAIKAN DI SINI ---
-        // Hapus 'as dynamic' dan pastikan SchedulePage menerima objek Schedule
         Navigator.of(context).push(
           MaterialPageRoute(builder: (_) => SchedulePage(schedule: schedule)),
         );
-        // -------------------------
       },
       child: Container(
         padding: const EdgeInsets.all(16),
@@ -406,7 +399,7 @@ class _ScheduleCard extends StatelessWidget {
           borderRadius: BorderRadius.circular(20),
           boxShadow: [
             BoxShadow(
-              color: Colors.grey.withOpacity(0.05),
+              color: kPrimaryColor.withOpacity(0.05), // Bayangan biru
               blurRadius: 10,
               offset: const Offset(0, 4),
             ),
@@ -462,10 +455,11 @@ class _ScheduleCard extends StatelessWidget {
                     ],
                   ),
                 ),
-                _StatusBadge(status: schedule.status),
+                // Badge Status Dihilangkan
               ],
             ),
             const SizedBox(height: 16),
+            // Divider
             LayoutBuilder(
               builder: (BuildContext context, BoxConstraints constraints) {
                 final boxWidth = constraints.constrainWidth();
@@ -487,6 +481,7 @@ class _ScheduleCard extends StatelessWidget {
               },
             ),
             const SizedBox(height: 16),
+            // Baris Tanggal
             Row(
               children: [
                 Container(
@@ -522,42 +517,6 @@ class _ScheduleCard extends StatelessWidget {
               ],
             ),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-// --- WIDGET BADGE STATUS ---
-class _StatusBadge extends StatelessWidget {
-  final String status;
-  const _StatusBadge({required this.status});
-
-  @override
-  Widget build(BuildContext context) {
-    final bool isApproved = status == 'disetujui';
-
-    final Color bgColor = isApproved
-        ? const Color(0xFFECFDF5)
-        : const Color(0xFFFFF7ED);
-    final Color textColor = isApproved
-        ? const Color(0xFF059669)
-        : const Color(0xFFEA580C);
-    final String text = isApproved ? 'Disetujui' : 'Pending';
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      decoration: BoxDecoration(
-        color: bgColor,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: textColor.withOpacity(0.2)),
-      ),
-      child: Text(
-        text,
-        style: TextStyle(
-          color: textColor,
-          fontSize: 11,
-          fontWeight: FontWeight.bold,
         ),
       ),
     );
