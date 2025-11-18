@@ -129,21 +129,25 @@ class _ScheduleTindakanPageState extends State<ScheduleTindakanPage> {
 
     setState(() => _isLoading = true);
     try {
-      final tindakans = await _database.getTindakansByKunjunganId(widget.kunjungan!.id);
-      
+      final tindakans = await _database.getTindakansByKunjunganId(
+        widget.kunjungan!.id,
+      );
+
       setState(() {
         _selectedTindakan.clear();
         for (var tindakan in tindakans) {
-          _selectedTindakan.add(TindakanItem(
-            id: tindakan.id.toString(),
-            kode: tindakan.kodeTindakan,
-            namaTindakan: tindakan.namaTindakan,
-            kategori: 'Tindakan',
-            harga: tindakan.hargaSatuan,
-            jumlah: tindakan.jumlah,
-            hargaSatuan: tindakan.hargaSatuan,
-            keterangan: tindakan.keterangan ?? '',
-          ));
+          _selectedTindakan.add(
+            TindakanItem(
+              id: tindakan.id.toString(),
+              kode: tindakan.kodeTindakan,
+              namaTindakan: tindakan.namaTindakan,
+              kategori: 'Tindakan',
+              harga: tindakan.hargaSatuan,
+              jumlah: tindakan.jumlah,
+              hargaSatuan: tindakan.hargaSatuan,
+              keterangan: tindakan.keterangan ?? '',
+            ),
+          );
         }
         _isLoading = false;
       });
@@ -333,7 +337,9 @@ class _ScheduleTindakanPageState extends State<ScheduleTindakanPage> {
 
     try {
       // Delete existing tindakan
-      final existingTindakan = await _database.getTindakansByKunjunganId(widget.kunjungan!.id);
+      final existingTindakan = await _database.getTindakansByKunjunganId(
+        widget.kunjungan!.id,
+      );
       for (var tindakan in existingTindakan) {
         await _database.deleteTindakanKunjungan(tindakan.id);
       }
@@ -362,7 +368,9 @@ class _ScheduleTindakanPageState extends State<ScheduleTindakanPage> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('${_selectedTindakan.length} tindakan berhasil disimpan'),
+            content: Text(
+              '${_selectedTindakan.length} tindakan berhasil disimpan',
+            ),
             backgroundColor: kSuccessColor,
           ),
         );
@@ -371,17 +379,14 @@ class _ScheduleTindakanPageState extends State<ScheduleTindakanPage> {
         if (widget.onCompleted != null) {
           widget.onCompleted!();
         }
-        
+
         Navigator.pop(context, true);
       }
     } catch (e) {
       debugPrint('❌ Error saving tindakan: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error: $e'),
-            backgroundColor: kDangerColor,
-          ),
+          SnackBar(content: Text('Error: $e'), backgroundColor: kDangerColor),
         );
       }
     } finally {
@@ -883,7 +888,11 @@ class _ScheduleTindakanPageState extends State<ScheduleTindakanPage> {
                     ),
                   )
                 : const Icon(Icons.save),
-            label: Text(_isSaving ? 'Menyimpan...' : 'Simpan ${_selectedTindakan.length} Tindakan'),
+            label: Text(
+              _isSaving
+                  ? 'Menyimpan...'
+                  : 'Simpan ${_selectedTindakan.length} Tindakan',
+            ),
             style: ElevatedButton.styleFrom(
               backgroundColor: kPrimaryColor,
               foregroundColor: kWhite,

@@ -925,10 +925,7 @@ class _ReportDetailTagihanPageState extends State<ReportDetailTagihanPage> {
               child: OutlinedButton.icon(
                 onPressed: _copyToClipboard,
                 icon: const Icon(Icons.copy, size: 18),
-                label: const Text(
-                  'Salin',
-                  style: TextStyle(fontSize: 13),
-                ),
+                label: const Text('Salin', style: TextStyle(fontSize: 13)),
                 style: OutlinedButton.styleFrom(
                   foregroundColor: kPrimaryColor,
                   side: const BorderSide(color: kPrimaryColor),
@@ -954,7 +951,10 @@ class _ReportDetailTagihanPageState extends State<ReportDetailTagihanPage> {
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF25D366),
                   foregroundColor: kWhite,
-                  padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+                  padding: const EdgeInsets.symmetric(
+                    vertical: 12,
+                    horizontal: 8,
+                  ),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),
                   ),

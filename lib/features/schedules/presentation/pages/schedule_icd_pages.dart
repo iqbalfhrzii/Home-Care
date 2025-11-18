@@ -102,18 +102,22 @@ class _ScheduleIcdPageState extends State<ScheduleIcdPage> {
 
     setState(() => _isLoading = true);
     try {
-      final diagnosas = await _database.getDiagnosasByKunjunganId(widget.kunjungan!.id);
-      
+      final diagnosas = await _database.getDiagnosasByKunjunganId(
+        widget.kunjungan!.id,
+      );
+
       setState(() {
         _selectedIcds.clear();
         for (var diagnosa in diagnosas) {
-          _selectedIcds.add(IcdItem(
-            id: diagnosa.id.toString(),
-            kode: diagnosa.kodeIcd,
-            namaPenyakit: diagnosa.namaIcd,
-            deskripsi: diagnosa.namaIcd,
-            isPrimary: diagnosa.isPrimary,
-          ));
+          _selectedIcds.add(
+            IcdItem(
+              id: diagnosa.id.toString(),
+              kode: diagnosa.kodeIcd,
+              namaPenyakit: diagnosa.namaIcd,
+              deskripsi: diagnosa.namaIcd,
+              isPrimary: diagnosa.isPrimary,
+            ),
+          );
         }
         _isLoading = false;
       });
@@ -221,7 +225,9 @@ class _ScheduleIcdPageState extends State<ScheduleIcdPage> {
 
     try {
       // Delete existing diagnosas
-      final existingDiagnosas = await _database.getDiagnosasByKunjunganId(widget.kunjungan!.id);
+      final existingDiagnosas = await _database.getDiagnosasByKunjunganId(
+        widget.kunjungan!.id,
+      );
       for (var diagnosa in existingDiagnosas) {
         await _database.deleteDiagnosa(diagnosa.id);
       }
@@ -256,17 +262,14 @@ class _ScheduleIcdPageState extends State<ScheduleIcdPage> {
         if (widget.onCompleted != null) {
           widget.onCompleted!();
         }
-        
+
         Navigator.pop(context, true);
       }
     } catch (e) {
       debugPrint('❌ Error saving diagnosas: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error: $e'),
-            backgroundColor: kDangerColor,
-          ),
+          SnackBar(content: Text('Error: $e'), backgroundColor: kDangerColor),
         );
       }
     } finally {
@@ -713,13 +716,12 @@ class _ScheduleIcdPageState extends State<ScheduleIcdPage> {
             ? const SizedBox(
                 width: 20,
                 height: 20,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: kWhite,
-                ),
+                child: CircularProgressIndicator(strokeWidth: 2, color: kWhite),
               )
             : const Icon(Icons.save),
-        label: Text(_isSaving ? 'Menyimpan...' : 'Simpan ${_selectedIcds.length} ICD'),
+        label: Text(
+          _isSaving ? 'Menyimpan...' : 'Simpan ${_selectedIcds.length} ICD',
+        ),
         style: ElevatedButton.styleFrom(
           backgroundColor: kPrimaryColor,
           foregroundColor: kWhite,

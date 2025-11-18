@@ -247,20 +247,18 @@ class AppDatabase extends _$AppDatabase {
     return (select(kunjungans)..where((k) => k.status.equals(status))).get();
   }
 
-  Future<Kunjungan?> getKunjunganByRegistrasiId(int registrasiId) =>
-      (select(kunjungans)..where((k) => k.registrasiId.equals(registrasiId)))
-          .getSingleOrNull();
+  Future<Kunjungan?> getKunjunganByRegistrasiId(int registrasiId) => (select(
+    kunjungans,
+  )..where((k) => k.registrasiId.equals(registrasiId))).getSingleOrNull();
 
   Future<List<Kunjungan>> getTodayKunjungans() {
     final now = DateTime.now();
     final startOfDay = DateTime(now.year, now.month, now.day);
     final endOfDay = DateTime(now.year, now.month, now.day, 23, 59, 59);
 
-    return (select(kunjungans)
-          ..where((k) => k.tanggalKunjungan.isBetweenValues(
-                startOfDay,
-                endOfDay,
-              )))
+    return (select(kunjungans)..where(
+          (k) => k.tanggalKunjungan.isBetweenValues(startOfDay, endOfDay),
+        ))
         .get();
   }
 
@@ -295,10 +293,12 @@ class AppDatabase extends _$AppDatabase {
     if (currentIcdDone) progressStep++;
 
     final companion = KunjungansCompanion(
-      anamnesaDone:
-          anamnesaDone != null ? Value(anamnesaDone) : const Value.absent(),
-      tindakanDone:
-          tindakanDone != null ? Value(tindakanDone) : const Value.absent(),
+      anamnesaDone: anamnesaDone != null
+          ? Value(anamnesaDone)
+          : const Value.absent(),
+      tindakanDone: tindakanDone != null
+          ? Value(tindakanDone)
+          : const Value.absent(),
       icdDone: icdDone != null ? Value(icdDone) : const Value.absent(),
       progressStep: Value(progressStep),
       updatedAt: Value(DateTime.now()),

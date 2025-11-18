@@ -72,15 +72,20 @@ class _ScheduleAnamnesaPageState extends State<ScheduleAnamnesaPage> {
 
     setState(() => _isLoading = true);
     try {
-      final anamnesa = await _database.getAnamnesaByKunjunganId(widget.kunjungan!.id);
-      
+      final anamnesa = await _database.getAnamnesaByKunjunganId(
+        widget.kunjungan!.id,
+      );
+
       if (anamnesa != null && mounted) {
         setState(() {
           _existingAnamnesa = anamnesa;
           _keluhanUtamaController.text = anamnesa.keluhanUtama;
-          _riwayatPenyakitSekarangController.text = anamnesa.riwayatPenyakitSekarang;
-          _riwayatPenyakitDahuluController.text = anamnesa.riwayatPenyakitDahulu ?? '';
-          _riwayatPenyakitKeluargaController.text = anamnesa.riwayatPenyakitKeluarga ?? '';
+          _riwayatPenyakitSekarangController.text =
+              anamnesa.riwayatPenyakitSekarang;
+          _riwayatPenyakitDahuluController.text =
+              anamnesa.riwayatPenyakitDahulu ?? '';
+          _riwayatPenyakitKeluargaController.text =
+              anamnesa.riwayatPenyakitKeluarga ?? '';
           _riwayatAlergiController.text = anamnesa.riwayatAlergi ?? '';
           _tekananDarahController.text = anamnesa.tekananDarah ?? '';
           _nadiController.text = anamnesa.nadi?.toString() ?? '';
@@ -119,15 +124,47 @@ class _ScheduleAnamnesaPageState extends State<ScheduleAnamnesaPage> {
       final companion = db.AnamnesasCompanion(
         kunjunganId: drift.Value(widget.kunjungan!.id),
         keluhanUtama: drift.Value(_keluhanUtamaController.text),
-        riwayatPenyakitSekarang: drift.Value(_riwayatPenyakitSekarangController.text),
-        riwayatPenyakitDahulu: drift.Value(_riwayatPenyakitDahuluController.text.isEmpty ? null : _riwayatPenyakitDahuluController.text),
-        riwayatPenyakitKeluarga: drift.Value(_riwayatPenyakitKeluargaController.text.isEmpty ? null : _riwayatPenyakitKeluargaController.text),
-        riwayatAlergi: drift.Value(_riwayatAlergiController.text.isEmpty ? null : _riwayatAlergiController.text),
-        tekananDarah: drift.Value(_tekananDarahController.text.isEmpty ? null : _tekananDarahController.text),
-        nadi: drift.Value(_nadiController.text.isEmpty ? null : int.tryParse(_nadiController.text)),
-        suhuTubuh: drift.Value(_suhuTubuhController.text.isEmpty ? null : double.tryParse(_suhuTubuhController.text)),
-        pernapasan: drift.Value(_pernapasanController.text.isEmpty ? null : int.tryParse(_pernapasanController.text)),
-        catatan: drift.Value(_catatanController.text.isEmpty ? null : _catatanController.text),
+        riwayatPenyakitSekarang: drift.Value(
+          _riwayatPenyakitSekarangController.text,
+        ),
+        riwayatPenyakitDahulu: drift.Value(
+          _riwayatPenyakitDahuluController.text.isEmpty
+              ? null
+              : _riwayatPenyakitDahuluController.text,
+        ),
+        riwayatPenyakitKeluarga: drift.Value(
+          _riwayatPenyakitKeluargaController.text.isEmpty
+              ? null
+              : _riwayatPenyakitKeluargaController.text,
+        ),
+        riwayatAlergi: drift.Value(
+          _riwayatAlergiController.text.isEmpty
+              ? null
+              : _riwayatAlergiController.text,
+        ),
+        tekananDarah: drift.Value(
+          _tekananDarahController.text.isEmpty
+              ? null
+              : _tekananDarahController.text,
+        ),
+        nadi: drift.Value(
+          _nadiController.text.isEmpty
+              ? null
+              : int.tryParse(_nadiController.text),
+        ),
+        suhuTubuh: drift.Value(
+          _suhuTubuhController.text.isEmpty
+              ? null
+              : double.tryParse(_suhuTubuhController.text),
+        ),
+        pernapasan: drift.Value(
+          _pernapasanController.text.isEmpty
+              ? null
+              : int.tryParse(_pernapasanController.text),
+        ),
+        catatan: drift.Value(
+          _catatanController.text.isEmpty ? null : _catatanController.text,
+        ),
         updatedAt: drift.Value(DateTime.now()),
       );
 
@@ -140,7 +177,9 @@ class _ScheduleAnamnesaPageState extends State<ScheduleAnamnesaPage> {
       }
 
       // Update kunjungan progress
-      debugPrint('🔄 Updating kunjungan progress for ID: ${widget.kunjungan!.id}');
+      debugPrint(
+        '🔄 Updating kunjungan progress for ID: ${widget.kunjungan!.id}',
+      );
       await _database.updateKunjunganProgress(
         widget.kunjungan!.id,
         anamnesaDone: true,
@@ -165,10 +204,7 @@ class _ScheduleAnamnesaPageState extends State<ScheduleAnamnesaPage> {
       debugPrint('❌ Error saving anamnesa: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error: $e'),
-            backgroundColor: kDangerColor,
-          ),
+          SnackBar(content: Text('Error: $e'), backgroundColor: kDangerColor),
         );
       }
     } finally {
@@ -345,10 +381,7 @@ class _ScheduleAnamnesaPageState extends State<ScheduleAnamnesaPage> {
       backgroundColor: kPrimaryColor,
       foregroundColor: kWhite,
       flexibleSpace: FlexibleSpaceBar(
-        title: const Text(
-          'Anamnesa Pasien',
-          style: TextStyle(fontSize: 16),
-        ),
+        title: const Text('Anamnesa Pasien', style: TextStyle(fontSize: 16)),
         background: Container(
           decoration: const BoxDecoration(
             gradient: LinearGradient(
@@ -366,11 +399,7 @@ class _ScheduleAnamnesaPageState extends State<ScheduleAnamnesaPage> {
                   color: kWhite.withOpacity(0.2),
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(
-                  Icons.description,
-                  size: 40,
-                  color: kWhite,
-                ),
+                child: const Icon(Icons.description, size: 40, color: kWhite),
               ),
             ),
           ),
@@ -462,7 +491,10 @@ class _ScheduleAnamnesaPageState extends State<ScheduleAnamnesaPage> {
             if (required)
               const Text(
                 ' *',
-                style: TextStyle(color: kDangerColor, fontWeight: FontWeight.bold),
+                style: TextStyle(
+                  color: kDangerColor,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
           ],
         ),
@@ -470,17 +502,26 @@ class _ScheduleAnamnesaPageState extends State<ScheduleAnamnesaPage> {
         TextFormField(
           controller: controller,
           keyboardType: isNumber
-              ? (isDecimal ? const TextInputType.numberWithOptions(decimal: true) : TextInputType.number)
+              ? (isDecimal
+                    ? const TextInputType.numberWithOptions(decimal: true)
+                    : TextInputType.number)
               : (multiline ? TextInputType.multiline : TextInputType.text),
           inputFormatters: isNumber
               ? (isDecimal
-                  ? [FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d{0,2}'))]
-                  : [FilteringTextInputFormatter.digitsOnly])
+                    ? [
+                        FilteringTextInputFormatter.allow(
+                          RegExp(r'^\d+\.?\d{0,2}'),
+                        ),
+                      ]
+                    : [FilteringTextInputFormatter.digitsOnly])
               : null,
           maxLines: multiline ? maxLines : 1,
           decoration: InputDecoration(
             hintText: hint,
-            hintStyle: TextStyle(color: kTextGrey.withOpacity(0.5), fontSize: 13),
+            hintStyle: TextStyle(
+              color: kTextGrey.withOpacity(0.5),
+              fontSize: 13,
+            ),
             filled: true,
             fillColor: kCardBg,
             border: OutlineInputBorder(
@@ -499,7 +540,10 @@ class _ScheduleAnamnesaPageState extends State<ScheduleAnamnesaPage> {
               borderRadius: BorderRadius.circular(12),
               borderSide: const BorderSide(color: kDangerColor),
             ),
-            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 12,
+            ),
           ),
           validator: required
               ? (value) {
@@ -517,19 +561,16 @@ class _ScheduleAnamnesaPageState extends State<ScheduleAnamnesaPage> {
   Widget _buildBottomButton() {
     return Container(
       color: kWhite,
-      padding: const EdgeInsets.all(16.0).copyWith(
-        bottom: MediaQuery.of(context).padding.bottom + 16,
-      ),
+      padding: const EdgeInsets.all(
+        16.0,
+      ).copyWith(bottom: MediaQuery.of(context).padding.bottom + 16),
       child: ElevatedButton.icon(
         onPressed: _isSaving ? null : _saveAnamnesa,
         icon: _isSaving
             ? const SizedBox(
                 width: 20,
                 height: 20,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: kWhite,
-                ),
+                child: CircularProgressIndicator(strokeWidth: 2, color: kWhite),
               )
             : const Icon(Icons.save),
         label: Text(_isSaving ? 'Menyimpan...' : 'Simpan Anamnesa'),

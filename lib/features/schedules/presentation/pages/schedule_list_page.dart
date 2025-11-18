@@ -23,11 +23,7 @@ class ScheduleItem {
   final db.Pasien patient;
   final db.Kunjungan? visit;
 
-  ScheduleItem({
-    required this.registration,
-    required this.patient,
-    this.visit,
-  });
+  ScheduleItem({required this.registration, required this.patient, this.visit});
 }
 
 class ScheduleListPage extends StatefulWidget {
@@ -39,7 +35,7 @@ class ScheduleListPage extends StatefulWidget {
 
 class _ScheduleListPageState extends State<ScheduleListPage> {
   late final db.AppDatabase _database;
-  
+
   // --- State ---
   List<ScheduleItem> _allSchedules = [];
   List<ScheduleItem> _filteredSchedules = [];
@@ -47,11 +43,19 @@ class _ScheduleListPageState extends State<ScheduleListPage> {
   final TextEditingController _dateController = TextEditingController();
   bool _isLoading = true;
   String? _selectedStatus; // null = semua, 'belum', 'proses', 'selesai'
-  
+
   int get _totalSchedules => _allSchedules.length;
-  int get _notStartedCount => _allSchedules.where((s) => (s.visit?.progressStep ?? 0) == 0).length;
-  int get _inProgressCount => _allSchedules.where((s) => (s.visit?.progressStep ?? 0) > 0 && (s.visit?.progressStep ?? 0) < 3).length;
-  int get _completedCount => _allSchedules.where((s) => s.visit?.progressStep == 3).length;
+  int get _notStartedCount =>
+      _allSchedules.where((s) => (s.visit?.progressStep ?? 0) == 0).length;
+  int get _inProgressCount => _allSchedules
+      .where(
+        (s) =>
+            (s.visit?.progressStep ?? 0) > 0 &&
+            (s.visit?.progressStep ?? 0) < 3,
+      )
+      .length;
+  int get _completedCount =>
+      _allSchedules.where((s) => s.visit?.progressStep == 3).length;
 
   @override
   void initState() {
@@ -77,15 +81,16 @@ class _ScheduleListPageState extends State<ScheduleListPage> {
         if (patient == null || !patient.isRegistered) continue;
 
         final visit = await _database.getKunjunganByRegistrasiId(reg.id);
-        schedules.add(ScheduleItem(
-          registration: reg,
-          patient: patient,
-          visit: visit,
-        ));
+        schedules.add(
+          ScheduleItem(registration: reg, patient: patient, visit: visit),
+        );
       }
 
-      schedules.sort((a, b) => b.registration.tanggalKunjungan
-          .compareTo(a.registration.tanggalKunjungan));
+      schedules.sort(
+        (a, b) => b.registration.tanggalKunjungan.compareTo(
+          a.registration.tanggalKunjungan,
+        ),
+      );
 
       if (mounted) {
         setState(() {
@@ -200,50 +205,52 @@ class _ScheduleListPageState extends State<ScheduleListPage> {
                     child: CircularProgressIndicator(color: kPrimaryColor),
                   )
                 : _filteredSchedules.isEmpty
-                    ? Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              Icons.calendar_today_outlined,
-                              size: 64,
-                              color: kTextGrey.withOpacity(0.5),
-                            ),
-                            const SizedBox(height: 16),
-                            const Text(
-                              'Tidak ada jadwal',
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                                color: kTextDark,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              _selectedDate == null
-                                  ? 'Belum ada data kunjungan.'
-                                  : 'Tidak ada jadwal di tanggal ini.',
-                              style: const TextStyle(color: kTextGrey),
-                            ),
-                          ],
+                ? Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.calendar_today_outlined,
+                          size: 64,
+                          color: kTextGrey.withOpacity(0.5),
                         ),
-                      )
-                    : ListView.separated(
-                        padding: const EdgeInsets.all(24),
-                        itemCount: _filteredSchedules.length,
-                        separatorBuilder: (_, __) => const SizedBox(height: 12),
-                        itemBuilder: (context, index) {
-                          final schedule = _filteredSchedules[index];
-                          return _ScheduleCard(
-                            schedule: schedule,
-                            onTap: () {
-                              context.push(
+                        const SizedBox(height: 16),
+                        const Text(
+                          'Tidak ada jadwal',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: kTextDark,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          _selectedDate == null
+                              ? 'Belum ada data kunjungan.'
+                              : 'Tidak ada jadwal di tanggal ini.',
+                          style: const TextStyle(color: kTextGrey),
+                        ),
+                      ],
+                    ),
+                  )
+                : ListView.separated(
+                    padding: const EdgeInsets.all(24),
+                    itemCount: _filteredSchedules.length,
+                    separatorBuilder: (_, __) => const SizedBox(height: 12),
+                    itemBuilder: (context, index) {
+                      final schedule = _filteredSchedules[index];
+                      return _ScheduleCard(
+                        schedule: schedule,
+                        onTap: () {
+                          context
+                              .push(
                                 '/schedules/detail/${schedule.registration.id}',
-                              ).then((_) => _loadSchedules());
-                            },
-                          );
+                              )
+                              .then((_) => _loadSchedules());
                         },
-                      ),
+                      );
+                    },
+                  ),
           ),
         ],
       ),
@@ -308,11 +315,7 @@ class _ScheduleListPageState extends State<ScheduleListPage> {
               ),
               child: IconButton(
                 onPressed: _loadSchedules,
-                icon: const Icon(
-                  Icons.refresh,
-                  color: kWhite,
-                  size: 22,
-                ),
+                icon: const Icon(Icons.refresh, color: kWhite, size: 22),
                 padding: const EdgeInsets.all(8),
                 constraints: const BoxConstraints(),
               ),
@@ -322,7 +325,7 @@ class _ScheduleListPageState extends State<ScheduleListPage> {
       ),
     );
   }
-  
+
   Widget _buildStatusCards() {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -362,7 +365,7 @@ class _ScheduleListPageState extends State<ScheduleListPage> {
       ),
     );
   }
-  
+
   Widget _buildStatusCard(
     String label,
     String value,
@@ -371,7 +374,7 @@ class _ScheduleListPageState extends State<ScheduleListPage> {
     String statusKey,
   ) {
     final isSelected = _selectedStatus == statusKey;
-    
+
     return GestureDetector(
       onTap: () => _selectStatusFilter(statusKey),
       child: Container(
@@ -383,21 +386,19 @@ class _ScheduleListPageState extends State<ScheduleListPage> {
             color: isSelected ? color : color.withOpacity(0.2),
             width: isSelected ? 2 : 1,
           ),
-          boxShadow: isSelected ? [
-            BoxShadow(
-              color: color.withOpacity(0.3),
-              blurRadius: 8,
-              offset: const Offset(0, 2),
-            ),
-          ] : null,
+          boxShadow: isSelected
+              ? [
+                  BoxShadow(
+                    color: color.withOpacity(0.3),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ]
+              : null,
         ),
         child: Column(
           children: [
-            Icon(
-              icon,
-              color: isSelected ? kWhite : color,
-              size: 18,
-            ),
+            Icon(icon, color: isSelected ? kWhite : color, size: 18),
             const SizedBox(height: 4),
             Text(
               value,
@@ -424,7 +425,7 @@ class _ScheduleListPageState extends State<ScheduleListPage> {
       ),
     );
   }
-  
+
   Widget _buildFilterSection() {
     return Container(
       padding: const EdgeInsets.all(16),
@@ -440,11 +441,7 @@ class _ScheduleListPageState extends State<ScheduleListPage> {
           ),
           child: Row(
             children: [
-              const Icon(
-                Icons.calendar_today,
-                size: 20,
-                color: kPrimaryColor,
-              ),
+              const Icon(Icons.calendar_today, size: 20, color: kPrimaryColor),
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
@@ -452,9 +449,7 @@ class _ScheduleListPageState extends State<ScheduleListPage> {
                       ? 'Pilih Tanggal Kunjungan'
                       : _dateController.text,
                   style: TextStyle(
-                    color: _dateController.text.isEmpty
-                        ? kTextGrey
-                        : kTextDark,
+                    color: _dateController.text.isEmpty ? kTextGrey : kTextDark,
                     fontSize: 14,
                     fontWeight: FontWeight.w500,
                   ),
@@ -463,11 +458,7 @@ class _ScheduleListPageState extends State<ScheduleListPage> {
               if (_dateController.text.isNotEmpty)
                 GestureDetector(
                   onTap: _clearDateFilter,
-                  child: Icon(
-                    Icons.close,
-                    size: 20,
-                    color: kDangerColor,
-                  ),
+                  child: Icon(Icons.close, size: 20, color: kDangerColor),
                 ),
             ],
           ),
@@ -610,7 +601,10 @@ class _ScheduleCard extends StatelessWidget {
                     ),
                     // Progress Badge
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 6,
+                      ),
                       decoration: BoxDecoration(
                         color: _getProgressColor(progress).withOpacity(0.1),
                         borderRadius: BorderRadius.circular(12),
@@ -650,7 +644,9 @@ class _ScheduleCard extends StatelessWidget {
                           width: dashWidth,
                           height: 1,
                           child: DecoratedBox(
-                            decoration: BoxDecoration(color: Colors.grey.shade300),
+                            decoration: BoxDecoration(
+                              color: Colors.grey.shade300,
+                            ),
                           ),
                         );
                       }),

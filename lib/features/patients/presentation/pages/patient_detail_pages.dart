@@ -326,7 +326,10 @@ class _PatientDetailViewState extends State<_PatientDetailView> {
                   decoration: BoxDecoration(
                     color: kWhite.withOpacity(0.2),
                     borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: kWhite.withOpacity(0.3), width: 2),
+                    border: Border.all(
+                      color: kWhite.withOpacity(0.3),
+                      width: 2,
+                    ),
                   ),
                   child: const Icon(Icons.person, size: 36, color: kWhite),
                 ),
