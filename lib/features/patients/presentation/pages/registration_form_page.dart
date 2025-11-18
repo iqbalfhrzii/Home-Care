@@ -238,7 +238,6 @@ class _RegistrationFormPageState extends State<RegistrationFormPage> {
             ),
           );
 
-          // Return specific action to signal success and trigger refresh in caller
           context.pop(widget.isEdit ? 'updated' : 'created');
         }
       } catch (e) {
@@ -271,9 +270,7 @@ class _RegistrationFormPageState extends State<RegistrationFormPage> {
           ),
           ElevatedButton(
             onPressed: () => Navigator.of(dialogContext).pop(true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red,
-            ),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
             child: const Text('Ya, Batalkan'),
           ),
         ],
@@ -284,8 +281,7 @@ class _RegistrationFormPageState extends State<RegistrationFormPage> {
 
     try {
       final database = getIt<db.AppDatabase>();
-      
-      // Delete registration data
+
       if (widget.registrasiId != null) {
         await database.deleteRegistrasi(widget.registrasiId!);
         debugPrint('✅ Registration deleted with ID: ${widget.registrasiId}');

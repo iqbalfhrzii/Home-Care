@@ -398,8 +398,16 @@ class _ScheduleTindakanPageState extends State<ScheduleTindakanPage> {
       body: Column(
         children: [
           _buildHeader(),
-          if (_selectedTindakan.isNotEmpty) _buildSelectedSection(),
-          Expanded(child: _buildSearchSection()),
+          Expanded(
+            child: SingleChildScrollView(
+              child: Column(
+                children: [
+                  if (_selectedTindakan.isNotEmpty) _buildSelectedSection(),
+                  _buildSearchSection(),
+                ],
+              ),
+            ),
+          ),
         ],
       ),
       bottomNavigationBar: _buildBottomButton(),
@@ -668,6 +676,7 @@ class _ScheduleTindakanPageState extends State<ScheduleTindakanPage> {
 
   Widget _buildSearchSection() {
     return Column(
+      mainAxisSize: MainAxisSize.min,
       children: [
         Padding(
           padding: const EdgeInsets.all(16.0),
@@ -693,7 +702,10 @@ class _ScheduleTindakanPageState extends State<ScheduleTindakanPage> {
             ),
           ),
         ),
-        Expanded(
+        Container(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.of(context).size.height * 0.4,
+          ),
           child: _filteredTindakan.isEmpty
               ? Center(
                   child: Column(

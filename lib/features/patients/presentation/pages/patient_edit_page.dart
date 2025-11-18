@@ -6,7 +6,6 @@ import 'package:homecare_mobile/features/patients/domain/models/pasien.dart';
 import 'package:homecare_mobile/features/patients/presentation/bloc/patient_bloc.dart';
 import 'package:homecare_mobile/shared/app_injections.dart';
 
-// --- Palet Warna ---
 const Color kPrimaryColor = Color(0xFF004B8C);
 const Color kPrimaryLight = Color(0xFF0063B2);
 const Color kSecondaryColor = Color(0xFF8BC43E);
@@ -24,7 +23,6 @@ class PatientEditPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Use singleton BLoC from getIt - same instance as list page
     return BlocProvider.value(
       value: getIt<PatientBloc>(),
       child: _PatientEditForm(patient: patient),
@@ -44,7 +42,6 @@ class _PatientEditForm extends StatefulWidget {
 class _PatientEditFormState extends State<_PatientEditForm> {
   final _formKey = GlobalKey<FormState>();
 
-  // Controllers
   late final TextEditingController _namaController;
   late final TextEditingController _nikController;
   late final TextEditingController _noBpjsController;
@@ -62,7 +59,6 @@ class _PatientEditFormState extends State<_PatientEditForm> {
   void initState() {
     super.initState();
 
-    // Initialize controllers with existing data
     _namaController = TextEditingController(text: widget.patient.nama);
     _nikController = TextEditingController(text: widget.patient.nik ?? '');
     _noBpjsController = TextEditingController(

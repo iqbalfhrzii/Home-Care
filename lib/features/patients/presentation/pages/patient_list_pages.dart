@@ -9,12 +9,11 @@ import 'package:homecare_mobile/features/patients/presentation/bloc/patient_bloc
 import 'package:homecare_mobile/shared/app_injections.dart';
 import 'package:homecare_mobile/shared/local_db/app_database.dart' as db;
 
-// --- Palet Warna Baru ---
-const Color kPrimaryColor = Color(0xFF004B8C); // Deep Blue
-const Color kPrimaryLight = Color(0xFF0063B2); // Lighter Blue for Gradient
-const Color kSecondaryColor = Color(0xFF8BC43E); // Lime Green
-const Color kSecondaryButton = Color(0xFF97CA4A); // Warna Tombol Tambah
-const Color kScaffoldBg = Color(0xFFF5F7FA); // Cool White Background
+const Color kPrimaryColor = Color(0xFF004B8C);
+const Color kPrimaryLight = Color(0xFF0063B2);
+const Color kSecondaryColor = Color(0xFF8BC43E);
+const Color kSecondaryButton = Color(0xFF97CA4A);
+const Color kScaffoldBg = Color(0xFFF5F7FA);
 const Color kWhite = Colors.white;
 const Color kTextDark = Color(0xFF1E293B);
 const Color kTextGrey = Color(0xFF94A3B8);
@@ -22,7 +21,6 @@ const Color kSuccessColor = Color(0xFF22C55E);
 const Color kWarningColor = Color(0xFFF59E0B);
 const Color kDangerColor = Color(0xFFEF4444);
 
-// --- Halaman Utama dengan BLoC ---
 class PatientMasterListPage extends StatefulWidget {
   const PatientMasterListPage({super.key});
 
@@ -36,9 +34,7 @@ class _PatientMasterListPageState extends State<PatientMasterListPage> {
   @override
   void initState() {
     super.initState();
-    // Create BLoC once and reuse it
     _patientBloc = getIt<PatientBloc>();
-    // Only load on first init
     if (_patientBloc.state is PatientInitial) {
       _patientBloc.add(const LoadPatients());
     }
@@ -46,8 +42,6 @@ class _PatientMasterListPageState extends State<PatientMasterListPage> {
 
   @override
   void dispose() {
-    // Don't close the bloc here if it's a singleton from getIt
-    // _patientBloc.close();
     super.dispose();
   }
 
@@ -86,16 +80,13 @@ class _PatientListViewState extends State<_PatientListView> {
   }
 
   void _onSearchChanged() {
-    // Cancel previous timer
     if (_debounce?.isActive ?? false) _debounce!.cancel();
 
-    // Wait 300ms before triggering search
     _debounce = Timer(const Duration(milliseconds: 300), () {
       context.read<PatientBloc>().add(SearchPatients(_searchController.text));
     });
   }
 
-  // --- Logika Helper ---
   String _formatDate(String isoDate) {
     try {
       final date = DateTime.parse(isoDate);
@@ -120,7 +111,6 @@ class _PatientListViewState extends State<_PatientListView> {
     }
   }
 
-  // --- Logika Aksi CRUD ---
   void _onAddPatient() async {
     final result = await context.push<bool>('${AppRouter.patients}/add');
     if (result == true && mounted) {
@@ -146,9 +136,7 @@ class _PatientListViewState extends State<_PatientListView> {
           backgroundColor: kSuccessColor,
         ),
       );
-      // Small delay to ensure database is updated
       await Future.delayed(const Duration(milliseconds: 150));
-      // Force reload to get latest data
       context.read<PatientBloc>().add(const LoadPatients());
     }
   }
@@ -157,13 +145,14 @@ class _PatientListViewState extends State<_PatientListView> {
     final isRegistered = patient.isRegistered ?? false;
     int? registrasiId;
 
-    // If patient is already registered, load registration data
     if (isRegistered) {
       try {
         final database = getIt<db.AppDatabase>();
         final pasienIdInt = int.tryParse(patient.id);
         if (pasienIdInt != null) {
-          final registration = await database.getLatestRegistrasiByPasienId(pasienIdInt);
+          final registration = await database.getLatestRegistrasiByPasienId(
+            pasienIdInt,
+          );
           registrasiId = registration?.id;
         }
       } catch (e) {
@@ -182,14 +171,12 @@ class _PatientListViewState extends State<_PatientListView> {
     );
 
     debugPrint('🔍 Registration result: $result');
-    
+
     if (result != null && mounted) {
       debugPrint('✅ Processing registration result: $result');
-      
-      // Small delay to ensure database is updated
+
       await Future.delayed(const Duration(milliseconds: 150));
 
-      // Reload patient list to update counter and registration status
       context.read<PatientBloc>().add(const LoadPatients());
       debugPrint('✅ LoadPatients event triggered');
 
@@ -215,10 +202,7 @@ class _PatientListViewState extends State<_PatientListView> {
       }
 
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(message),
-          backgroundColor: backgroundColor,
-        ),
+        SnackBar(content: Text(message), backgroundColor: backgroundColor),
       );
     } else {
       debugPrint('❌ Result is null or not mounted');
@@ -228,7 +212,7 @@ class _PatientListViewState extends State<_PatientListView> {
   void _onDeletePatient(Pasien patient) {
     showDialog(
       context: context,
-      barrierDismissible: false, // Prevent dismiss during delete
+      barrierDismissible: false,
       builder: (dialogContext) => AlertDialog(
         title: const Text('Hapus Data Pasien?'),
         content: RichText(
@@ -253,10 +237,8 @@ class _PatientListViewState extends State<_PatientListView> {
             style: TextButton.styleFrom(foregroundColor: Colors.red),
             child: const Text('Hapus'),
             onPressed: () {
-              // Close dialog immediately
               Navigator.of(dialogContext).pop();
 
-              // Delay to prevent rapid fire events
               Future.delayed(const Duration(milliseconds: 100), () {
                 if (mounted) {
                   context.read<PatientBloc>().add(DeletePatient(patient.id));
@@ -269,7 +251,6 @@ class _PatientListViewState extends State<_PatientListView> {
     );
   }
 
-  // --- UI Build ---
   @override
   Widget build(BuildContext context) {
     bool isDesktop = MediaQuery.of(context).size.width > 768;
@@ -278,19 +259,15 @@ class _PatientListViewState extends State<_PatientListView> {
       backgroundColor: kScaffoldBg,
       body: BlocConsumer<PatientBloc, PatientState>(
         listenWhen: (previous, current) {
-          // Only listen to success/error states, not loading
           return current is PatientOperationSuccess || current is PatientError;
         },
         buildWhen: (previous, current) {
-          // Always rebuild when state changes, including filtered list updates
           if (previous is PatientListLoaded && current is PatientListLoaded) {
-            // Rebuild if filtered patients changed
             return previous.filteredPatients.length !=
                     current.filteredPatients.length ||
                 previous.searchQuery != current.searchQuery ||
                 previous.activeFilter != current.activeFilter;
           }
-          // Rebuild on state type changes
           return previous.runtimeType != current.runtimeType;
         },
         listener: (context, state) {
@@ -499,8 +476,6 @@ class _PatientListViewState extends State<_PatientListView> {
     );
   }
 
-  // --- WIDGET BUILDERS ---
-
   Widget _buildHeader() {
     return Container(
       width: double.infinity,
@@ -585,7 +560,6 @@ class _PatientListViewState extends State<_PatientListView> {
                   ),
                   textInputAction: TextInputAction.search,
                   onSubmitted: (value) {
-                    // Trigger search on enter/submit
                     context.read<PatientBloc>().add(SearchPatients(value));
                   },
                 );
@@ -595,7 +569,6 @@ class _PatientListViewState extends State<_PatientListView> {
           const SizedBox(width: 12),
           ElevatedButton.icon(
             onPressed: () {
-              // Manual search trigger
               context.read<PatientBloc>().add(
                 SearchPatients(_searchController.text),
               );
@@ -617,7 +590,6 @@ class _PatientListViewState extends State<_PatientListView> {
     );
   }
 
-  // Tampilan Daftar untuk Mobile (Futuristic Design)
   Widget _buildMobileList(List<Pasien> patients) {
     return ListView.separated(
       padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
@@ -653,11 +625,9 @@ class _PatientListViewState extends State<_PatientListView> {
                   extra: patient,
                 );
                 debugPrint('🔍 Returned from detail with result: $result');
-                
-                // Reload list jika ada perubahan data
+
                 if (result == true) {
                   debugPrint('✅ Scheduling patient list reload...');
-                  // Use addPostFrameCallback to ensure widget is mounted and built
                   WidgetsBinding.instance.addPostFrameCallback((_) {
                     if (mounted && context.mounted) {
                       debugPrint('✅ Triggering LoadPatients from list');
@@ -672,7 +642,6 @@ class _PatientListViewState extends State<_PatientListView> {
                 padding: const EdgeInsets.all(20.0),
                 child: Column(
                   children: [
-                    // Header dengan Avatar dan Info Utama
                     Row(
                       children: [
                         Container(
@@ -752,7 +721,6 @@ class _PatientListViewState extends State<_PatientListView> {
                     ),
                     const SizedBox(height: 20),
 
-                    // Info Details dengan Icon Modern
                     Container(
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
@@ -788,17 +756,16 @@ class _PatientListViewState extends State<_PatientListView> {
                     ),
                     const SizedBox(height: 20),
 
-                    // Action Buttons dengan Gradient - Conditional based on registration status
                     Container(
                       decoration: BoxDecoration(
                         gradient: LinearGradient(
                           colors: (patient.isRegistered ?? false)
                               ? [
-                                  const Color(0xFF3B82F6), // Blue for Edit
+                                  const Color(0xFF3B82F6),
                                   const Color(0xFF2563EB),
                                 ]
                               : [
-                                  kSecondaryColor, // Green for Register
+                                  kSecondaryColor,
                                   kSecondaryColor.withOpacity(0.8),
                                 ],
                         ),
@@ -851,7 +818,6 @@ class _PatientListViewState extends State<_PatientListView> {
                     ),
                     const SizedBox(height: 12),
 
-                    // Edit & Delete Buttons
                     Row(
                       children: [
                         Expanded(
@@ -947,7 +913,6 @@ class _PatientListViewState extends State<_PatientListView> {
     );
   }
 
-  // Tampilan Tabel untuk Desktop
   Widget _buildDesktopTable(List<Pasien> patients) {
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
@@ -1037,8 +1002,6 @@ class _PatientListViewState extends State<_PatientListView> {
     );
   }
 }
-
-// --- WIDGET HELPER ---
 
 class _ModernInfoRow extends StatelessWidget {
   final IconData icon;
@@ -1155,12 +1118,8 @@ class _RegistrationStatusBadge extends StatelessWidget {
   Widget build(BuildContext context) {
     final bool registered = isRegistered ?? false;
     final gradient = registered
-        ? const LinearGradient(
-            colors: [Color(0xFF22C55E), Color(0xFF16A34A)],
-          ) // Green
-        : const LinearGradient(
-            colors: [Color(0xFFF59E0B), Color(0xFFEA580C)],
-          ); // Orange
+        ? const LinearGradient(colors: [Color(0xFF22C55E), Color(0xFF16A34A)])
+        : const LinearGradient(colors: [Color(0xFFF59E0B), Color(0xFFEA580C)]);
     final icon = registered ? Icons.check_circle : Icons.pending;
     final text = registered ? 'Teregistrasi' : 'Belum';
 

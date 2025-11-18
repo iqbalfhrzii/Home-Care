@@ -8,7 +8,6 @@ import 'package:homecare_mobile/features/patients/presentation/bloc/patient_bloc
 import 'package:homecare_mobile/shared/app_injections.dart';
 import 'package:homecare_mobile/shared/local_db/app_database.dart' as db;
 
-// --- Palet Warna ---
 const Color kPrimaryColor = Color(0xFF004B8C);
 const Color kPrimaryLight = Color(0xFF0063B2);
 const Color kSecondaryColor = Color(0xFF8BC43E);
@@ -28,12 +27,10 @@ class PatientDetailPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Use singleton BLoC from getIt - same instance as list page
     return BlocProvider.value(
       value: getIt<PatientBloc>(),
       child: Builder(
         builder: (context) {
-          // Load patient detail if needed
           if (pasien == null && patientId != null) {
             context.read<PatientBloc>().add(LoadPatientDetail(patientId!));
           }
@@ -178,7 +175,6 @@ class _PatientDetailViewState extends State<_PatientDetailView> {
             ),
           );
         } else if (state is PatientDetailLoaded) {
-          // Update current patient and reload registration data
           setState(() {
             _currentPatient = state.patient;
           });
@@ -186,7 +182,6 @@ class _PatientDetailViewState extends State<_PatientDetailView> {
         }
       },
       builder: (context, state) {
-        // Use state patient or fallback to _currentPatient
         Pasien? currentPatient = _currentPatient;
 
         if (state is PatientDetailLoaded) {
@@ -260,7 +255,6 @@ class _PatientDetailViewState extends State<_PatientDetailView> {
 
         return WillPopScope(
           onWillPop: () async {
-            // Signal to reload patient list when going back
             Navigator.of(context).pop(true);
             return false;
           },
@@ -300,13 +294,18 @@ class _PatientDetailViewState extends State<_PatientDetailView> {
       backgroundColor: kPrimaryColor,
       foregroundColor: kWhite,
       flexibleSpace: FlexibleSpaceBar(
+        centerTitle: true,
+        titlePadding: const EdgeInsets.only(left: 16, right: 16, bottom: 16),
         title: Text(
           patient.nama,
           style: const TextStyle(
             color: kWhite,
             fontWeight: FontWeight.bold,
-            fontSize: 18,
+            fontSize: 16,
           ),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          textAlign: TextAlign.center,
         ),
         background: Container(
           decoration: const BoxDecoration(
@@ -316,41 +315,44 @@ class _PatientDetailViewState extends State<_PatientDetailView> {
               colors: [kPrimaryColor, kPrimaryLight],
             ),
           ),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const SizedBox(height: 60),
-              Container(
-                width: 80,
-                height: 80,
-                decoration: BoxDecoration(
-                  color: kWhite.withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: kWhite.withOpacity(0.3), width: 2),
+          child: SafeArea(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const SizedBox(height: 20),
+                Container(
+                  width: 65,
+                  height: 65,
+                  decoration: BoxDecoration(
+                    color: kWhite.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: kWhite.withOpacity(0.3), width: 2),
+                  ),
+                  child: const Icon(Icons.person, size: 36, color: kWhite),
                 ),
-                child: const Icon(Icons.person, size: 48, color: kWhite),
-              ),
-              const SizedBox(height: 12),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 6,
-                ),
-                decoration: BoxDecoration(
-                  color: kWhite.withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: kWhite.withOpacity(0.3)),
-                ),
-                child: Text(
-                  patient.noRm,
-                  style: const TextStyle(
-                    color: kWhite,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 5,
+                  ),
+                  decoration: BoxDecoration(
+                    color: kWhite.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: kWhite.withOpacity(0.3)),
+                  ),
+                  child: Text(
+                    patient.noRm,
+                    style: const TextStyle(
+                      color: kWhite,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
-              ),
-            ],
+                const SizedBox(height: 50),
+              ],
+            ),
           ),
         ),
       ),
@@ -640,20 +642,13 @@ class _PatientDetailViewState extends State<_PatientDetailView> {
 
     return Column(
       children: [
-        // Registrasi Button (Register or Edit)
         Container(
           width: double.infinity,
           decoration: BoxDecoration(
             gradient: LinearGradient(
               colors: isRegistered
-                  ? [
-                      const Color(0xFF3B82F6),
-                      const Color(0xFF2563EB),
-                    ] // Blue for Edit
-                  : [
-                      kSecondaryColor,
-                      kSecondaryColor.withOpacity(0.8),
-                    ], // Green for Register
+                  ? [const Color(0xFF3B82F6), const Color(0xFF2563EB)]
+                  : [kSecondaryColor, kSecondaryColor.withOpacity(0.8)],
             ),
             borderRadius: BorderRadius.circular(16),
             boxShadow: [
@@ -671,8 +666,6 @@ class _PatientDetailViewState extends State<_PatientDetailView> {
             child: InkWell(
               borderRadius: BorderRadius.circular(16),
               onTap: () async {
-                // Navigate to registration form
-                // If edit mode and has registration data, pass registration ID
                 final extra = {
                   'pasienId': patient.id,
                   'pasienNama': patient.nama,
@@ -685,17 +678,15 @@ class _PatientDetailViewState extends State<_PatientDetailView> {
                   '${AppRouter.patients}/register/${patient.id}',
                   extra: extra,
                 );
-                
+
                 debugPrint('🔍 Registration result from detail: $result');
-                
+
                 if (result != null && mounted) {
                   debugPrint('✅ Processing result: $result');
-                  
-                  // Reload patient data from database to get updated isRegistered
+
                   await _reloadPatientData(patient.id);
                   debugPrint('✅ Patient data reloaded');
 
-                  // Reload registration data
                   await _loadRegistrationData();
                   debugPrint('✅ Registration data reloaded');
 
@@ -708,11 +699,13 @@ class _PatientDetailViewState extends State<_PatientDetailView> {
                       backgroundColor = kSuccessColor;
                       break;
                     case 'updated':
-                      message = 'Registrasi untuk ${patient.nama} berhasil diupdate';
+                      message =
+                          'Registrasi untuk ${patient.nama} berhasil diupdate';
                       backgroundColor = kSuccessColor;
                       break;
                     case 'canceled':
-                      message = 'Registrasi untuk ${patient.nama} berhasil dibatalkan';
+                      message =
+                          'Registrasi untuk ${patient.nama} berhasil dibatalkan';
                       backgroundColor = Colors.orange;
                       break;
                     default:
@@ -763,10 +756,8 @@ class _PatientDetailViewState extends State<_PatientDetailView> {
         ),
         const SizedBox(height: 12),
 
-        // Edit & Delete Buttons
         Row(
           children: [
-            // Edit Button
             Expanded(
               child: Container(
                 decoration: BoxDecoration(

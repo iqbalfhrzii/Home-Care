@@ -462,32 +462,34 @@ class _ReportDetailTagihanPageState extends State<ReportDetailTagihanPage> {
                 children: [
                   const Text(
                     'Invoice',
-                    style: TextStyle(color: Colors.white70, fontSize: 14),
+                    style: TextStyle(color: Colors.white70, fontSize: 13),
                   ),
                   const SizedBox(height: 4),
                   Text(
                     _tagihan.noInvoice,
                     style: const TextStyle(
                       color: kWhite,
-                      fontSize: 24,
+                      fontSize: 20,
                       fontWeight: FontWeight.w800,
                     ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 6),
                   Container(
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 6,
+                      horizontal: 10,
+                      vertical: 5,
                     ),
                     decoration: BoxDecoration(
                       color: statusColor,
-                      borderRadius: BorderRadius.circular(20),
+                      borderRadius: BorderRadius.circular(16),
                     ),
                     child: Text(
                       _getStatusText(_tagihan.statusPembayaran),
                       style: const TextStyle(
                         color: kWhite,
-                        fontSize: 12,
+                        fontSize: 11,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
@@ -611,10 +613,12 @@ class _ReportDetailTagihanPageState extends State<ReportDetailTagihanPage> {
                 Text(
                   _tagihan.primaryIcd,
                   style: const TextStyle(
-                    fontSize: 14,
+                    fontSize: 13,
                     fontWeight: FontWeight.bold,
                     color: kTextDark,
                   ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ],
             ),
@@ -706,30 +710,41 @@ class _ReportDetailTagihanPageState extends State<ReportDetailTagihanPage> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Expanded(
+                flex: 3,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                       item.deskripsi,
                       style: const TextStyle(
-                        fontSize: 14,
+                        fontSize: 13,
                         fontWeight: FontWeight.w600,
                         color: kTextDark,
                       ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
                     ),
+                    const SizedBox(height: 2),
                     Text(
                       item.kodeLayanan,
-                      style: const TextStyle(fontSize: 12, color: kTextGrey),
+                      style: const TextStyle(fontSize: 11, color: kTextGrey),
                     ),
                   ],
                 ),
               ),
-              Text(
-                'Rp ${NumberFormat('#,###', 'id_ID').format(item.subtotal)}',
-                style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.bold,
-                  color: kTextDark,
+              const SizedBox(width: 8),
+              Flexible(
+                flex: 2,
+                child: Text(
+                  'Rp ${NumberFormat('#,###', 'id_ID').format(item.subtotal)}',
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.bold,
+                    color: kTextDark,
+                  ),
+                  textAlign: TextAlign.end,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
             ],
@@ -771,7 +786,7 @@ class _ReportDetailTagihanPageState extends State<ReportDetailTagihanPage> {
 
   Widget _buildSummaryCard() {
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
           begin: Alignment.topLeft,
@@ -793,6 +808,7 @@ class _ReportDetailTagihanPageState extends State<ReportDetailTagihanPage> {
             'Total Biaya',
             'Rp ${NumberFormat('#,###', 'id_ID').format(_tagihan.totalBiaya)}',
             isBold: true,
+            fontSize: 14,
             color: kWhite,
           ),
           if (_tagihan.deposit > 0) ...[
@@ -807,19 +823,21 @@ class _ReportDetailTagihanPageState extends State<ReportDetailTagihanPage> {
               'Sisa Pembayaran',
               'Rp ${NumberFormat('#,###', 'id_ID').format(_tagihan.sisaBiaya)}',
               isBold: true,
-              fontSize: 18,
+              fontSize: 16,
               color: kWhite,
             ),
           ],
-          const SizedBox(height: 12),
+          const SizedBox(height: 10),
           Text(
             _tagihan.terbilang,
             style: const TextStyle(
-              fontSize: 12,
+              fontSize: 11,
               color: Colors.white70,
               fontStyle: FontStyle.italic,
             ),
             textAlign: TextAlign.center,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
           ),
         ],
       ),
@@ -859,14 +877,28 @@ class _ReportDetailTagihanPageState extends State<ReportDetailTagihanPage> {
   Widget _buildInfoRow(String label, String value) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: const TextStyle(fontSize: 13, color: kTextGrey)),
-        Text(
-          value,
-          style: const TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w600,
-            color: kTextDark,
+        Expanded(
+          flex: 2,
+          child: Text(
+            label,
+            style: const TextStyle(fontSize: 13, color: kTextGrey),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          flex: 3,
+          child: Text(
+            value,
+            style: const TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: kTextDark,
+            ),
+            textAlign: TextAlign.end,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
           ),
         ),
       ],
@@ -892,29 +924,37 @@ class _ReportDetailTagihanPageState extends State<ReportDetailTagihanPage> {
             Expanded(
               child: OutlinedButton.icon(
                 onPressed: _copyToClipboard,
-                icon: const Icon(Icons.copy),
-                label: const Text('Salin'),
+                icon: const Icon(Icons.copy, size: 18),
+                label: const Text(
+                  'Salin',
+                  style: TextStyle(fontSize: 13),
+                ),
                 style: OutlinedButton.styleFrom(
                   foregroundColor: kPrimaryColor,
                   side: const BorderSide(color: kPrimaryColor),
-                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  padding: const EdgeInsets.symmetric(vertical: 12),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),
                   ),
                 ),
               ),
             ),
-            const SizedBox(width: 12),
+            const SizedBox(width: 8),
             Expanded(
               flex: 2,
               child: ElevatedButton.icon(
                 onPressed: _shareViaWhatsApp,
-                icon: const Icon(Icons.share),
-                label: const Text('Kirim via WhatsApp'),
+                icon: const Icon(Icons.share, size: 18),
+                label: const Text(
+                  'Kirim via WA',
+                  style: TextStyle(fontSize: 13),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF25D366),
                   foregroundColor: kWhite,
-                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),
                   ),

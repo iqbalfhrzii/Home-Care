@@ -140,10 +140,12 @@ class _ScheduleAnamnesaPageState extends State<ScheduleAnamnesaPage> {
       }
 
       // Update kunjungan progress
+      debugPrint('🔄 Updating kunjungan progress for ID: ${widget.kunjungan!.id}');
       await _database.updateKunjunganProgress(
         widget.kunjungan!.id,
         anamnesaDone: true,
       );
+      debugPrint('✅ Kunjungan progress updated');
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

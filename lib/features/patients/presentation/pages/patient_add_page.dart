@@ -274,8 +274,7 @@ class _PatientAddFormState extends State<_PatientAddForm> {
   Widget _buildHeader() {
     return Container(
       width: double.infinity,
-      height: 140,
-      padding: const EdgeInsets.fromLTRB(20, 50, 20, 20),
+      padding: const EdgeInsets.fromLTRB(20, 30, 20, 24),
       decoration: const BoxDecoration(
         borderRadius: BorderRadius.only(
           bottomLeft: Radius.circular(32),
@@ -294,36 +293,47 @@ class _PatientAddFormState extends State<_PatientAddForm> {
           ),
         ],
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              IconButton(
-                icon: const Icon(Icons.arrow_back, color: kWhite),
-                onPressed: () => context.pop(),
-              ),
-              const Expanded(
-                child: Text(
-                  'Tambah Pasien Baru',
-                  style: TextStyle(
-                    color: kWhite,
-                    fontSize: 22,
-                    fontWeight: FontWeight.w800,
+      child: SafeArea(
+        bottom: false,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.arrow_back, color: kWhite, size: 24),
+                  onPressed: () => context.pop(),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                ),
+                const SizedBox(width: 12),
+                const Expanded(
+                  child: Text(
+                    'Tambah Pasien Baru',
+                    style: TextStyle(
+                      color: kWhite,
+                      fontSize: 20,
+                      fontWeight: FontWeight.w700,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 4),
-          const Padding(
-            padding: EdgeInsets.only(left: 56),
-            child: Text(
-              'Lengkapi data pasien di bawah ini',
-              style: TextStyle(color: Colors.white70, fontSize: 14),
+              ],
             ),
-          ),
-        ],
+            const SizedBox(height: 8),
+            const Padding(
+              padding: EdgeInsets.only(left: 36),
+              child: Text(
+                'Lengkapi data pasien di bawah ini',
+                style: TextStyle(color: Colors.white70, fontSize: 13),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

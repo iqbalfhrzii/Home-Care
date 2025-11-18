@@ -280,11 +280,19 @@ class AppDatabase extends _$AppDatabase {
     bool? tindakanDone,
     bool? icdDone,
   }) async {
-    // Calculate progress step
+    // Get current kunjungan data
+    final currentKunjungan = await getKunjunganById(id);
+    if (currentKunjungan == null) return false;
+
+    // Calculate progress step based on current and new values
+    final currentAnamnesaDone = anamnesaDone ?? currentKunjungan.anamnesaDone;
+    final currentTindakanDone = tindakanDone ?? currentKunjungan.tindakanDone;
+    final currentIcdDone = icdDone ?? currentKunjungan.icdDone;
+
     int progressStep = 0;
-    if (anamnesaDone == true) progressStep++;
-    if (tindakanDone == true) progressStep++;
-    if (icdDone == true) progressStep++;
+    if (currentAnamnesaDone) progressStep++;
+    if (currentTindakanDone) progressStep++;
+    if (currentIcdDone) progressStep++;
 
     final companion = KunjungansCompanion(
       anamnesaDone:

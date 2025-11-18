@@ -15,6 +15,7 @@ const Color kTextGrey = Color(0xFF94A3B8);
 const Color kSuccessColor = Color(0xFF22C55E);
 const Color kWarningColor = Color(0xFFF59E0B);
 const Color kInfoColor = Color(0xFF3B82F6);
+const Color kDangerColor = Color(0xFFEF4444);
 
 // --- Data class untuk schedule item ---
 class ScheduleItem {
@@ -45,6 +46,12 @@ class _ScheduleListPageState extends State<ScheduleListPage> {
   DateTime? _selectedDate;
   final TextEditingController _dateController = TextEditingController();
   bool _isLoading = true;
+  String? _selectedStatus; // null = semua, 'belum', 'proses', 'selesai'
+  
+  int get _totalSchedules => _allSchedules.length;
+  int get _notStartedCount => _allSchedules.where((s) => (s.visit?.progressStep ?? 0) == 0).length;
+  int get _inProgressCount => _allSchedules.where((s) => (s.visit?.progressStep ?? 0) > 0 && (s.visit?.progressStep ?? 0) < 3).length;
+  int get _completedCount => _allSchedules.where((s) => s.visit?.progressStep == 3).length;
 
   @override
   void initState() {
@@ -98,17 +105,36 @@ class _ScheduleListPageState extends State<ScheduleListPage> {
   // --- Logika Filter (Disederhanakan) ---
   void _filterSchedules() {
     setState(() {
-      if (_selectedDate == null) {
-        _filteredSchedules = _allSchedules;
-        return;
+      var filtered = _allSchedules;
+
+      // Filter by date
+      if (_selectedDate != null) {
+        filtered = filtered.where((schedule) {
+          final scheduleDate = schedule.registration.tanggalKunjungan;
+          return (scheduleDate.year == _selectedDate!.year &&
+              scheduleDate.month == _selectedDate!.month &&
+              scheduleDate.day == _selectedDate!.day);
+        }).toList();
       }
 
-      _filteredSchedules = _allSchedules.where((schedule) {
-        final scheduleDate = schedule.registration.tanggalKunjungan;
-        return (scheduleDate.year == _selectedDate!.year &&
-            scheduleDate.month == _selectedDate!.month &&
-            scheduleDate.day == _selectedDate!.day);
-      }).toList();
+      // Filter by status
+      if (_selectedStatus != null) {
+        filtered = filtered.where((schedule) {
+          final progress = schedule.visit?.progressStep ?? 0;
+          switch (_selectedStatus) {
+            case 'belum':
+              return progress == 0;
+            case 'proses':
+              return progress > 0 && progress < 3;
+            case 'selesai':
+              return progress == 3;
+            default:
+              return true;
+          }
+        }).toList();
+      }
+
+      _filteredSchedules = filtered;
     });
   }
 
@@ -152,34 +178,35 @@ class _ScheduleListPageState extends State<ScheduleListPage> {
     _filterSchedules();
   }
 
+  void _selectStatusFilter(String? status) {
+    setState(() {
+      _selectedStatus = _selectedStatus == status ? null : status;
+    });
+    _filterSchedules();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: kScaffoldBg,
-      body: Stack(
+      body: Column(
         children: [
-          Column(
-            children: [
-              // 1. Header Futuristik
-              _buildHeader(),
-
-              // Spacer untuk memberi ruang bagi Filter yang floating
-              const SizedBox(height: 60),
-
-              // 3. List Jadwal
-              Expanded(
-                child: _isLoading
-                    ? const Center(
-                        child: CircularProgressIndicator(color: kPrimaryColor),
-                      )
-                    : _filteredSchedules.isEmpty
+          _buildHeader(),
+          if (!_isLoading) _buildStatusCards(),
+          _buildFilterSection(),
+          Expanded(
+            child: _isLoading
+                ? const Center(
+                    child: CircularProgressIndicator(color: kPrimaryColor),
+                  )
+                : _filteredSchedules.isEmpty
                     ? Center(
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
                             Icon(
                               Icons.calendar_today_outlined,
-                              size: 60,
+                              size: 64,
                               color: kTextGrey.withOpacity(0.5),
                             ),
                             const SizedBox(height: 16),
@@ -202,14 +229,9 @@ class _ScheduleListPageState extends State<ScheduleListPage> {
                         ),
                       )
                     : ListView.separated(
-                        padding: const EdgeInsets.fromLTRB(
-                          24,
-                          24,
-                          24,
-                          100,
-                        ), // Tambah padding atas
+                        padding: const EdgeInsets.all(24),
                         itemCount: _filteredSchedules.length,
-                        separatorBuilder: (_, __) => const SizedBox(height: 16),
+                        separatorBuilder: (_, __) => const SizedBox(height: 12),
                         itemBuilder: (context, index) {
                           final schedule = _filteredSchedules[index];
                           return _ScheduleCard(
@@ -222,32 +244,16 @@ class _ScheduleListPageState extends State<ScheduleListPage> {
                           );
                         },
                       ),
-              ),
-            ],
-          ),
-
-          // 2. Filter Section (Floating)
-          Positioned(
-            top: 130, // Posisi overlap dengan header
-            left: 24,
-            right: 24,
-            child: _FilterSection(
-              dateController: _dateController,
-              onDateTap: () => _pickDate(context),
-              onClearDate: _clearDateFilter,
-            ),
           ),
         ],
       ),
     );
   }
 
-  // --- WIDGET HEADER ---
   Widget _buildHeader() {
     return Container(
       width: double.infinity,
-      height: 180, // Tinggi header
-      padding: const EdgeInsets.fromLTRB(24, 60, 24, 0),
+      padding: const EdgeInsets.fromLTRB(24, 50, 24, 24),
       decoration: const BoxDecoration(
         borderRadius: BorderRadius.only(
           bottomLeft: Radius.circular(32),
@@ -266,144 +272,206 @@ class _ScheduleListPageState extends State<ScheduleListPage> {
           ),
         ],
       ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: const [
-                  Text(
+      child: SafeArea(
+        bottom: false,
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
                     'Kelola Jadwal',
                     style: TextStyle(color: Colors.white70, fontSize: 14),
                   ),
-                  SizedBox(width: 6),
-                  Icon(
-                    Icons.calendar_month_outlined,
-                    color: kSecondaryColor,
-                    size: 16,
+                  const SizedBox(height: 4),
+                  const Text(
+                    'Kunjungan Pasien',
+                    style: TextStyle(
+                      color: kWhite,
+                      fontSize: 20,
+                      fontWeight: FontWeight.w700,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ],
               ),
-              const SizedBox(height: 6),
-              const Text(
-                'Kunjungan Pasien',
-                style: TextStyle(
-                  color: kWhite,
-                  fontSize: 22,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 0.5,
-                ),
-              ),
-            ],
-          ),
-          Container(
-            decoration: BoxDecoration(
-              color: kWhite.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(12),
             ),
-            child: IconButton(
-              onPressed: _loadSchedules,
-              icon: const Icon(
-                Icons.refresh,
-                color: kWhite,
-                size: 26,
+            const SizedBox(width: 12),
+            Container(
+              decoration: BoxDecoration(
+                color: kWhite.withOpacity(0.15),
+                borderRadius: BorderRadius.circular(12),
               ),
+              child: IconButton(
+                onPressed: _loadSchedules,
+                icon: const Icon(
+                  Icons.refresh,
+                  color: kWhite,
+                  size: 22,
+                ),
+                padding: const EdgeInsets.all(8),
+                constraints: const BoxConstraints(),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+  
+  Widget _buildStatusCards() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      color: kWhite,
+      child: Row(
+        children: [
+          Expanded(
+            child: _buildStatusCard(
+              'Belum Mulai',
+              _notStartedCount.toString(),
+              kWarningColor,
+              Icons.schedule,
+              'belum',
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: _buildStatusCard(
+              'Proses',
+              _inProgressCount.toString(),
+              kInfoColor,
+              Icons.pending_actions,
+              'proses',
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: _buildStatusCard(
+              'Selesai',
+              _completedCount.toString(),
+              kSuccessColor,
+              Icons.check_circle,
+              'selesai',
             ),
           ),
         ],
       ),
     );
   }
-}
-
-// --- WIDGET FILTER (Disederhanakan) ---
-class _FilterSection extends StatelessWidget {
-  final TextEditingController dateController;
-  final VoidCallback onDateTap;
-  final VoidCallback onClearDate;
-
-  const _FilterSection({
-    required this.dateController,
-    required this.onDateTap,
-    required this.onClearDate,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(16.0),
-      decoration: BoxDecoration(
-        color: kWhite,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 15,
-            offset: const Offset(0, 5),
+  
+  Widget _buildStatusCard(
+    String label,
+    String value,
+    Color color,
+    IconData icon,
+    String statusKey,
+  ) {
+    final isSelected = _selectedStatus == statusKey;
+    
+    return GestureDetector(
+      onTap: () => _selectStatusFilter(statusKey),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 6),
+        decoration: BoxDecoration(
+          color: isSelected ? color : color.withOpacity(0.08),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isSelected ? color : color.withOpacity(0.2),
+            width: isSelected ? 2 : 1,
           ),
-        ],
+          boxShadow: isSelected ? [
+            BoxShadow(
+              color: color.withOpacity(0.3),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ] : null,
+        ),
+        child: Column(
+          children: [
+            Icon(
+              icon,
+              color: isSelected ? kWhite : color,
+              size: 18,
+            ),
+            const SizedBox(height: 4),
+            Text(
+              value,
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: isSelected ? kWhite : color,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 9,
+                color: isSelected ? kWhite : color.withOpacity(0.8),
+                fontWeight: FontWeight.w600,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Filter Berdasarkan Tanggal',
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w700,
-              color: kTextDark,
-            ),
+    );
+  }
+  
+  Widget _buildFilterSection() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      color: kWhite,
+      child: GestureDetector(
+        onTap: () => _pickDate(context),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          decoration: BoxDecoration(
+            color: kScaffoldBg,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: kTextGrey.withOpacity(0.2)),
           ),
-          const SizedBox(height: 12),
-          // Date Picker (Sekarang Full Width)
-          GestureDetector(
-            onTap: onDateTap,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
-              decoration: BoxDecoration(
-                color: kScaffoldBg,
-                borderRadius: BorderRadius.circular(12),
+          child: Row(
+            children: [
+              const Icon(
+                Icons.calendar_today,
+                size: 20,
+                color: kPrimaryColor,
               ),
-              child: Row(
-                children: [
-                  const Icon(
-                    Icons.calendar_today_rounded,
-                    size: 18,
-                    color: kPrimaryColor,
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  _dateController.text.isEmpty
+                      ? 'Pilih Tanggal Kunjungan'
+                      : _dateController.text,
+                  style: TextStyle(
+                    color: _dateController.text.isEmpty
+                        ? kTextGrey
+                        : kTextDark,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
                   ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      dateController.text.isEmpty
-                          ? 'Pilih Tanggal Kunjungan'
-                          : dateController.text,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: dateController.text.isEmpty
-                            ? kTextGrey
-                            : kTextDark,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ),
-                  if (dateController.text.isNotEmpty)
-                    GestureDetector(
-                      onTap: onClearDate,
-                      child: const Icon(
-                        Icons.close_rounded,
-                        size: 18,
-                        color: Colors.redAccent,
-                      ),
-                    ),
-                ],
+                ),
               ),
-            ),
+              if (_dateController.text.isNotEmpty)
+                GestureDetector(
+                  onTap: _clearDateFilter,
+                  child: Icon(
+                    Icons.close,
+                    size: 20,
+                    color: kDangerColor,
+                  ),
+                ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
@@ -450,173 +518,200 @@ class _ScheduleCard extends StatelessWidget {
     final progress = schedule.visit?.progressStep ?? 0;
     final status = schedule.visit?.status ?? 'terjadwal';
 
-    return InkWell(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: kWhite,
-          borderRadius: BorderRadius.circular(20),
-          boxShadow: [
-            BoxShadow(
-              color: kPrimaryColor.withOpacity(0.05), // Bayangan biru
-              blurRadius: 10,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        child: Column(
-          children: [
-            Row(
+    return Container(
+      margin: const EdgeInsets.only(bottom: 0),
+      decoration: BoxDecoration(
+        color: kWhite,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: kTextGrey.withOpacity(0.15)),
+        boxShadow: [
+          BoxShadow(
+            color: kPrimaryColor.withOpacity(0.04),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(16),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
               children: [
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: kSecondaryColor.withOpacity(0.1),
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(
-                    Icons.person_rounded,
-                    color: kSecondaryColor,
-                    size: 24,
-                  ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        schedule.patient.nama,
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: kTextDark,
+                Row(
+                  children: [
+                    Container(
+                      width: 50,
+                      height: 50,
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [kPrimaryColor, kPrimaryLight],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: Center(
+                        child: Text(
+                          schedule.patient.nama.isNotEmpty
+                              ? schedule.patient.nama[0].toUpperCase()
+                              : 'P',
+                          style: const TextStyle(
+                            color: kWhite,
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                       ),
-                      const SizedBox(height: 4),
-                      Row(
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Icon(
-                            Icons.badge_outlined,
-                            size: 12,
-                            color: kTextGrey,
+                          Text(
+                            schedule.patient.nama,
+                            style: const TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600,
+                              color: kTextDark,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 4),
+                          Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 3,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: kPrimaryColor.withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: Text(
+                                  schedule.patient.noRm,
+                                  style: const TextStyle(
+                                    fontSize: 11,
+                                    color: kPrimaryColor,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                    // Progress Badge
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: _getProgressColor(progress).withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.checklist,
+                            color: _getProgressColor(progress),
+                            size: 14,
                           ),
                           const SizedBox(width: 4),
                           Text(
-                            schedule.patient.noRm,
+                            '$progress/3',
+                            style: TextStyle(
+                              color: _getProgressColor(progress),
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                // Divider
+                LayoutBuilder(
+                  builder: (BuildContext context, BoxConstraints constraints) {
+                    final boxWidth = constraints.constrainWidth();
+                    const dashWidth = 6.0;
+                    final dashCount = (boxWidth / (2 * dashWidth)).floor();
+                    return Flex(
+                      children: List.generate(dashCount, (_) {
+                        return SizedBox(
+                          width: dashWidth,
+                          height: 1,
+                          child: DecoratedBox(
+                            decoration: BoxDecoration(color: Colors.grey.shade300),
+                          ),
+                        );
+                      }),
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      direction: Axis.horizontal,
+                    );
+                  },
+                ),
+                const SizedBox(height: 16),
+                // Baris Tanggal & Status
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: BoxDecoration(
+                        color: kPrimaryColor.withOpacity(0.05),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Icon(
+                        Icons.calendar_month_rounded,
+                        color: kPrimaryColor,
+                        size: 16,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            DateFormat(
+                              'EEEE, d MMMM yyyy',
+                              'id_ID',
+                            ).format(schedule.registration.tanggalKunjungan),
                             style: const TextStyle(
-                              fontSize: 12,
+                              fontSize: 13,
+                              color: kTextDark,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            '${schedule.registration.jamKunjungan} • ${_getStatusText(status)}',
+                            style: const TextStyle(
+                              fontSize: 11,
                               color: kTextGrey,
                             ),
                           ),
                         ],
                       ),
-                    ],
-                  ),
-                ),
-                // Progress Badge
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: _getProgressColor(progress).withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.checklist,
-                        color: _getProgressColor(progress),
-                        size: 14,
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        '$progress/3',
-                        style: TextStyle(
-                          color: _getProgressColor(progress),
-                          fontSize: 11,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ],
-                  ),
+                    ),
+                    const Icon(
+                      Icons.arrow_forward_ios_rounded,
+                      size: 14,
+                      color: kTextGrey,
+                    ),
+                  ],
                 ),
               ],
             ),
-            const SizedBox(height: 16),
-            // Divider
-            LayoutBuilder(
-              builder: (BuildContext context, BoxConstraints constraints) {
-                final boxWidth = constraints.constrainWidth();
-                const dashWidth = 6.0;
-                final dashCount = (boxWidth / (2 * dashWidth)).floor();
-                return Flex(
-                  children: List.generate(dashCount, (_) {
-                    return SizedBox(
-                      width: dashWidth,
-                      height: 1,
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(color: Colors.grey.shade300),
-                      ),
-                    );
-                  }),
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  direction: Axis.horizontal,
-                );
-              },
-            ),
-            const SizedBox(height: 16),
-            // Baris Tanggal & Status
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(6),
-                  decoration: BoxDecoration(
-                    color: kPrimaryColor.withOpacity(0.05),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: const Icon(
-                    Icons.calendar_month_rounded,
-                    color: kPrimaryColor,
-                    size: 16,
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        DateFormat(
-                          'EEEE, d MMMM yyyy',
-                          'id_ID',
-                        ).format(schedule.registration.tanggalKunjungan),
-                        style: const TextStyle(
-                          fontSize: 13,
-                          color: kTextDark,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        '${schedule.registration.jamKunjungan} • ${_getStatusText(status)}',
-                        style: const TextStyle(
-                          fontSize: 11,
-                          color: kTextGrey,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const Icon(
-                  Icons.arrow_forward_ios_rounded,
-                  size: 14,
-                  color: kTextGrey,
-                ),
-              ],
-            ),
-          ],
+          ),
         ),
       ),
     );

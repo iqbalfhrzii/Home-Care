@@ -283,8 +283,16 @@ class _ScheduleIcdPageState extends State<ScheduleIcdPage> {
       body: Column(
         children: [
           _buildHeader(),
-          if (_selectedIcds.isNotEmpty) _buildSelectedSection(),
-          Expanded(child: _buildSearchSection()),
+          Expanded(
+            child: SingleChildScrollView(
+              child: Column(
+                children: [
+                  if (_selectedIcds.isNotEmpty) _buildSelectedSection(),
+                  _buildSearchSection(),
+                ],
+              ),
+            ),
+          ),
         ],
       ),
       bottomNavigationBar: _buildBottomButton(),
@@ -535,6 +543,7 @@ class _ScheduleIcdPageState extends State<ScheduleIcdPage> {
 
   Widget _buildSearchSection() {
     return Column(
+      mainAxisSize: MainAxisSize.min,
       children: [
         Padding(
           padding: const EdgeInsets.all(16.0),
@@ -560,7 +569,10 @@ class _ScheduleIcdPageState extends State<ScheduleIcdPage> {
             ),
           ),
         ),
-        Expanded(
+        Container(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.of(context).size.height * 0.4,
+          ),
           child: _filteredIcds.isEmpty
               ? Center(
                   child: Column(

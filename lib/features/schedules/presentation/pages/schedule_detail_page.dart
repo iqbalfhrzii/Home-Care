@@ -21,10 +21,7 @@ const Color kInfoColor = Color(0xFF3B82F6);
 class ScheduleDetailPage extends StatefulWidget {
   final int registrationId;
 
-  const ScheduleDetailPage({
-    super.key,
-    required this.registrationId,
-  });
+  const ScheduleDetailPage({super.key, required this.registrationId});
 
   @override
   State<ScheduleDetailPage> createState() => _ScheduleDetailPageState();
@@ -48,7 +45,9 @@ class _ScheduleDetailPageState extends State<ScheduleDetailPage> {
   Future<void> _loadData() async {
     setState(() => _isLoading = true);
     try {
-      final registration = await _database.getRegistrasiById(widget.registrationId);
+      final registration = await _database.getRegistrasiById(
+        widget.registrationId,
+      );
       if (registration == null) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -60,10 +59,13 @@ class _ScheduleDetailPageState extends State<ScheduleDetailPage> {
       }
 
       final patient = await _database.getPasienById(registration.pasienId);
-      db.Kunjungan? visit = await _database.getKunjunganByRegistrasiId(widget.registrationId);
+      db.Kunjungan? visit = await _database.getKunjunganByRegistrasiId(
+        widget.registrationId,
+      );
 
       if (visit == null) {
-        final noKunjungan = 'VST-${DateFormat('yyyyMMdd').format(DateTime.now())}-${DateTime.now().millisecondsSinceEpoch.toString().substring(8)}';
+        final noKunjungan =
+            'VST-${DateFormat('yyyyMMdd').format(DateTime.now())}-${DateTime.now().millisecondsSinceEpoch.toString().substring(8)}';
         final visitId = await _database.insertKunjungan(
           db.KunjungansCompanion(
             noKunjungan: drift.Value(noKunjungan),
@@ -79,6 +81,10 @@ class _ScheduleDetailPageState extends State<ScheduleDetailPage> {
         );
         visit = await _database.getKunjunganById(visitId);
       }
+
+      debugPrint(
+        '✅ Loaded visit data: anamnesaDone=${visit?.anamnesaDone}, tindakanDone=${visit?.tindakanDone}, icdDone=${visit?.icdDone}, progressStep=${visit?.progressStep}',
+      );
 
       if (mounted) {
         setState(() {
@@ -165,7 +171,7 @@ class _ScheduleDetailPageState extends State<ScheduleDetailPage> {
       flexibleSpace: FlexibleSpaceBar(
         title: Text(
           'Kunjungan ${_patient!.nama}',
-          style: const TextStyle(fontSize: 16),
+          style: const TextStyle(fontSize: 16, color: kWhite),
         ),
         background: Container(
           decoration: const BoxDecoration(
@@ -287,11 +293,7 @@ class _ScheduleDetailPageState extends State<ScheduleDetailPage> {
             _formatDate(_registration!.tanggalKunjungan),
           ),
           const SizedBox(height: 12),
-          _buildInfoRow(
-            Icons.access_time,
-            'Jam',
-            _registration!.jamKunjungan,
-          ),
+          _buildInfoRow(Icons.access_time, 'Jam', _registration!.jamKunjungan),
           const SizedBox(height: 12),
           _buildInfoRow(
             Icons.medical_services,
@@ -401,10 +403,7 @@ class _ScheduleDetailPageState extends State<ScheduleDetailPage> {
               ),
               Text(
                 subtitle,
-                style: const TextStyle(
-                  fontSize: 12,
-                  color: kTextGrey,
-                ),
+                style: const TextStyle(fontSize: 12, color: kTextGrey),
               ),
             ],
           ),
@@ -427,8 +426,12 @@ class _ScheduleDetailPageState extends State<ScheduleDetailPage> {
           kInfoColor,
           anamnesaDone,
           () {
-            context.push('/schedules/detail/${widget.registrationId}/anamnesa',
-                extra: _visit).then((_) => _loadData());
+            context
+                .push(
+                  '/schedules/detail/${widget.registrationId}/anamnesa',
+                  extra: _visit,
+                )
+                .then((_) => _loadData());
           },
         ),
         const SizedBox(height: 12),
@@ -439,8 +442,12 @@ class _ScheduleDetailPageState extends State<ScheduleDetailPage> {
           const Color(0xFF8B5CF6),
           tindakanDone,
           () {
-            context.push('/schedules/detail/${widget.registrationId}/tindakan',
-                extra: _visit).then((_) => _loadData());
+            context
+                .push(
+                  '/schedules/detail/${widget.registrationId}/tindakan',
+                  extra: _visit,
+                )
+                .then((_) => _loadData());
           },
         ),
         const SizedBox(height: 12),
@@ -451,8 +458,12 @@ class _ScheduleDetailPageState extends State<ScheduleDetailPage> {
           kSuccessColor,
           icdDone,
           () {
-            context.push('/schedules/detail/${widget.registrationId}/icd',
-                extra: _visit).then((_) => _loadData());
+            context
+                .push(
+                  '/schedules/detail/${widget.registrationId}/icd',
+                  extra: _visit,
+                )
+                .then((_) => _loadData());
           },
         ),
       ],
