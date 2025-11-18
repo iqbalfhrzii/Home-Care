@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-// Import halaman detail. Pastikan file ini ada dan class 'Schedule' didefinisikan di sana.
-import 'package:homecare_mobile/features/schedules/presentation/pages/schedule_page.dart';
+import 'package:go_router/go_router.dart';
+import 'package:homecare_mobile/shared/app_injections.dart';
+import 'package:homecare_mobile/shared/local_db/app_database.dart' as db;
 
 // --- Palet Warna Baru (Futuristic) ---
 const Color kPrimaryColor = Color(0xFF004B8C); // Deep Blue
@@ -11,10 +12,22 @@ const Color kScaffoldBg = Color(0xFFF5F7FA); // Cool White Background
 const Color kWhite = Colors.white;
 const Color kTextDark = Color(0xFF1E293B);
 const Color kTextGrey = Color(0xFF94A3B8);
+const Color kSuccessColor = Color(0xFF22C55E);
+const Color kWarningColor = Color(0xFFF59E0B);
+const Color kInfoColor = Color(0xFF3B82F6);
 
-// --- 1. Model Data ---
-// Diasumsikan class Schedule diimpor dari 'schedule_page.dart'
-// Jika tidak, Anda bisa letakkan class Schedule di file model terpisah.
+// --- Data class untuk schedule item ---
+class ScheduleItem {
+  final db.Registrasi registration;
+  final db.Pasien patient;
+  final db.Kunjungan? visit;
+
+  ScheduleItem({
+    required this.registration,
+    required this.patient,
+    this.visit,
+  });
+}
 
 class ScheduleListPage extends StatefulWidget {
   const ScheduleListPage({super.key});
@@ -24,49 +37,20 @@ class ScheduleListPage extends StatefulWidget {
 }
 
 class _ScheduleListPageState extends State<ScheduleListPage> {
-  // --- Data Dummy (Hanya yang 'disetujui') ---
-  final List<Schedule> _allSchedules = [
-    Schedule(
-      patientName: 'Ahmad Santoso',
-      rmNumber: 'RM-2024-001',
-      date: DateTime(2024, 11, 8),
-      status: 'disetujui',
-    ),
-    Schedule(
-      patientName: 'Budi Hartono',
-      rmNumber: 'RM-2024-003',
-      date: DateTime(2024, 11, 9),
-      status: 'disetujui',
-    ),
-    Schedule(
-      patientName: 'Rudi Setiawan',
-      rmNumber: 'RM-2024-005',
-      date: DateTime(2024, 11, 10),
-      status: 'disetujui',
-    ),
-    Schedule(
-      patientName: 'Linda Wijaya',
-      rmNumber: 'RM-2024-006',
-      date: DateTime(2024, 11, 10),
-      status: 'disetujui',
-    ),
-    Schedule(
-      patientName: 'Maya Sari',
-      rmNumber: 'RM-2024-008',
-      date: DateTime(2024, 11, 11),
-      status: 'disetujui',
-    ),
-  ];
-
+  late final db.AppDatabase _database;
+  
   // --- State ---
-  List<Schedule> _filteredSchedules = [];
+  List<ScheduleItem> _allSchedules = [];
+  List<ScheduleItem> _filteredSchedules = [];
   DateTime? _selectedDate;
   final TextEditingController _dateController = TextEditingController();
+  bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
-    _filteredSchedules = _allSchedules;
+    _database = getIt<db.AppDatabase>();
+    _loadSchedules();
   }
 
   @override
@@ -75,20 +59,55 @@ class _ScheduleListPageState extends State<ScheduleListPage> {
     super.dispose();
   }
 
+  Future<void> _loadSchedules() async {
+    setState(() => _isLoading = true);
+    try {
+      final registrations = await _database.getAllRegistrasis();
+      final List<ScheduleItem> schedules = [];
+
+      for (final reg in registrations) {
+        final patient = await _database.getPasienById(reg.pasienId);
+        if (patient == null || !patient.isRegistered) continue;
+
+        final visit = await _database.getKunjunganByRegistrasiId(reg.id);
+        schedules.add(ScheduleItem(
+          registration: reg,
+          patient: patient,
+          visit: visit,
+        ));
+      }
+
+      schedules.sort((a, b) => b.registration.tanggalKunjungan
+          .compareTo(a.registration.tanggalKunjungan));
+
+      if (mounted) {
+        setState(() {
+          _allSchedules = schedules;
+          _filteredSchedules = schedules;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('❌ Error loading schedules: $e');
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
   // --- Logika Filter (Disederhanakan) ---
   void _filterSchedules() {
     setState(() {
       if (_selectedDate == null) {
-        _filteredSchedules =
-            _allSchedules; // Tampilkan semua jika tanggal kosong
+        _filteredSchedules = _allSchedules;
         return;
       }
 
       _filteredSchedules = _allSchedules.where((schedule) {
-        // Filter berdasarkan Tanggal
-        return (schedule.date.year == _selectedDate!.year &&
-            schedule.date.month == _selectedDate!.month &&
-            schedule.date.day == _selectedDate!.day);
+        final scheduleDate = schedule.registration.tanggalKunjungan;
+        return (scheduleDate.year == _selectedDate!.year &&
+            scheduleDate.month == _selectedDate!.month &&
+            scheduleDate.day == _selectedDate!.day);
       }).toList();
     });
   }
@@ -149,7 +168,11 @@ class _ScheduleListPageState extends State<ScheduleListPage> {
 
               // 3. List Jadwal
               Expanded(
-                child: _filteredSchedules.isEmpty
+                child: _isLoading
+                    ? const Center(
+                        child: CircularProgressIndicator(color: kPrimaryColor),
+                      )
+                    : _filteredSchedules.isEmpty
                     ? Center(
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
@@ -189,7 +212,14 @@ class _ScheduleListPageState extends State<ScheduleListPage> {
                         separatorBuilder: (_, __) => const SizedBox(height: 16),
                         itemBuilder: (context, index) {
                           final schedule = _filteredSchedules[index];
-                          return _ScheduleCard(schedule: schedule);
+                          return _ScheduleCard(
+                            schedule: schedule,
+                            onTap: () {
+                              context.push(
+                                '/schedules/detail/${schedule.registration.id}',
+                              ).then((_) => _loadSchedules());
+                            },
+                          );
                         },
                       ),
               ),
@@ -275,9 +305,9 @@ class _ScheduleListPageState extends State<ScheduleListPage> {
               borderRadius: BorderRadius.circular(12),
             ),
             child: IconButton(
-              onPressed: () {},
+              onPressed: _loadSchedules,
               icon: const Icon(
-                Icons.notifications_outlined,
+                Icons.refresh,
                 color: kWhite,
                 size: 26,
               ),
@@ -379,19 +409,49 @@ class _FilterSection extends StatelessWidget {
   }
 }
 
-// --- WIDGET CARD JADWAL (Badge Dihilangkan) ---
+// --- WIDGET CARD JADWAL ---
 class _ScheduleCard extends StatelessWidget {
-  final Schedule schedule;
-  const _ScheduleCard({required this.schedule});
+  final ScheduleItem schedule;
+  final VoidCallback onTap;
+  const _ScheduleCard({required this.schedule, required this.onTap});
+
+  Color _getProgressColor(int progress) {
+    switch (progress) {
+      case 0:
+        return kWarningColor;
+      case 1:
+        return kInfoColor;
+      case 2:
+        return const Color(0xFF8B5CF6);
+      case 3:
+        return kSuccessColor;
+      default:
+        return kTextGrey;
+    }
+  }
+
+  String _getStatusText(String? status) {
+    switch (status) {
+      case 'terjadwal':
+        return 'Terjadwal';
+      case 'dalam_proses':
+        return 'Berlangsung';
+      case 'selesai':
+        return 'Selesai';
+      case 'dibatalkan':
+        return 'Dibatalkan';
+      default:
+        return 'Terjadwal';
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
+    final progress = schedule.visit?.progressStep ?? 0;
+    final status = schedule.visit?.status ?? 'terjadwal';
+
     return InkWell(
-      onTap: () {
-        Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => SchedulePage(schedule: schedule)),
-        );
-      },
+      onTap: onTap,
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
@@ -427,7 +487,7 @@ class _ScheduleCard extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        schedule.patientName,
+                        schedule.patient.nama,
                         style: const TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.bold,
@@ -444,7 +504,7 @@ class _ScheduleCard extends StatelessWidget {
                           ),
                           const SizedBox(width: 4),
                           Text(
-                            schedule.rmNumber,
+                            schedule.patient.noRm,
                             style: const TextStyle(
                               fontSize: 12,
                               color: kTextGrey,
@@ -455,7 +515,33 @@ class _ScheduleCard extends StatelessWidget {
                     ],
                   ),
                 ),
-                // Badge Status Dihilangkan
+                // Progress Badge
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: _getProgressColor(progress).withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.checklist,
+                        color: _getProgressColor(progress),
+                        size: 14,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        '$progress/3',
+                        style: TextStyle(
+                          color: _getProgressColor(progress),
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ],
             ),
             const SizedBox(height: 16),
@@ -481,7 +567,7 @@ class _ScheduleCard extends StatelessWidget {
               },
             ),
             const SizedBox(height: 16),
-            // Baris Tanggal
+            // Baris Tanggal & Status
             Row(
               children: [
                 Container(
@@ -497,18 +583,32 @@ class _ScheduleCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 10),
-                Text(
-                  DateFormat(
-                    'EEEE, d MMMM yyyy',
-                    'id_ID',
-                  ).format(schedule.date),
-                  style: const TextStyle(
-                    fontSize: 13,
-                    color: kTextDark,
-                    fontWeight: FontWeight.w500,
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        DateFormat(
+                          'EEEE, d MMMM yyyy',
+                          'id_ID',
+                        ).format(schedule.registration.tanggalKunjungan),
+                        style: const TextStyle(
+                          fontSize: 13,
+                          color: kTextDark,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        '${schedule.registration.jamKunjungan} • ${_getStatusText(status)}',
+                        style: const TextStyle(
+                          fontSize: 11,
+                          color: kTextGrey,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                const Spacer(),
                 const Icon(
                   Icons.arrow_forward_ios_rounded,
                   size: 14,

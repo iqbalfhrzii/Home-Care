@@ -238,7 +238,8 @@ class _RegistrationFormPageState extends State<RegistrationFormPage> {
             ),
           );
 
-          context.pop(true); // Return true to signal success
+          // Return specific action to signal success and trigger refresh in caller
+          context.pop(widget.isEdit ? 'updated' : 'created');
         }
       } catch (e) {
         debugPrint('❌ Error saving registration: $e');
@@ -250,6 +251,80 @@ class _RegistrationFormPageState extends State<RegistrationFormPage> {
             ),
           );
         }
+      }
+    }
+  }
+
+  Future<void> _cancelRegistration() async {
+    // Show confirmation dialog
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Batalkan Registrasi?'),
+        content: const Text(
+          'Apakah Anda yakin ingin membatalkan registrasi kunjungan ini? Data registrasi akan dihapus.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Tidak'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+            ),
+            child: const Text('Ya, Batalkan'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    try {
+      final database = getIt<db.AppDatabase>();
+      
+      // Delete registration data
+      if (widget.registrasiId != null) {
+        await database.deleteRegistrasi(widget.registrasiId!);
+        debugPrint('✅ Registration deleted with ID: ${widget.registrasiId}');
+      }
+
+      // Update patient isRegistered flag to false
+      if (widget.pasienId != null) {
+        final repository = getIt<PasienRepository>();
+        final pasienIdInt = int.tryParse(widget.pasienId!);
+        if (pasienIdInt != null) {
+          // Update isRegistered to false in database
+          final pasienCompanion = db.PasiensCompanion(
+            isRegistered: drift.Value(false),
+          );
+          await database.updatePasien(pasienIdInt, pasienCompanion);
+          debugPrint('✅ Patient marked as not registered');
+        }
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Registrasi berhasil dibatalkan'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+
+        // Return 'canceled' to signal success and trigger refresh
+        context.pop('canceled');
+      }
+    } catch (e) {
+      debugPrint('❌ Error canceling registration: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Gagal membatalkan registrasi: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
       }
     }
   }
@@ -708,44 +783,103 @@ class _RegistrationFormPageState extends State<RegistrationFormPage> {
       padding: const EdgeInsets.all(
         16.0,
       ).copyWith(bottom: MediaQuery.of(context).padding.bottom + 16),
-      child: Row(
-        children: [
-          Expanded(
-            child: OutlinedButton.icon(
-              onPressed: () => context.pop(),
-              icon: const Icon(Icons.close),
-              label: const Text('Batal'),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: kTextGrey,
-                side: BorderSide(color: kTextGrey.withOpacity(0.3)),
-                minimumSize: const Size(double.infinity, 48),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
+      child: widget.isEdit
+          ? Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Batalkan Registrasi button (only in edit mode)
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: _cancelRegistration,
+                    icon: const Icon(Icons.cancel),
+                    label: const Text('Batalkan Registrasi'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.red,
+                      side: const BorderSide(color: Colors.red),
+                      minimumSize: const Size(double.infinity, 48),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                  ),
                 ),
-              ),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            flex: 2,
-            child: ElevatedButton.icon(
-              onPressed: _submitRegistration,
-              icon: const Icon(Icons.check),
-              label: Text(
-                widget.isEdit ? 'Update Registrasi' : 'Simpan Registrasi',
-              ),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: kPrimaryColor,
-                foregroundColor: kWhite,
-                minimumSize: const Size(double.infinity, 48),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
+                const SizedBox(height: 12),
+                // Batal & Update buttons
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: () => context.pop(),
+                        icon: const Icon(Icons.close),
+                        label: const Text('Batal'),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: kTextGrey,
+                          side: BorderSide(color: kTextGrey.withOpacity(0.3)),
+                          minimumSize: const Size(double.infinity, 48),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      flex: 2,
+                      child: ElevatedButton.icon(
+                        onPressed: _submitRegistration,
+                        icon: const Icon(Icons.check),
+                        label: const Text('Update Registrasi'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: kPrimaryColor,
+                          foregroundColor: kWhite,
+                          minimumSize: const Size(double.infinity, 48),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-              ),
+              ],
+            )
+          : Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () => context.pop(),
+                    icon: const Icon(Icons.close),
+                    label: const Text('Batal'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: kTextGrey,
+                      side: BorderSide(color: kTextGrey.withOpacity(0.3)),
+                      minimumSize: const Size(double.infinity, 48),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  flex: 2,
+                  child: ElevatedButton.icon(
+                    onPressed: _submitRegistration,
+                    icon: const Icon(Icons.check),
+                    label: const Text('Simpan Registrasi'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: kPrimaryColor,
+                      foregroundColor: kWhite,
+                      minimumSize: const Size(double.infinity, 48),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
-          ),
-        ],
-      ),
     );
   }
 }

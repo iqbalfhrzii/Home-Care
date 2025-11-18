@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:intl/intl.dart';
+import 'package:homecare_mobile/shared/app_injections.dart';
+import 'package:homecare_mobile/shared/local_db/app_database.dart' as db;
+import 'package:drift/drift.dart' as drift;
 
 const Color kPrimaryColor = Color(0xFF004B8C);
 const Color kPrimaryLight = Color(0xFF0063B2);
@@ -9,6 +13,7 @@ const Color kTextDark = Color(0xFF1E293B);
 const Color kTextGrey = Color(0xFF94A3B8);
 const Color kSuccessColor = Color(0xFF22C55E);
 const Color kWarningColor = Color(0xFFF59E0B);
+const Color kDangerColor = Color(0xFFEF4444);
 
 class TindakanItem {
   final String id;
@@ -39,18 +44,21 @@ class TindakanItem {
 }
 
 class ScheduleTindakanPage extends StatefulWidget {
-  final String? registrasiId;
+  final db.Kunjungan? kunjungan;
   final VoidCallback? onCompleted;
 
-  const ScheduleTindakanPage({super.key, this.registrasiId, this.onCompleted});
+  const ScheduleTindakanPage({super.key, this.kunjungan, this.onCompleted});
 
   @override
   State<ScheduleTindakanPage> createState() => _ScheduleTindakanPageState();
 }
 
 class _ScheduleTindakanPageState extends State<ScheduleTindakanPage> {
+  late final db.AppDatabase _database;
   final TextEditingController _searchController = TextEditingController();
   final List<TindakanItem> _selectedTindakan = [];
+  bool _isLoading = false;
+  bool _isSaving = false;
 
   // Mock data - nanti diganti dengan API call
   final List<TindakanItem> _allTindakan = [
@@ -110,8 +118,39 @@ class _ScheduleTindakanPageState extends State<ScheduleTindakanPage> {
   @override
   void initState() {
     super.initState();
+    _database = getIt<db.AppDatabase>();
     _filteredTindakan = _allTindakan;
     _searchController.addListener(_filterTindakan);
+    _loadExistingTindakan();
+  }
+
+  Future<void> _loadExistingTindakan() async {
+    if (widget.kunjungan == null) return;
+
+    setState(() => _isLoading = true);
+    try {
+      final tindakans = await _database.getTindakansByKunjunganId(widget.kunjungan!.id);
+      
+      setState(() {
+        _selectedTindakan.clear();
+        for (var tindakan in tindakans) {
+          _selectedTindakan.add(TindakanItem(
+            id: tindakan.id.toString(),
+            kode: tindakan.kodeTindakan,
+            namaTindakan: tindakan.namaTindakan,
+            kategori: 'Tindakan',
+            harga: tindakan.hargaSatuan,
+            jumlah: tindakan.jumlah,
+            hargaSatuan: tindakan.hargaSatuan,
+            keterangan: tindakan.keterangan ?? '',
+          ));
+        }
+        _isLoading = false;
+      });
+    } catch (e) {
+      debugPrint('❌ Error loading tindakan: $e');
+      setState(() => _isLoading = false);
+    }
   }
 
   @override
@@ -269,7 +308,7 @@ class _ScheduleTindakanPageState extends State<ScheduleTindakanPage> {
     return _selectedTindakan.fold(0, (sum, item) => sum + item.subtotal);
   }
 
-  void _saveTindakan() {
+  Future<void> _saveTindakan() async {
     if (_selectedTindakan.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -280,23 +319,75 @@ class _ScheduleTindakanPageState extends State<ScheduleTindakanPage> {
       return;
     }
 
-    // TODO: Save to API
-    debugPrint('Saving ${_selectedTindakan.length} tindakan');
-    debugPrint('Total biaya: Rp $_totalBiaya');
+    if (widget.kunjungan == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Data kunjungan tidak valid'),
+          backgroundColor: kDangerColor,
+        ),
+      );
+      return;
+    }
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('${_selectedTindakan.length} tindakan berhasil disimpan'),
-        backgroundColor: kSuccessColor,
-      ),
-    );
+    setState(() => _isSaving = true);
 
-    // Panggil callback jika ada (dari visit flow)
-    if (widget.onCompleted != null) {
-      widget.onCompleted!();
-    } else {
-      // Jika tidak ada callback, pop dengan result
-      Navigator.pop(context, _selectedTindakan);
+    try {
+      // Delete existing tindakan
+      final existingTindakan = await _database.getTindakansByKunjunganId(widget.kunjungan!.id);
+      for (var tindakan in existingTindakan) {
+        await _database.deleteTindakanKunjungan(tindakan.id);
+      }
+
+      // Insert new tindakan
+      for (var tindakan in _selectedTindakan) {
+        await _database.insertTindakanKunjungan(
+          db.TindakanKunjungansCompanion(
+            kunjunganId: drift.Value(widget.kunjungan!.id),
+            kodeTindakan: drift.Value(tindakan.kode),
+            namaTindakan: drift.Value(tindakan.namaTindakan),
+            jumlah: drift.Value(tindakan.jumlah),
+            hargaSatuan: drift.Value(tindakan.hargaSatuan),
+            totalHarga: drift.Value(tindakan.subtotal),
+            keterangan: drift.Value(tindakan.keterangan),
+          ),
+        );
+      }
+
+      // Update kunjungan progress
+      await _database.updateKunjunganProgress(
+        widget.kunjungan!.id,
+        tindakanDone: true,
+      );
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('${_selectedTindakan.length} tindakan berhasil disimpan'),
+            backgroundColor: kSuccessColor,
+          ),
+        );
+
+        // Panggil callback jika ada (dari visit flow)
+        if (widget.onCompleted != null) {
+          widget.onCompleted!();
+        }
+        
+        Navigator.pop(context, true);
+      }
+    } catch (e) {
+      debugPrint('❌ Error saving tindakan: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: $e'),
+            backgroundColor: kDangerColor,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isSaving = false);
+      }
     }
   }
 
@@ -769,9 +860,18 @@ class _ScheduleTindakanPageState extends State<ScheduleTindakanPage> {
             ),
           const SizedBox(height: 12),
           ElevatedButton.icon(
-            onPressed: _saveTindakan,
-            icon: const Icon(Icons.save),
-            label: Text('Simpan ${_selectedTindakan.length} Tindakan'),
+            onPressed: _isSaving ? null : _saveTindakan,
+            icon: _isSaving
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: kWhite,
+                    ),
+                  )
+                : const Icon(Icons.save),
+            label: Text(_isSaving ? 'Menyimpan...' : 'Simpan ${_selectedTindakan.length} Tindakan'),
             style: ElevatedButton.styleFrom(
               backgroundColor: kPrimaryColor,
               foregroundColor: kWhite,

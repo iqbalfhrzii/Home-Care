@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:homecare_mobile/shared/app_injections.dart';
+import 'package:homecare_mobile/shared/local_db/app_database.dart' as db;
+import 'package:drift/drift.dart' as drift;
 
 const Color kPrimaryColor = Color(0xFF004B8C);
 const Color kPrimaryLight = Color(0xFF0063B2);
@@ -8,6 +11,7 @@ const Color kTextDark = Color(0xFF1E293B);
 const Color kTextGrey = Color(0xFF94A3B8);
 const Color kSuccessColor = Color(0xFF22C55E);
 const Color kWarningColor = Color(0xFFF59E0B);
+const Color kDangerColor = Color(0xFFEF4444);
 
 class IcdItem {
   final String id;
@@ -26,18 +30,21 @@ class IcdItem {
 }
 
 class ScheduleIcdPage extends StatefulWidget {
-  final String? registrasiId;
+  final db.Kunjungan? kunjungan;
   final VoidCallback? onCompleted;
 
-  const ScheduleIcdPage({super.key, this.registrasiId, this.onCompleted});
+  const ScheduleIcdPage({super.key, this.kunjungan, this.onCompleted});
 
   @override
   State<ScheduleIcdPage> createState() => _ScheduleIcdPageState();
 }
 
 class _ScheduleIcdPageState extends State<ScheduleIcdPage> {
+  late final db.AppDatabase _database;
   final TextEditingController _searchController = TextEditingController();
   final List<IcdItem> _selectedIcds = [];
+  bool _isLoading = false;
+  bool _isSaving = false;
 
   // Mock data - nanti diganti dengan API call
   final List<IcdItem> _allIcds = [
@@ -84,8 +91,36 @@ class _ScheduleIcdPageState extends State<ScheduleIcdPage> {
   @override
   void initState() {
     super.initState();
+    _database = getIt<db.AppDatabase>();
     _filteredIcds = _allIcds;
     _searchController.addListener(_filterIcds);
+    _loadExistingDiagnosas();
+  }
+
+  Future<void> _loadExistingDiagnosas() async {
+    if (widget.kunjungan == null) return;
+
+    setState(() => _isLoading = true);
+    try {
+      final diagnosas = await _database.getDiagnosasByKunjunganId(widget.kunjungan!.id);
+      
+      setState(() {
+        _selectedIcds.clear();
+        for (var diagnosa in diagnosas) {
+          _selectedIcds.add(IcdItem(
+            id: diagnosa.id.toString(),
+            kode: diagnosa.kodeIcd,
+            namaPenyakit: diagnosa.namaIcd,
+            deskripsi: diagnosa.namaIcd,
+            isPrimary: diagnosa.isPrimary,
+          ));
+        }
+        _isLoading = false;
+      });
+    } catch (e) {
+      debugPrint('❌ Error loading diagnosas: $e');
+      setState(() => _isLoading = false);
+    }
   }
 
   @override
@@ -161,7 +196,7 @@ class _ScheduleIcdPageState extends State<ScheduleIcdPage> {
     });
   }
 
-  void _saveIcds() {
+  Future<void> _saveIcds() async {
     if (_selectedIcds.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -172,28 +207,72 @@ class _ScheduleIcdPageState extends State<ScheduleIcdPage> {
       return;
     }
 
-    // TODO: Save to API
-    final primaryIcd = _selectedIcds.firstWhere(
-      (icd) => icd.isPrimary,
-      orElse: () => _selectedIcds.first,
-    );
+    if (widget.kunjungan == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Data kunjungan tidak valid'),
+          backgroundColor: kDangerColor,
+        ),
+      );
+      return;
+    }
 
-    debugPrint('Saving ${_selectedIcds.length} ICDs');
-    debugPrint('Primary ICD: ${primaryIcd.kode} - ${primaryIcd.namaPenyakit}');
+    setState(() => _isSaving = true);
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('${_selectedIcds.length} ICD berhasil disimpan'),
-        backgroundColor: kSuccessColor,
-      ),
-    );
+    try {
+      // Delete existing diagnosas
+      final existingDiagnosas = await _database.getDiagnosasByKunjunganId(widget.kunjungan!.id);
+      for (var diagnosa in existingDiagnosas) {
+        await _database.deleteDiagnosa(diagnosa.id);
+      }
 
-    // Panggil callback jika ada (dari visit flow)
-    if (widget.onCompleted != null) {
-      widget.onCompleted!();
-    } else {
-      // Jika tidak ada callback, pop dengan result
-      Navigator.pop(context, _selectedIcds);
+      // Insert new diagnosas
+      for (var icd in _selectedIcds) {
+        await _database.insertDiagnosa(
+          db.DiagnosasCompanion(
+            kunjunganId: drift.Value(widget.kunjungan!.id),
+            kodeIcd: drift.Value(icd.kode),
+            namaIcd: drift.Value(icd.namaPenyakit),
+            isPrimary: drift.Value(icd.isPrimary),
+          ),
+        );
+      }
+
+      // Update kunjungan progress
+      await _database.updateKunjunganProgress(
+        widget.kunjungan!.id,
+        icdDone: true,
+      );
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('${_selectedIcds.length} ICD berhasil disimpan'),
+            backgroundColor: kSuccessColor,
+          ),
+        );
+
+        // Panggil callback jika ada (dari visit flow)
+        if (widget.onCompleted != null) {
+          widget.onCompleted!();
+        }
+        
+        Navigator.pop(context, true);
+      }
+    } catch (e) {
+      debugPrint('❌ Error saving diagnosas: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: $e'),
+            backgroundColor: kDangerColor,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isSaving = false);
+      }
     }
   }
 
@@ -617,9 +696,18 @@ class _ScheduleIcdPageState extends State<ScheduleIcdPage> {
         16.0,
       ).copyWith(bottom: MediaQuery.of(context).padding.bottom + 16),
       child: ElevatedButton.icon(
-        onPressed: _saveIcds,
-        icon: const Icon(Icons.save),
-        label: Text('Simpan ${_selectedIcds.length} ICD'),
+        onPressed: _isSaving ? null : _saveIcds,
+        icon: _isSaving
+            ? const SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: kWhite,
+                ),
+              )
+            : const Icon(Icons.save),
+        label: Text(_isSaving ? 'Menyimpan...' : 'Simpan ${_selectedIcds.length} ICD'),
         style: ElevatedButton.styleFrom(
           backgroundColor: kPrimaryColor,
           foregroundColor: kWhite,

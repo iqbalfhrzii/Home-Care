@@ -17,6 +17,11 @@ import 'package:homecare_mobile/features/patients/domain/models/pasien.dart';
 import 'package:homecare_mobile/features/patients/presentation/pages/patient_add_page.dart';
 import 'package:homecare_mobile/features/patients/presentation/pages/patient_edit_page.dart';
 import 'package:homecare_mobile/features/patients/presentation/pages/registration_form_page.dart';
+import 'package:homecare_mobile/features/schedules/presentation/pages/schedule_detail_page.dart';
+import 'package:homecare_mobile/features/schedules/presentation/pages/schedule_anamnesa_page.dart';
+import 'package:homecare_mobile/features/schedules/presentation/pages/schedule_tindakan_page.dart';
+import 'package:homecare_mobile/features/schedules/presentation/pages/schedule_icd_pages.dart';
+import 'package:homecare_mobile/shared/local_db/app_database.dart' as db;
 
 class AppRouter {
   static const String splash = '/';
@@ -72,6 +77,40 @@ class AppRouter {
                   final id = int.parse(state.pathParameters['id']!);
                   return SchedulePage(id: id);
                 },
+              ),
+              GoRoute(
+                path: 'detail/:id',
+                name: 'scheduleDetail',
+                builder: (context, state) {
+                  final id = int.parse(state.pathParameters['id']!);
+                  return ScheduleDetailPage(registrationId: id);
+                },
+                routes: [
+                  GoRoute(
+                    path: 'anamnesa',
+                    name: 'scheduleAnamnesa',
+                    builder: (context, state) {
+                      final kunjungan = state.extra as db.Kunjungan?;
+                      return ScheduleAnamnesaPage(kunjungan: kunjungan);
+                    },
+                  ),
+                  GoRoute(
+                    path: 'tindakan',
+                    name: 'scheduleTindakan',
+                    builder: (context, state) {
+                      final kunjungan = state.extra as db.Kunjungan?;
+                      return ScheduleTindakanPage(kunjungan: kunjungan);
+                    },
+                  ),
+                  GoRoute(
+                    path: 'icd',
+                    name: 'scheduleIcd',
+                    builder: (context, state) {
+                      final kunjungan = state.extra as db.Kunjungan?;
+                      return ScheduleIcdPage(kunjungan: kunjungan);
+                    },
+                  ),
+                ],
               ),
             ],
           ),

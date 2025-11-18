@@ -7,6 +7,7 @@ import 'package:homecare_mobile/core/router/app_router.dart';
 import 'package:homecare_mobile/features/patients/domain/models/pasien.dart';
 import 'package:homecare_mobile/features/patients/presentation/bloc/patient_bloc.dart';
 import 'package:homecare_mobile/shared/app_injections.dart';
+import 'package:homecare_mobile/shared/local_db/app_database.dart' as db;
 
 // --- Palet Warna Baru ---
 const Color kPrimaryColor = Color(0xFF004B8C); // Deep Blue
@@ -145,23 +146,82 @@ class _PatientListViewState extends State<_PatientListView> {
           backgroundColor: kSuccessColor,
         ),
       );
-      context.read<PatientBloc>().add(const RefreshPatients());
+      // Small delay to ensure database is updated
+      await Future.delayed(const Duration(milliseconds: 150));
+      // Force reload to get latest data
+      context.read<PatientBloc>().add(const LoadPatients());
     }
   }
 
   void _onRegisterPatient(Pasien patient) async {
-    final result = await context.push<bool>(
+    final isRegistered = patient.isRegistered ?? false;
+    int? registrasiId;
+
+    // If patient is already registered, load registration data
+    if (isRegistered) {
+      try {
+        final database = getIt<db.AppDatabase>();
+        final pasienIdInt = int.tryParse(patient.id);
+        if (pasienIdInt != null) {
+          final registration = await database.getLatestRegistrasiByPasienId(pasienIdInt);
+          registrasiId = registration?.id;
+        }
+      } catch (e) {
+        debugPrint('❌ Error loading registration: $e');
+      }
+    }
+
+    final result = await context.push<String>(
       '${AppRouter.patients}/register/${patient.id}',
-      extra: {'pasienId': patient.id, 'pasienNama': patient.nama},
+      extra: {
+        'pasienId': patient.id,
+        'pasienNama': patient.nama,
+        if (registrasiId != null) 'registrasiId': registrasiId,
+        if (isRegistered) 'isEdit': true,
+      },
     );
 
-    if (result == true && mounted) {
+    debugPrint('🔍 Registration result: $result');
+    
+    if (result != null && mounted) {
+      debugPrint('✅ Processing registration result: $result');
+      
+      // Small delay to ensure database is updated
+      await Future.delayed(const Duration(milliseconds: 150));
+
+      // Reload patient list to update counter and registration status
+      context.read<PatientBloc>().add(const LoadPatients());
+      debugPrint('✅ LoadPatients event triggered');
+
+      String message;
+      Color backgroundColor;
+
+      switch (result) {
+        case 'created':
+          message = 'Registrasi untuk ${patient.nama} berhasil';
+          backgroundColor = kSuccessColor;
+          break;
+        case 'updated':
+          message = 'Registrasi untuk ${patient.nama} berhasil diupdate';
+          backgroundColor = kSuccessColor;
+          break;
+        case 'canceled':
+          message = 'Registrasi untuk ${patient.nama} berhasil dibatalkan';
+          backgroundColor = Colors.orange;
+          break;
+        default:
+          message = 'Operasi berhasil';
+          backgroundColor = kSuccessColor;
+      }
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Registrasi untuk ${patient.nama} berhasil'),
-          backgroundColor: kSuccessColor,
+          content: Text(message),
+          backgroundColor: backgroundColor,
         ),
       );
+    } else {
+      debugPrint('❌ Result is null or not mounted');
     }
   }
 
@@ -587,13 +647,25 @@ class _PatientListViewState extends State<_PatientListView> {
             child: InkWell(
               borderRadius: BorderRadius.circular(24),
               onTap: () async {
+                debugPrint('🔍 Navigating to patient detail: ${patient.id}');
                 final result = await context.push<bool>(
                   '${AppRouter.patients}/${patient.id}',
                   extra: patient,
                 );
-                // Reload list jika ada perubahan data (preserve search/filter)
-                if (result == true && context.mounted) {
-                  context.read<PatientBloc>().add(const RefreshPatients());
+                debugPrint('🔍 Returned from detail with result: $result');
+                
+                // Reload list jika ada perubahan data
+                if (result == true) {
+                  debugPrint('✅ Scheduling patient list reload...');
+                  // Use addPostFrameCallback to ensure widget is mounted and built
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    if (mounted && context.mounted) {
+                      debugPrint('✅ Triggering LoadPatients from list');
+                      context.read<PatientBloc>().add(const LoadPatients());
+                    }
+                  });
+                } else {
+                  debugPrint('❌ Not reloading: result=$result');
                 }
               },
               child: Padding(

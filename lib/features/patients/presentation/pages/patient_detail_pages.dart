@@ -28,15 +28,18 @@ class PatientDetailPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return BlocProvider(
-      create: (context) {
-        final bloc = getIt<PatientBloc>();
-        if (pasien == null && patientId != null) {
-          bloc.add(LoadPatientDetail(patientId!));
-        }
-        return bloc;
-      },
-      child: _PatientDetailView(initialPatient: pasien),
+    // Use singleton BLoC from getIt - same instance as list page
+    return BlocProvider.value(
+      value: getIt<PatientBloc>(),
+      child: Builder(
+        builder: (context) {
+          // Load patient detail if needed
+          if (pasien == null && patientId != null) {
+            context.read<PatientBloc>().add(LoadPatientDetail(patientId!));
+          }
+          return _PatientDetailView(initialPatient: pasien);
+        },
+      ),
     );
   }
 }
@@ -53,15 +56,17 @@ class _PatientDetailView extends StatefulWidget {
 class _PatientDetailViewState extends State<_PatientDetailView> {
   db.Registrasi? _latestRegistration;
   bool _loadingRegistration = false;
+  Pasien? _currentPatient;
 
   @override
   void initState() {
     super.initState();
+    _currentPatient = widget.initialPatient;
     _loadRegistrationData();
   }
 
   Future<void> _loadRegistrationData() async {
-    final patient = widget.initialPatient;
+    final patient = _currentPatient ?? widget.initialPatient;
     if (patient == null) return;
 
     setState(() => _loadingRegistration = true);
@@ -84,6 +89,38 @@ class _PatientDetailViewState extends State<_PatientDetailView> {
       if (mounted) {
         setState(() => _loadingRegistration = false);
       }
+    }
+  }
+
+  Future<void> _reloadPatientData(String patientId) async {
+    try {
+      final database = getIt<db.AppDatabase>();
+      final pasienIdInt = int.tryParse(patientId);
+      if (pasienIdInt != null) {
+        final patient = await database.getPasienById(pasienIdInt);
+        if (patient != null && mounted) {
+          setState(() {
+            _currentPatient = Pasien(
+              id: patient.id.toString(),
+              noRm: patient.noRm,
+              nama: patient.nama,
+              nik: patient.nik,
+              noBpjs: patient.noBpjs,
+              tempatLahir: patient.tempatLahir,
+              tanggalLahir: patient.tanggalLahir.toIso8601String(),
+              jenisKelamin: patient.jenisKelamin,
+              golonganDarah: patient.golonganDarah,
+              alamat: patient.alamat,
+              noTelp: patient.noTelp,
+              isRegistered: patient.isRegistered,
+              createdAt: patient.createdAt.toIso8601String(),
+              updatedAt: patient.updatedAt.toIso8601String(),
+            );
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint('❌ Error reloading patient: $e');
     }
   }
 
@@ -141,12 +178,16 @@ class _PatientDetailViewState extends State<_PatientDetailView> {
             ),
           );
         } else if (state is PatientDetailLoaded) {
-          // Reload registration data when patient detail is reloaded
+          // Update current patient and reload registration data
+          setState(() {
+            _currentPatient = state.patient;
+          });
           _loadRegistrationData();
         }
       },
       builder: (context, state) {
-        Pasien? currentPatient = widget.initialPatient;
+        // Use state patient or fallback to _currentPatient
+        Pasien? currentPatient = _currentPatient;
 
         if (state is PatientDetailLoaded) {
           currentPatient = state.patient;
@@ -219,7 +260,7 @@ class _PatientDetailViewState extends State<_PatientDetailView> {
 
         return WillPopScope(
           onWillPop: () async {
-            // Reload patient list saat kembali
+            // Signal to reload patient list when going back
             Navigator.of(context).pop(true);
             return false;
           },
@@ -640,29 +681,55 @@ class _PatientDetailViewState extends State<_PatientDetailView> {
                   if (hasRegistrationData) 'isEdit': true,
                 };
 
-                final result = await context.push<bool>(
+                final result = await context.push<String>(
                   '${AppRouter.patients}/register/${patient.id}',
                   extra: extra,
                 );
-                if (result == true && context.mounted) {
-                  // Reload patient detail to show updated registration status
-                  context.read<PatientBloc>().add(
-                    LoadPatientDetail(patient.id),
-                  );
+                
+                debugPrint('🔍 Registration result from detail: $result');
+                
+                if (result != null && mounted) {
+                  debugPrint('✅ Processing result: $result');
+                  
+                  // Reload patient data from database to get updated isRegistered
+                  await _reloadPatientData(patient.id);
+                  debugPrint('✅ Patient data reloaded');
 
-                  // Also refresh the patient list to update counters
-                  context.read<PatientBloc>().add(const RefreshPatients());
+                  // Reload registration data
+                  await _loadRegistrationData();
+                  debugPrint('✅ Registration data reloaded');
 
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        isRegistered
-                            ? 'Registrasi untuk ${patient.nama} berhasil diupdate'
-                            : 'Registrasi untuk ${patient.nama} berhasil',
+                  String message;
+                  Color backgroundColor;
+
+                  switch (result) {
+                    case 'created':
+                      message = 'Registrasi untuk ${patient.nama} berhasil';
+                      backgroundColor = kSuccessColor;
+                      break;
+                    case 'updated':
+                      message = 'Registrasi untuk ${patient.nama} berhasil diupdate';
+                      backgroundColor = kSuccessColor;
+                      break;
+                    case 'canceled':
+                      message = 'Registrasi untuk ${patient.nama} berhasil dibatalkan';
+                      backgroundColor = Colors.orange;
+                      break;
+                    default:
+                      message = 'Operasi berhasil';
+                      backgroundColor = kSuccessColor;
+                  }
+
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(message),
+                        backgroundColor: backgroundColor,
                       ),
-                      backgroundColor: kSuccessColor,
-                    ),
-                  );
+                    );
+                  }
+                } else {
+                  debugPrint('❌ Result is null or widget not mounted');
                 }
               },
               child: Padding(
@@ -716,9 +783,13 @@ class _PatientDetailViewState extends State<_PatientDetailView> {
                         extra: patient,
                       );
                       if (result == true && context.mounted) {
+                        // Reload patient detail to update UI
                         context.read<PatientBloc>().add(
                           LoadPatientDetail(patient.id),
                         );
+                        // Small delay then refresh list
+                        await Future.delayed(const Duration(milliseconds: 150));
+                        context.read<PatientBloc>().add(const LoadPatients());
                       }
                     },
                     child: Padding(

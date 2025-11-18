@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:homecare_mobile/features/schedules/presentation/pages/visit_flow_page.dart';
 
-// --- Modern Design System Colors ---
+// --- Modern Design System Colors  ---
 const Color kPrimaryColor = Color(0xFF004B8C);
 const Color kPrimaryLight = Color(0xFF0063B2);
 const Color kAccentColor = Color(0xFF3F51B5);
@@ -221,45 +220,6 @@ class SchedulePage extends StatelessWidget {
           ),
 
           const SizedBox(height: 16),
-
-          // --- Tombol Mulai Kunjungan (Terintegrasi) ---
-          Container(
-            margin: const EdgeInsets.only(bottom: 16),
-            child: ElevatedButton.icon(
-              onPressed: () {
-                // Navigate to integrated visit flow
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => VisitFlowPage(
-                      registrasiId:
-                          int.tryParse(
-                            schedule.rmNumber.replaceAll(RegExp(r'[^0-9]'), ''),
-                          ) ??
-                          0,
-                      patientName: schedule.patientName,
-                      noRm: schedule.rmNumber,
-                    ),
-                  ),
-                );
-              },
-              icon: const Icon(Icons.play_arrow, size: 24),
-              label: const Text(
-                'Mulai Kunjungan (3 Langkah)',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-              ),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: kPrimaryColor,
-                foregroundColor: kWhiteColor,
-                minimumSize: const Size(double.infinity, 56),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                elevation: 2,
-              ),
-            ),
-          ),
-
-          // --- Section Title ---
           Row(
             children: [
               Container(

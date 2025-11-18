@@ -51,14 +51,24 @@ class Registrasis extends Table {
 class Kunjungans extends Table {
   IntColumn get id => integer().autoIncrement()();
   TextColumn get noKunjungan => text().withLength(min: 1, max: 50)();
+  IntColumn get registrasiId =>
+      integer().references(Registrasis, #id)(); // Link to registration
   IntColumn get pasienId => integer().references(Pasiens, #id)();
   DateTimeColumn get tanggalKunjungan => dateTime()();
+  TextColumn get jamMulai => text().nullable()(); // Start time HH:mm
+  TextColumn get jamSelesai => text().nullable()(); // End time HH:mm
   TextColumn get status => text().withDefault(
-    const Constant('dalam_proses'),
-  )(); // dalam_proses, selesai
+    const Constant('terjadwal'),
+  )(); // terjadwal, dalam_proses, selesai, dibatalkan
+  BoolColumn get anamnesaDone =>
+      boolean().withDefault(const Constant(false))(); // Step 1
+  BoolColumn get tindakanDone =>
+      boolean().withDefault(const Constant(false))(); // Step 2
+  BoolColumn get icdDone =>
+      boolean().withDefault(const Constant(false))(); // Step 3
   IntColumn get progressStep => integer().withDefault(
     const Constant(0),
-  )(); // 0-3 (0=baru, 1=anamnesa, 2=diagnosa, 3=tindakan)
+  )(); // 0-3 calculated from flags above
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
   DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
 }
@@ -139,7 +149,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_openConnection());
 
   @override
-  int get schemaVersion => 5; // Added registrasis table
+  int get schemaVersion => 6; // Updated Kunjungans with registrasiId and progress flags
 
   // CRUD operations for Pasiens
   Future<List<Pasien>> getAllPasiens() => select(pasiens).get();
@@ -237,6 +247,23 @@ class AppDatabase extends _$AppDatabase {
     return (select(kunjungans)..where((k) => k.status.equals(status))).get();
   }
 
+  Future<Kunjungan?> getKunjunganByRegistrasiId(int registrasiId) =>
+      (select(kunjungans)..where((k) => k.registrasiId.equals(registrasiId)))
+          .getSingleOrNull();
+
+  Future<List<Kunjungan>> getTodayKunjungans() {
+    final now = DateTime.now();
+    final startOfDay = DateTime(now.year, now.month, now.day);
+    final endOfDay = DateTime(now.year, now.month, now.day, 23, 59, 59);
+
+    return (select(kunjungans)
+          ..where((k) => k.tanggalKunjungan.isBetweenValues(
+                startOfDay,
+                endOfDay,
+              )))
+        .get();
+  }
+
   Future<int> insertKunjungan(KunjungansCompanion companion) =>
       into(kunjungans).insert(companion);
 
@@ -245,6 +272,31 @@ class AppDatabase extends _$AppDatabase {
       kunjungans,
     )..where((k) => k.id.equals(id))).write(companion);
     return updated > 0;
+  }
+
+  Future<bool> updateKunjunganProgress(
+    int id, {
+    bool? anamnesaDone,
+    bool? tindakanDone,
+    bool? icdDone,
+  }) async {
+    // Calculate progress step
+    int progressStep = 0;
+    if (anamnesaDone == true) progressStep++;
+    if (tindakanDone == true) progressStep++;
+    if (icdDone == true) progressStep++;
+
+    final companion = KunjungansCompanion(
+      anamnesaDone:
+          anamnesaDone != null ? Value(anamnesaDone) : const Value.absent(),
+      tindakanDone:
+          tindakanDone != null ? Value(tindakanDone) : const Value.absent(),
+      icdDone: icdDone != null ? Value(icdDone) : const Value.absent(),
+      progressStep: Value(progressStep),
+      updatedAt: Value(DateTime.now()),
+    );
+
+    return updateKunjungan(id, companion);
   }
 
   // ========== ANAMNESA OPERATIONS ==========
@@ -345,6 +397,18 @@ class AppDatabase extends _$AppDatabase {
         if (from == 3 && to >= 4) {
           // Add new tables for kunjungan system
           await migrator.createAll();
+        }
+        if (from < 6 && to >= 6) {
+          // Update Kunjungans table with registrasiId and progress flags
+          // Drop and recreate for simplicity in development
+          await migrator.drop(kunjungans);
+          await migrator.drop(anamnesas);
+          await migrator.drop(diagnosas);
+          await migrator.drop(tindakanKunjungans);
+          await migrator.createTable(kunjungans);
+          await migrator.createTable(anamnesas);
+          await migrator.createTable(diagnosas);
+          await migrator.createTable(tindakanKunjungans);
         }
       },
     );

@@ -21,8 +21,9 @@ class PatientAddPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return BlocProvider(
-      create: (context) => getIt<PatientBloc>(),
+    // Use singleton BLoC from getIt - same instance as list page
+    return BlocProvider.value(
+      value: getIt<PatientBloc>(),
       child: const _PatientAddForm(),
     );
   }
