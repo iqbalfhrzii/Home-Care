@@ -3,6 +3,8 @@ import 'package:go_router/go_router.dart';
 import 'package:homecare_mobile/core/router/app_router.dart';
 import 'package:intl/intl.dart';
 import 'package:homecare_mobile/features/auth/presentation/widgets/logout_confirmation_dialog.dart';
+import 'package:homecare_mobile/shared/app_injections.dart';
+import 'package:homecare_mobile/shared/local_db/app_database.dart' as db;
 
 // --- Palet Warna Baru ---
 const Color kPrimaryColor = Color(0xFF004B8C); // Deep Blue
@@ -52,6 +54,18 @@ class NotificationInfo {
   });
 }
 
+class UpcomingVisit {
+  final db.Registrasi registration;
+  final db.Pasien patient;
+  final db.Kunjungan? visit;
+
+  UpcomingVisit({
+    required this.registration,
+    required this.patient,
+    this.visit,
+  });
+}
+
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
 
@@ -62,82 +76,177 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   late DateTime _selectedDate;
   List<DateTime> _weekDays = [];
+  late final db.AppDatabase _database;
+  List<UpcomingVisit> _upcomingVisits = [];
+  bool _isLoadingVisits = true;
 
-  // --- Mock Data (Diambil dari React) ---
-  final List<NotificationInfo> notifications = [
-    NotificationInfo(
-      id: '1',
-      icon: Icons.home_work_outlined, // HomeIcon
-      title: 'Kunjungan ke rumah Akmal',
-      subtitle: 'RM-2024-002',
-      type: 'visit',
-    ),
-    NotificationInfo(
-      id: '2',
-      icon: Icons.playlist_add_check_rounded, // ClipboardCheck
-      title: 'Input Anamnesa Akmal',
-      subtitle: 'REG-2024-003 - Belum diisi',
-      type: 'anamnesa',
-    ),
-  ];
+  // Stats data
+  int _totalPatients = 0;
+  int _totalVisits = 0;
+  bool _isLoadingStats = true;
 
-  final List<StatInfo> stats = [
-    StatInfo(
-      id: 1,
-      label: 'Total Pasien',
-      value: '45',
-      change: '+12%',
-      trend: 'up',
-      icon: Icons.people_outline, // Users
-      gradient: const LinearGradient(
-        colors: [Color(0xFF3B82F6), Color(0xFF2563EB)],
-      ),
-      shadow: const Color(0xFF3B82F6).withOpacity(0.3),
-    ),
-    StatInfo(
-      id: 2,
-      label: 'Kunjungan Hari Ini',
-      value: '8',
-      change: '+5',
-      trend: 'up',
-      icon: Icons.playlist_add_check_rounded, // ClipboardCheck
-      gradient: const LinearGradient(
-        colors: [Color(0xFF22C55E), Color(0xFF16A34A)],
-      ),
-      shadow: const Color(0xFF22C55E).withOpacity(0.3),
-    ),
-    StatInfo(
-      id: 3,
-      label: 'Tagihan Pending',
-      value: '3',
-      change: '-2',
-      trend: 'down',
-      icon: Icons.article_outlined, // FileText
-      gradient: const LinearGradient(
-        colors: [Color(0xFFF97316), Color(0xFFEA580C)],
-      ),
-      shadow: const Color(0xFFF97316).withOpacity(0.3),
-    ),
-    StatInfo(
-      id: 4,
-      label: 'Data Lengkap',
-      value: '75%',
-      change: '+8%',
-      trend: 'up',
-      icon: Icons.monitor_heart_outlined, // Activity
-      gradient: const LinearGradient(
-        colors: [Color(0xFFA855F7), Color(0xFF9333EA)],
-      ),
-      shadow: const Color(0xFFA855F7).withOpacity(0.3),
-    ),
-  ];
-  // --- Akhir Mock Data ---
+  // Notifications data
+  List<NotificationInfo> _notifications = [];
+  bool _isLoadingNotifications = true;
 
   @override
   void initState() {
     super.initState();
+    _database = getIt<db.AppDatabase>();
     _selectedDate = DateTime.now();
     _weekDays = _generateWeekDays(DateTime.now());
+    _loadUpcomingVisits();
+    _loadStats();
+    _loadNotifications();
+  }
+
+  Future<void> _loadStats() async {
+    setState(() => _isLoadingStats = true);
+
+    try {
+      // Get total patients (semua pasien, tidak perlu filter isRegistered)
+      final patients = await _database.getAllPasiens();
+
+      // Get total visits (kunjungan)
+      final visits = await _database.getAllKunjungans();
+
+      if (mounted) {
+        setState(() {
+          _totalPatients = patients.length;
+          _totalVisits = visits.length;
+          _isLoadingStats = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('❌ Error loading stats: $e');
+      if (mounted) {
+        setState(() => _isLoadingStats = false);
+      }
+    }
+  }
+
+  Future<void> _loadNotifications() async {
+    setState(() => _isLoadingNotifications = true);
+
+    try {
+      final notifications = <NotificationInfo>[];
+      final today = DateTime.now();
+
+      // Get kunjungan hari ini
+      final registrations = await _database.getAllRegistrasis();
+      for (final reg in registrations) {
+        if (_isSameDay(reg.tanggalKunjungan, today)) {
+          final patient = await _database.getPasienById(reg.pasienId);
+          if (patient != null) {
+            notifications.add(
+              NotificationInfo(
+                id: 'visit_${reg.id}',
+                icon: Icons.home_work_outlined,
+                title: 'Kunjungan ke rumah ${patient.nama}',
+                subtitle: '${patient.noRm} - ${reg.jamKunjungan}',
+                type: 'visit',
+              ),
+            );
+          }
+        }
+      }
+
+      // Get kunjungan dengan anamnesa belum diisi
+      final kunjungans = await _database.getAllKunjungans();
+      for (final kunjungan in kunjungans) {
+        if (!kunjungan.anamnesaDone && kunjungan.status != 'selesai') {
+          final reg = await _database.getRegistrasiById(kunjungan.registrasiId);
+          final patient = await _database.getPasienById(kunjungan.pasienId);
+
+          if (reg != null && patient != null) {
+            notifications.add(
+              NotificationInfo(
+                id: 'anamnesa_${kunjungan.id}',
+                icon: Icons.playlist_add_check_rounded,
+                title: 'Input Anamnesa ${patient.nama}',
+                subtitle: '${reg.noReg} - Belum diisi',
+                type: 'anamnesa',
+              ),
+            );
+          }
+        }
+      }
+
+      // Limit to 2 notifications untuk UI
+      if (mounted) {
+        setState(() {
+          _notifications = notifications.take(2).toList();
+          _isLoadingNotifications = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('❌ Error loading notifications: $e');
+      if (mounted) {
+        setState(() => _isLoadingNotifications = false);
+      }
+    }
+  }
+
+  Future<void> _loadUpcomingVisits() async {
+    setState(() => _isLoadingVisits = true);
+
+    try {
+      final registrations = await _database.getAllRegistrasis();
+      final List<UpcomingVisit> visits = [];
+
+      for (final reg in registrations) {
+        // Filter berdasarkan tanggal yang dipilih
+        if (_isSameDay(reg.tanggalKunjungan, _selectedDate)) {
+          final patient = await _database.getPasienById(reg.pasienId);
+          if (patient == null || !patient.isRegistered) continue;
+
+          final visit = await _database.getKunjunganByRegistrasiId(reg.id);
+          visits.add(
+            UpcomingVisit(registration: reg, patient: patient, visit: visit),
+          );
+        }
+      }
+
+      // Sort berdasarkan jam (yang paling dekat dulu)
+      visits.sort((a, b) {
+        final timeA = _parseTime(a.registration.jamKunjungan);
+        final timeB = _parseTime(b.registration.jamKunjungan);
+        return timeA.compareTo(timeB);
+      });
+
+      if (mounted) {
+        setState(() {
+          _upcomingVisits = visits;
+          _isLoadingVisits = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('❌ Error loading upcoming visits: $e');
+      if (mounted) {
+        setState(() => _isLoadingVisits = false);
+      }
+    }
+  }
+
+  DateTime _parseTime(String timeString) {
+    // Parse format "HH:mm" ke DateTime untuk sorting
+    try {
+      final parts = timeString.split(':');
+      if (parts.length == 2) {
+        final hour = int.parse(parts[0]);
+        final minute = int.parse(parts[1].split(' ')[0]); // Handle "10:30 WITA"
+        return DateTime(
+          _selectedDate.year,
+          _selectedDate.month,
+          _selectedDate.day,
+          hour,
+          minute,
+        );
+      }
+    } catch (e) {
+      debugPrint('Error parsing time: $e');
+    }
+    return DateTime.now();
   }
 
   // --- LOGIKA KALENDER ---
@@ -165,6 +274,7 @@ class _HomePageState extends State<HomePage> {
         _selectedDate = _weekDays.first;
       }
     });
+    _loadUpcomingVisits();
   }
 
   Future<void> _pickDate() async {
@@ -195,6 +305,7 @@ class _HomePageState extends State<HomePage> {
         _selectedDate = pickedDate;
         _weekDays = _generateWeekDays(pickedDate);
       });
+      _loadUpcomingVisits();
     }
   }
 
@@ -403,7 +514,10 @@ class _HomePageState extends State<HomePage> {
               final String dayOfMonth = date.day.toString(); // 4, 5, ...
 
               return GestureDetector(
-                onTap: () => setState(() => _selectedDate = date),
+                onTap: () {
+                  setState(() => _selectedDate = date);
+                  _loadUpcomingVisits();
+                },
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 300),
                   width: 70,
@@ -481,22 +595,152 @@ class _HomePageState extends State<HomePage> {
   }
 
   Widget _buildNextVisitCard() {
+    if (_isLoadingVisits) {
+      return Container(
+        margin: const EdgeInsets.symmetric(horizontal: 24),
+        height: 200,
+        decoration: BoxDecoration(
+          color: kWhite,
+          borderRadius: BorderRadius.circular(24),
+        ),
+        child: const Center(
+          child: CircularProgressIndicator(color: kPrimaryColor),
+        ),
+      );
+    }
+
+    if (_upcomingVisits.isEmpty) {
+      return Container(
+        margin: const EdgeInsets.symmetric(horizontal: 24),
+        padding: const EdgeInsets.all(32),
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            colors: [kPrimaryColor, Color(0xFF003366)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(24),
+          boxShadow: [
+            BoxShadow(
+              color: kPrimaryColor.withOpacity(0.4),
+              blurRadius: 20,
+              offset: const Offset(0, 10),
+            ),
+          ],
+        ),
+        child: Column(
+          children: [
+            Icon(
+              Icons.calendar_today_outlined,
+              size: 64,
+              color: kWhite.withOpacity(0.3),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Tidak ada kunjungan',
+              style: TextStyle(
+                color: kWhite,
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Tidak ada jadwal kunjungan pada tanggal ini',
+              style: TextStyle(color: kWhite.withOpacity(0.7), fontSize: 14),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Jika hanya 1 kunjungan, tampilkan normal tanpa scroll
+    if (_upcomingVisits.length == 1) {
+      return Container(
+        margin: const EdgeInsets.symmetric(horizontal: 24),
+        child: _buildVisitCard(_upcomingVisits.first, 0),
+      );
+    }
+
+    // Jika lebih dari 1, tampilkan horizontal scroll
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24),
+          child: Row(
+            children: [
+              const Text(
+                'KUNJUNGAN BERIKUTNYA',
+                style: TextStyle(
+                  color: kTextGrey,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 1.0,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: kPrimaryColor,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  '${_upcomingVisits.length}',
+                  style: const TextStyle(
+                    color: kWhite,
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+        SizedBox(
+          height: 230,
+          child: ListView.builder(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            itemCount: _upcomingVisits.length,
+            itemBuilder: (context, index) {
+              return Padding(
+                padding: EdgeInsets.only(
+                  right: index < _upcomingVisits.length - 1 ? 16 : 0,
+                ),
+                child: _buildVisitCard(_upcomingVisits[index], index),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildVisitCard(UpcomingVisit visit, int index) {
+    final isFirst = index == 0;
+
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 24),
+      width: _upcomingVisits.length > 1 ? 320 : null,
       child: Stack(
         children: [
           Container(
             padding: const EdgeInsets.all(24),
             decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [kPrimaryColor, Color(0xFF003366)],
+              gradient: LinearGradient(
+                colors: isFirst
+                    ? [kPrimaryColor, Color(0xFF003366)]
+                    : [Color(0xFF0063B2), kPrimaryColor],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               ),
               borderRadius: BorderRadius.circular(24),
               boxShadow: [
                 BoxShadow(
-                  color: kPrimaryColor.withOpacity(0.4),
+                  color: kPrimaryColor.withOpacity(isFirst ? 0.4 : 0.2),
                   blurRadius: 20,
                   offset: const Offset(0, 10),
                 ),
@@ -504,37 +748,46 @@ class _HomePageState extends State<HomePage> {
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
               children: [
-                Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: kWhite.withOpacity(0.15),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: const Text(
-                        'KUNJUNGAN BERIKUTNYA',
-                        style: TextStyle(
-                          color: kSecondaryColor,
-                          fontSize: 10,
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: 1.0,
-                        ),
+                if (isFirst && _upcomingVisits.length > 1)
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: kSecondaryColor,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Text(
+                      'TERDEKAT',
+                      style: TextStyle(
+                        color: kWhite,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 1.0,
                       ),
                     ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                const Text(
-                  'Bp. Arya Andhika',
-                  style: TextStyle(
+                  ),
+                if (isFirst && _upcomingVisits.length > 1)
+                  const SizedBox(height: 12),
+                Text(
+                  visit.patient.nama,
+                  style: const TextStyle(
                     color: kWhite,
-                    fontSize: 24,
+                    fontSize: 22,
                     fontWeight: FontWeight.bold,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  visit.patient.noRm,
+                  style: TextStyle(
+                    color: kWhite.withOpacity(0.7),
+                    fontSize: 13,
                   ),
                 ),
                 const SizedBox(height: 16),
@@ -549,49 +802,54 @@ class _HomePageState extends State<HomePage> {
                       const Icon(
                         Icons.access_time_rounded,
                         color: kSecondaryColor,
-                        size: 20,
+                        size: 18,
                       ),
-                      const SizedBox(width: 8),
-                      const Text(
-                        '10:30 WITA',
-                        style: TextStyle(
+                      const SizedBox(width: 6),
+                      Text(
+                        visit.registration.jamKunjungan,
+                        style: const TextStyle(
                           color: kWhite,
                           fontWeight: FontWeight.w600,
+                          fontSize: 14,
                         ),
                       ),
                       Container(
-                        height: 16,
+                        height: 14,
                         width: 1,
                         color: Colors.white24,
-                        margin: const EdgeInsets.symmetric(horizontal: 12),
+                        margin: const EdgeInsets.symmetric(horizontal: 10),
                       ),
                       const Icon(
                         Icons.location_on_outlined,
                         color: kSecondaryColor,
-                        size: 20,
+                        size: 18,
                       ),
-                      const SizedBox(width: 8),
-                      const Expanded(
+                      const SizedBox(width: 6),
+                      Expanded(
                         child: Text(
-                          'Jl. Giri Rejo II',
-                          style: TextStyle(color: kWhite),
+                          visit.patient.alamat,
+                          style: const TextStyle(color: kWhite, fontSize: 13),
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
                     ],
                   ),
                 ),
-                const SizedBox(height: 24),
+                const SizedBox(height: 16),
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(
-                    onPressed: () {},
+                    onPressed: () {
+                      context.push(
+                        '/schedules/detail/${visit.registration.id}',
+                      );
+                    },
                     style: ElevatedButton.styleFrom(
                       backgroundColor: kSecondaryColor,
                       foregroundColor: kWhite,
                       elevation: 8,
                       shadowColor: kSecondaryColor.withOpacity(0.5),
-                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      padding: const EdgeInsets.symmetric(vertical: 14),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(16),
                       ),
@@ -599,7 +857,7 @@ class _HomePageState extends State<HomePage> {
                     child: const Text(
                       'Mulai Kunjungan',
                       style: TextStyle(
-                        fontSize: 16,
+                        fontSize: 15,
                         fontWeight: FontWeight.bold,
                         letterSpacing: 0.5,
                       ),
@@ -614,7 +872,7 @@ class _HomePageState extends State<HomePage> {
             top: -10,
             child: Icon(
               Icons.medical_services_outlined,
-              size: 120,
+              size: 100,
               color: kWhite.withOpacity(0.05),
             ),
           ),
@@ -625,6 +883,69 @@ class _HomePageState extends State<HomePage> {
 
   // <<< WIDGET BARU >>>
   Widget _buildInsights() {
+    if (_isLoadingStats) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 24),
+        child: Container(
+          height: 200,
+          child: const Center(
+            child: CircularProgressIndicator(color: kPrimaryColor),
+          ),
+        ),
+      );
+    }
+
+    final stats = [
+      StatInfo(
+        id: 1,
+        label: 'Total Pasien',
+        value: '$_totalPatients',
+        change: '',
+        trend: 'up',
+        icon: Icons.people_outline,
+        gradient: const LinearGradient(
+          colors: [Color(0xFF3B82F6), Color(0xFF2563EB)],
+        ),
+        shadow: const Color(0xFF3B82F6).withOpacity(0.3),
+      ),
+      StatInfo(
+        id: 2,
+        label: 'Total Kunjungan',
+        value: '$_totalVisits',
+        change: '',
+        trend: 'up',
+        icon: Icons.medical_services_outlined,
+        gradient: const LinearGradient(
+          colors: [Color(0xFF22C55E), Color(0xFF16A34A)],
+        ),
+        shadow: const Color(0xFF22C55E).withOpacity(0.3),
+      ),
+      StatInfo(
+        id: 3,
+        label: 'Tagihan Pending',
+        value: '-',
+        change: '',
+        trend: 'up',
+        icon: Icons.article_outlined,
+        gradient: const LinearGradient(
+          colors: [Color(0xFFF97316), Color(0xFFEA580C)],
+        ),
+        shadow: const Color(0xFFF97316).withOpacity(0.3),
+      ),
+      StatInfo(
+        id: 4,
+        label: 'Data Lengkap',
+        value: '-',
+        change: '',
+        trend: 'up',
+        icon: Icons.monitor_heart_outlined,
+        gradient: const LinearGradient(
+          colors: [Color(0xFFA855F7), Color(0xFF9333EA)],
+        ),
+        shadow: const Color(0xFFA855F7).withOpacity(0.3),
+      ),
+    ];
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 24),
       child: Column(
@@ -662,6 +983,62 @@ class _HomePageState extends State<HomePage> {
 
   // <<< WIDGET DIPERBARUI >>>
   Widget _buildImportantNotifications() {
+    if (_isLoadingNotifications) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 24),
+        child: Container(
+          height: 150,
+          child: const Center(
+            child: CircularProgressIndicator(color: kPrimaryColor),
+          ),
+        ),
+      );
+    }
+
+    if (_notifications.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'NOTIFIKASI PENTING',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w900,
+                color: kTextGrey,
+                letterSpacing: 1.0,
+              ),
+            ),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: kWhite,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Center(
+                child: Column(
+                  children: [
+                    Icon(
+                      Icons.notifications_outlined,
+                      size: 48,
+                      color: kTextGrey.withOpacity(0.5),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Tidak ada notifikasi',
+                      style: TextStyle(color: kTextGrey, fontSize: 14),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 24),
       child: Column(
@@ -685,11 +1062,18 @@ class _HomePageState extends State<HomePage> {
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
             childAspectRatio: 0.95,
-            children: notifications.map((notif) {
+            children: _notifications.map((notif) {
               return _NotificationCard(
                 notification: notif,
                 onTap: () {
-                  // TODO: Logika navigasi notifikasi
+                  // TODO: Navigate based on notification type
+                  if (notif.type == 'visit') {
+                    // Navigate to schedules
+                    context.go('/schedules');
+                  } else if (notif.type == 'anamnesa') {
+                    // Navigate to specific schedule detail
+                    context.go('/schedules');
+                  }
                 },
               );
             }).toList(),
@@ -816,24 +1200,29 @@ class _StatCard extends StatelessWidget {
                   ),
                 ),
               ),
-              const SizedBox(width: 4),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(
-                  color: isPositive
-                      ? kSecondaryColor.withOpacity(0.1)
-                      : Colors.red.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: Text(
-                  stat.change,
-                  style: TextStyle(
-                    color: isPositive ? kSecondaryColor : Colors.red,
-                    fontSize: 11,
-                    fontWeight: FontWeight.bold,
+              if (stat.change.isNotEmpty) ...[
+                const SizedBox(width: 4),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 2,
+                  ),
+                  decoration: BoxDecoration(
+                    color: isPositive
+                        ? kSecondaryColor.withOpacity(0.1)
+                        : Colors.red.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    stat.change,
+                    style: TextStyle(
+                      color: isPositive ? kSecondaryColor : Colors.red,
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ),
-              ),
+              ],
             ],
           ),
         ],

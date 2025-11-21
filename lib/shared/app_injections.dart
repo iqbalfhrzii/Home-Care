@@ -1,5 +1,6 @@
 import 'package:get_it/get_it.dart';
 import 'package:homecare_mobile/core/network/dio.dart';
+import 'package:homecare_mobile/core/services/notification_service.dart';
 import 'package:homecare_mobile/features/patients/data/datasources/pasien_data_source.dart';
 import 'package:homecare_mobile/features/patients/data/datasources/pasien_local_data_source.dart';
 import 'package:homecare_mobile/features/patients/data/repositories/pasien_repository.dart';
@@ -12,6 +13,11 @@ final getIt = GetIt.instance;
 Future<void> initAppInjections() async {
   // Use existing configured Dio instance from core/network/dio.dart
   // It already has baseUrl, interceptors, and logger configured
+
+  // Register and initialize Notification Service
+  final notificationService = NotificationService();
+  await notificationService.initialize();
+  getIt.registerSingleton<NotificationService>(notificationService);
 
   // Register Local Database
   getIt.registerLazySingleton<AppDatabase>(() => AppDatabase());

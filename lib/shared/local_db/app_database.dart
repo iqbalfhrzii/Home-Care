@@ -307,7 +307,6 @@ class AppDatabase extends _$AppDatabase {
     return updateKunjungan(id, companion);
   }
 
-  // ========== ANAMNESA OPERATIONS ==========
   Future<Anamnesa?> getAnamnesaByKunjunganId(int kunjunganId) => (select(
     anamnesas,
   )..where((a) => a.kunjunganId.equals(kunjunganId))).getSingleOrNull();

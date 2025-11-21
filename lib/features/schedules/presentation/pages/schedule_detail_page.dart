@@ -439,7 +439,7 @@ class _ScheduleDetailPageState extends State<ScheduleDetailPage> {
           'Isi Tindakan',
           'Prosedur medis yang dilakukan',
           Icons.medical_information,
-          const Color(0xFF8B5CF6),
+          kInfoColor,
           tindakanDone,
           () {
             context
@@ -455,7 +455,7 @@ class _ScheduleDetailPageState extends State<ScheduleDetailPage> {
           'Isi Diagnosa ICD',
           'Kode diagnosis penyakit',
           Icons.health_and_safety,
-          kSuccessColor,
+          kInfoColor,
           icdDone,
           () {
             context

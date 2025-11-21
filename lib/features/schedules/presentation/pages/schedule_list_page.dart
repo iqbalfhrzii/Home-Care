@@ -36,13 +36,12 @@ class ScheduleListPage extends StatefulWidget {
 class _ScheduleListPageState extends State<ScheduleListPage> {
   late final db.AppDatabase _database;
 
-  // --- State ---
   List<ScheduleItem> _allSchedules = [];
   List<ScheduleItem> _filteredSchedules = [];
   DateTime? _selectedDate;
   final TextEditingController _dateController = TextEditingController();
   bool _isLoading = true;
-  String? _selectedStatus; // null = semua, 'belum', 'proses', 'selesai'
+  String? _selectedStatus;
 
   int get _totalSchedules => _allSchedules.length;
   int get _notStartedCount =>

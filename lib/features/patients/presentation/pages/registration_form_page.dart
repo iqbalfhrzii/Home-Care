@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:go_router/go_router.dart';
 import 'package:homecare_mobile/shared/app_injections.dart';
+import 'package:homecare_mobile/core/services/notification_service.dart';
 import 'package:homecare_mobile/features/patients/data/repositories/pasien_repository.dart';
 import 'package:homecare_mobile/shared/local_db/app_database.dart' as db;
 import 'package:drift/drift.dart' as drift;
@@ -224,6 +225,41 @@ class _RegistrationFormPageState extends State<RegistrationFormPage> {
           final repository = getIt<PasienRepository>();
           await repository.markAsRegistered(widget.pasienId!);
           debugPrint('✅ Patient marked as registered');
+
+          // Send notification for successful registration
+          final notificationService = getIt<NotificationService>();
+          final patient = await database.getPasienById(pasienIdInt);
+
+          if (patient != null) {
+            // Show immediate notification
+            await notificationService.showPatientRegisteredNotification(
+              patientName: patient.nama,
+              noRm: patient.noRm,
+              visitDate: DateFormat(
+                'd MMMM yyyy',
+                'id_ID',
+              ).format(_tanggalKunjungan),
+            );
+
+            // Schedule reminder notification (1 hour before visit)
+            final visitDateTime = DateTime(
+              _tanggalKunjungan.year,
+              _tanggalKunjungan.month,
+              _tanggalKunjungan.day,
+              _jamKunjungan.hour,
+              _jamKunjungan.minute,
+            );
+
+            await notificationService.scheduleVisitReminder(
+              id: registrasiId,
+              patientName: patient.nama,
+              visitDateTime: visitDateTime,
+              visitTime: jamKunjunganFormatted,
+              address: patient.alamat,
+            );
+
+            debugPrint('✅ Notifications sent and scheduled');
+          }
         }
 
         if (mounted) {
@@ -287,12 +323,10 @@ class _RegistrationFormPageState extends State<RegistrationFormPage> {
         debugPrint('✅ Registration deleted with ID: ${widget.registrasiId}');
       }
 
-      // Update patient isRegistered flag to false
       if (widget.pasienId != null) {
         final repository = getIt<PasienRepository>();
         final pasienIdInt = int.tryParse(widget.pasienId!);
         if (pasienIdInt != null) {
-          // Update isRegistered to false in database
           final pasienCompanion = db.PasiensCompanion(
             isRegistered: drift.Value(false),
           );
@@ -309,7 +343,6 @@ class _RegistrationFormPageState extends State<RegistrationFormPage> {
           ),
         );
 
-        // Return 'canceled' to signal success and trigger refresh
         context.pop('canceled');
       }
     } catch (e) {
