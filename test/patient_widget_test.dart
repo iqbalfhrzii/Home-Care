@@ -63,7 +63,6 @@ void main() {
 
   group('Patient List Widget Test', () {
     testWidgets('list pasien menampilkan card', (WidgetTester tester) async {
-      // Arrange
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
@@ -82,7 +81,6 @@ void main() {
     });
 
     testWidgets('list pasien punya search bar', (WidgetTester tester) async {
-      // Arrange
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
