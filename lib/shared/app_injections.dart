@@ -99,6 +99,7 @@ Future<void> initAppInjections() async {
     () => RegistrasiRepository(
       getIt<RegistrasiDataSource>(),
       getIt<RegistrasiLocalDataSource>(),
+      getIt<PasienLocalDataSource>(),
     ),
   );
 

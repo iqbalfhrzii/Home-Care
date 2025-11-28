@@ -3,40 +3,126 @@ import 'package:dio/dio.dart';
 import 'package:homecare_mobile/features/schedules/domain/models/registrasi.dart';
 import 'package:homecare_mobile/features/schedules/data/datasources/registrasi_data_source.dart';
 import 'package:homecare_mobile/features/schedules/data/datasources/registrasi_local_datasource.dart';
+import 'package:homecare_mobile/features/patients/data/datasources/pasien_local_data_source.dart';
 
 class RegistrasiRepository {
   final RegistrasiDataSource _remoteDataSource;
   final RegistrasiLocalDataSource _localDataSource;
+  final PasienLocalDataSource _pasienLocalDataSource;
 
-  RegistrasiRepository(this._remoteDataSource, this._localDataSource);
+  RegistrasiRepository(
+    this._remoteDataSource,
+    this._localDataSource,
+    this._pasienLocalDataSource,
+  );
 
   // ========== OFFLINE-FIRST STRATEGY ==========
 
   /// Get all registrations
   /// Fetch directly from API to get complete data with nested pasien
   Future<List<Registrasi>> getAllRegistrasi() async {
+    const maxAttempts = 3;
+    const delays = [
+      Duration(milliseconds: 500),
+      Duration(seconds: 1),
+      Duration(seconds: 2),
+    ];
+
+    for (var attempt = 0; attempt < maxAttempts; attempt++) {
+      final isLast = attempt == maxAttempts - 1;
+      try {
+        debugPrint(
+          '🔄 Fetching registrations from /registrasi API (attempt ${attempt + 1})...',
+        );
+        final response = await _remoteDataSource.getAllRegistrasi();
+        debugPrint(
+          '📥 Received ${response.data.length} registrations from API',
+        );
+
+        // Sync to local in background (optional, for offline support)
+        _syncToLocal(response.data);
+
+        return response.data;
+      } on DioException catch (e) {
+        final transient =
+            e.type == DioExceptionType.connectionError ||
+            e.type == DioExceptionType.receiveTimeout ||
+            e.type == DioExceptionType.sendTimeout ||
+            e.type == DioExceptionType.unknown;
+        debugPrint('❌ Network error getting registrations: ${e.type}');
+        debugPrint('   Message: ${e.message}');
+
+        if (!transient || isLast) {
+          // On non-transient or final failure, fallback to local data
+          break;
+        }
+        // backoff then retry
+        final delay = delays[attempt];
+        debugPrint('⏳ Retrying in ${delay.inMilliseconds}ms...');
+        await Future.delayed(delay);
+      } on FormatException catch (e) {
+        // JSON parsing error - return empty, don't use corrupted data
+        debugPrint('❌ JSON parsing error: ${e.message}');
+        debugPrint('   Offset: ${e.offset}');
+        // Fallback to local
+        break;
+      } catch (e, stackTrace) {
+        debugPrint('❌ Unexpected error getting registrations: $e');
+        debugPrint('   Stack: $stackTrace');
+        // Fallback to local
+        break;
+      }
+    }
+
+    // Local fallback enriched with local patient data
     try {
-      debugPrint('🔄 Fetching registrations from /registrasi API...');
-      final response = await _remoteDataSource.getAllRegistrasi();
-      debugPrint('📥 Received ${response.data.length} registrations from API');
-
-      // Sync to local in background (optional, for offline support)
-      _syncToLocal(response.data);
-
-      return response.data;
-    } on DioException catch (e) {
-      // Network errors - return empty, don't fallback to local without pasien data
-      debugPrint('❌ Network error getting registrations: ${e.type}');
-      debugPrint('   Message: ${e.message}');
-      return [];
-    } on FormatException catch (e) {
-      // JSON parsing error - return empty, don't use corrupted data
-      debugPrint('❌ JSON parsing error: ${e.message}');
-      debugPrint('   Offset: ${e.offset}');
-      return [];
-    } catch (e, stackTrace) {
-      debugPrint('❌ Unexpected error getting registrations: $e');
-      debugPrint('   Stack: $stackTrace');
+      debugPrint('💾 Falling back to local registrations...');
+      final locals = await _localDataSource.getAllRegistrasi();
+      final enriched = <Registrasi>[];
+      for (final reg in locals) {
+        try {
+          final pasien = await _pasienLocalDataSource.getPasienById(
+            reg.pasienId,
+          );
+          enriched.add(
+            Registrasi(
+              id: reg.id,
+              noReg: reg.noReg,
+              noUrut: reg.noUrut,
+              pasienId: reg.pasienId,
+              tglJamReg: reg.tglJamReg,
+              tglJamKunjungan: reg.tglJamKunjungan,
+              kodePoli: reg.kodePoli,
+              dokterId: reg.dokterId,
+              jenisKunjungan: reg.jenisKunjungan,
+              asalPasien: reg.asalPasien,
+              tipePasien: reg.tipePasien,
+              pasienBaru: reg.pasienBaru,
+              pagiSore: reg.pagiSore,
+              isCash: reg.isCash,
+              isPribadi: reg.isPribadi,
+              eselon: reg.eselon,
+              status: reg.status,
+              penanggungId: reg.penanggungId,
+              penanggungNama: reg.penanggungNama,
+              penanggungNoPegawai: reg.penanggungNoPegawai,
+              penanggungAlamat: reg.penanggungAlamat,
+              penanggungTelepon: reg.penanggungTelepon,
+              pasien: pasien,
+              createdAt: reg.createdAt,
+              updatedAt: reg.updatedAt,
+            ),
+          );
+        } catch (_) {
+          enriched.add(reg); // No local patient found; keep as-is
+        }
+      }
+      debugPrint(
+        '💾 Returning ${enriched.length} registrations from local fallback',
+      );
+      return enriched;
+    } catch (fallbackErr) {
+      debugPrint('❌ Local fallback failed: $fallbackErr');
       return [];
     }
   }

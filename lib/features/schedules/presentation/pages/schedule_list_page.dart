@@ -66,19 +66,36 @@ class _ScheduleListPageState extends State<ScheduleListPage> {
     setState(() => _isLoading = true);
     try {
       final registrations = await _repository.getAllRegistrasi();
-      final List<ScheduleItem> schedules = [];
 
+      // Deduplicate by unique pasien (registered patients only),
+      // keeping the latest registration per patient
+      final Map<int, ScheduleItem> latestByPatient = {};
       for (final reg in registrations) {
-        // Patient data comes from API nested in registration response
-        schedules.add(
-          ScheduleItem(
+        final pasienId = reg.pasienId;
+        final regTime = DateTime.tryParse(reg.tglJamReg) ?? DateTime(1970);
+        final current = latestByPatient[pasienId];
+        if (current == null) {
+          latestByPatient[pasienId] = ScheduleItem(
             registration: reg,
-            patient: null, // Will be loaded from nested data if available
-          ),
-        );
+            patient: reg.pasien,
+          );
+        } else {
+          final currentTime =
+              DateTime.tryParse(current.registration.tglJamReg) ??
+              DateTime(1970);
+          if (regTime.isAfter(currentTime)) {
+            latestByPatient[pasienId] = ScheduleItem(
+              registration: reg,
+              patient: reg.pasien,
+            );
+          }
+        }
       }
 
-      // Sort by tglJamReg (newest first)
+      // Build schedules list from the deduped map
+      final List<ScheduleItem> schedules = latestByPatient.values.toList();
+
+      // Sort by latest registration time (newest first)
       schedules.sort((a, b) {
         final dateA =
             DateTime.tryParse(a.registration.tglJamReg) ?? DateTime(1970);
@@ -560,8 +577,7 @@ class _ScheduleCard extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            schedule.patient?.nama ??
-                                'Pasien #${schedule.registration.pasienId}',
+                            schedule.patient?.nama ?? 'Pasien',
                             style: const TextStyle(
                               fontSize: 15,
                               fontWeight: FontWeight.w600,
@@ -583,8 +599,7 @@ class _ScheduleCard extends StatelessWidget {
                                   borderRadius: BorderRadius.circular(6),
                                 ),
                                 child: Text(
-                                  schedule.patient?.mrn ??
-                                      'ID${schedule.registration.pasienId}',
+                                  schedule.patient?.mrn ?? '—',
                                   style: const TextStyle(
                                     fontSize: 11,
                                     color: kPrimaryColor,

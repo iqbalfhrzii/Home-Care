@@ -1,9 +1,12 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:dio/dio.dart';
 import 'package:drift/drift.dart' as drift;
 import 'package:homecare_mobile/shared/local_db/app_database.dart';
 import 'package:flutter/foundation.dart';
+import 'package:homecare_mobile/core/storage/secure_storage.dart';
+import 'package:homecare_mobile/features/auth/data/datasources/auth_localdatasource.dart';
 
 /// Service untuk auto-sync data offline ke server
 class SyncService {
@@ -68,6 +71,13 @@ class SyncService {
     try {
       _isSyncing = true;
 
+      // Ensure authenticated before hitting API
+      final token = await secureStorage.read(key: kAccessTokenKey);
+      if (token == null || token.isEmpty) {
+        debugPrint('🔒 SyncService: No auth token present, skipping sync');
+        return;
+      }
+
       // Check internet connection
       final connectivityResult = await _connectivity.checkConnectivity();
       final hasConnection = connectivityResult.any(
@@ -128,6 +138,7 @@ class SyncService {
               'no_urut': registrasi.noUrut,
               'pasien_id': registrasi.pasienId,
               'tgl_jam_reg': registrasi.tglJamReg,
+              'tgl_jam_kunjungan': registrasi.tglJamReg,
               'kode_poli': registrasi.kodePoli,
               'dokter_id': registrasi.dokterId,
               'jenis_kunjungan': registrasi.jenisKunjungan,
@@ -155,6 +166,60 @@ class SyncService {
 
             debugPrint('✅ Registrasi ${registrasi.noReg} synced successfully');
           }
+        } on DioException catch (e) {
+          debugPrint(
+            '❌ Error syncing registrasi ${registrasi.noReg}: ${e.type}',
+          );
+          final status = e.response?.statusCode;
+          final data = e.response?.data;
+          debugPrint('   Status: $status');
+          debugPrint('   Response: $data');
+
+          // Attempt to resolve validation conflicts (e.g., duplicate no_reg)
+          if (status == 422) {
+            try {
+              final errors = (data is Map<String, dynamic>)
+                  ? data['errors']
+                  : null;
+              final noRegErrors = (errors is Map<String, dynamic>)
+                  ? errors['no_reg']
+                  : null;
+              final hasNoRegTaken =
+                  noRegErrors is List &&
+                  noRegErrors.any(
+                    (msg) => msg.toString().contains('already been taken'),
+                  );
+
+              if (hasNoRegTaken) {
+                debugPrint(
+                  '🔎 Duplicate no_reg detected, searching existing on server...',
+                );
+                final searchResp = await _dio.get(
+                  '/registrasi',
+                  queryParameters: {'search': registrasi.noReg},
+                );
+                final list =
+                    (searchResp.data is Map && searchResp.data['data'] is List)
+                    ? (searchResp.data['data'] as List)
+                    : (searchResp.data is List)
+                    ? (searchResp.data as List)
+                    : <dynamic>[];
+                if (list.isNotEmpty) {
+                  final serverId =
+                      (list.first as Map<String, dynamic>)['id'] as int;
+                  await _database.markRegistrasiSynced(registrasi.id, serverId);
+                  debugPrint(
+                    '✅ Linked local ${registrasi.noReg} to server ID $serverId',
+                  );
+                  continue; // proceed to next item
+                }
+              }
+            } catch (resolveErr) {
+              debugPrint('⚠️ Failed resolving duplicate no_reg: $resolveErr');
+            }
+          }
+
+          // Continue to next item even if one fails
         } catch (e) {
           debugPrint('❌ Error syncing registrasi ${registrasi.noReg}: $e');
           // Continue to next item even if one fails
@@ -186,30 +251,203 @@ class SyncService {
             continue;
           }
 
-          // POST to API
-          final response = await _dio.post(
-            '/anamnesa/store',
-            data: {
-              'registrasi_id': registrasi.serverId, // Use server ID
-              'dokter_id': anamnesa.dokterId,
-              'poli_id': anamnesa.poliId,
-              'tanggal': anamnesa.tanggal,
-              'pengkajian_keperawatan': anamnesa.pengkajianKeperawatan,
-              'pengkajian_medis': anamnesa.pengkajianMedis,
-              'khusus_perawat': anamnesa.khususPerawat,
-            },
-          );
+          // Decode stored JSON strings
+          Map<String, dynamic> kep = {};
+          Map<String, dynamic> med = {};
+          Map<String, dynamic> khs = {};
+          try {
+            kep =
+                anamnesa.pengkajianKeperawatan != null &&
+                    anamnesa.pengkajianKeperawatan!.isNotEmpty
+                ? (jsonDecode(anamnesa.pengkajianKeperawatan!)
+                      as Map<String, dynamic>)
+                : {};
+          } catch (_) {}
+          try {
+            med =
+                anamnesa.pengkajianMedis != null &&
+                    anamnesa.pengkajianMedis!.isNotEmpty
+                ? (jsonDecode(anamnesa.pengkajianMedis!)
+                      as Map<String, dynamic>)
+                : {};
+          } catch (_) {}
+          try {
+            khs =
+                anamnesa.khususPerawat != null &&
+                    anamnesa.khususPerawat!.isNotEmpty
+                ? (jsonDecode(anamnesa.khususPerawat!) as Map<String, dynamic>)
+                : {};
+          } catch (_) {}
+
+          // Extract sub-sections from stored keperawatan JSON
+          final tv = (kep['tanda_vital'] is Map)
+              ? (kep['tanda_vital'] as Map<String, dynamic>)
+              : <String, dynamic>{};
+          final nutr = (kep['nutrisi'] is Map)
+              ? (kep['nutrisi'] as Map<String, dynamic>)
+              : <String, dynamic>{};
+          final fungs = (kep['fungsional'] is Map)
+              ? (kep['fungsional'] as Map<String, dynamic>)
+              : <String, dynamic>{};
+          final kel = (kep['keluhan'] is Map)
+              ? (kep['keluhan'] as Map<String, dynamic>)
+              : <String, dynamic>{};
+          final masalah = (kep['masalah_keperawatan'] is Map)
+              ? (kep['masalah_keperawatan'] as Map<String, dynamic>)
+              : <String, dynamic>{};
+
+          // Extract khusus-perawat data
+          final intervensiList = (khs['intervensi_time_up_go'] is List)
+              ? (khs['intervensi_time_up_go'] as List)
+              : const [];
+          final skrStrong = (khs['skrining_nutrisi_strongkids'] is Map)
+              ? (khs['skrining_nutrisi_strongkids'] as Map)
+              : const {};
+          final edukasiList = (khs['edukasi_pasien'] is List)
+              ? (khs['edukasi_pasien'] as List)
+              : const [];
+
+          final payload = <String, dynamic>{
+            'registrasi_id': registrasi.serverId,
+            'dokter_id': anamnesa.dokterId,
+            'poli_id': anamnesa.poliId,
+            'tanggal':
+                (anamnesa.tanggal != null && anamnesa.tanggal!.length >= 10)
+                ? anamnesa.tanggal!.substring(0, 10)
+                : DateTime.now().toIso8601String().substring(0, 10),
+
+            // Flat fields from stored nested maps
+            'keluhan': kel['keluhan'],
+            'riwayat': fungs['riwayat'],
+            'riwayat_alergi': tv['riwayat_alergi'] == true,
+            'pemeriksaan_fisik': med['pemeriksaan_fisik'],
+            'pemeriksaan_penunjang': med['pemeriksaan_penunjang'],
+            'diagnosis': med['diagnosis'],
+            'rencana_dan_terapi': med['rencana_terapi'],
+            'kontrol': med['kontrol'],
+            'edukasi': (edukasiList).isNotEmpty,
+            'edukasi_ket': '',
+
+            'tekanan_darah': tv['tekanan_darah'],
+            'nadi': tv['nadi']?.toString(),
+            'suhu': (tv['suhu'] is num)
+                ? (tv['suhu'] as num).toDouble()
+                : double.tryParse(tv['suhu']?.toString() ?? ''),
+            'pernapasan': tv['pernapasan']?.toString(),
+            'berat_badan': (nutr['berat_badan'] is num)
+                ? (nutr['berat_badan'] as num).toDouble()
+                : double.tryParse(nutr['berat_badan']?.toString() ?? ''),
+            'tinggi_badan': (nutr['tinggi_badan'] is num)
+                ? (nutr['tinggi_badan'] as num).toDouble()
+                : double.tryParse(nutr['tinggi_badan']?.toString() ?? ''),
+            'imt': (nutr['imt'] is num)
+                ? (nutr['imt'] as num).toDouble()
+                : double.tryParse(nutr['imt']?.toString() ?? ''),
+            'lingkar_kepala': (nutr['lingkar_kepala'] is num)
+                ? (nutr['lingkar_kepala'] as num).toDouble()
+                : double.tryParse(nutr['lingkar_kepala']?.toString() ?? ''),
+            'adl': fungs['adl'] == true,
+            'resiko_jatuh': fungs['resiko_jatuh'] == true,
+            'alat_bantu': fungs['alat_bantu'],
+            'cacat_tubuh': fungs['cacat_tubuh'],
+            'prothesa': fungs['prothesa'],
+
+            // Masalah keperawatan flags from stored map
+            'jalan_nafas': masalah['jalan_nafas'] == true,
+            'pola_nafas': masalah['pola_nafas'] == true,
+            'hipertermia': masalah['hipertermia'] == true,
+            'nyeri_kronik': masalah['nyeri_kronik'] == true,
+            'nyeri_akut': masalah['nyeri_akut'] == true,
+            'mual': masalah['mual'] == true,
+            'gangguan_perfusi': masalah['gangguan_perfusi'] == true,
+            'gangguan_cairan': masalah['gangguan_cairan'] == true,
+            'lainnya': masalah['lainnya'],
+
+            // Intervensi time up & go
+            'cara_berjalan': intervensiList.contains(
+              'Tidak seimbang/sempoyongan/limbung',
+            ),
+            'cara_berjalan2': intervensiList.contains(
+              'Jalan dengan menggunakan alat bantu (huk, tripot, kursi, orang bantu/pendamping)',
+            ),
+            'menopang': intervensiList.contains(
+              'Mengangkat saat akan duduk, tampak menopang/pegang kursi atau meja/benda lain sebagai penyangga saat akan duduk',
+            ),
+
+            // STRONGkids (booleans derived from stored answers)
+            'strong_kids1': (skrStrong['penyakit_malnutrisi'] ?? '')
+                .toString()
+                .startsWith('Ya'),
+            'strong_kids2': (skrStrong['tampak_kurus'] ?? '')
+                .toString()
+                .startsWith('Ya'),
+            'strong_kids3': (skrStrong['tindakan_khusus'] ?? '')
+                .toString()
+                .startsWith('Ya'),
+            'strong_kids4': (skrStrong['nyeri'] ?? '').toString().startsWith(
+              'Ya',
+            ),
+
+            // Rencana pulang
+            'renc_usia_lanjut': khs['renc_usia_lanjut'] == true,
+            'renc_hmbtn_mobil': khs['renc_hmbtn_mobil'] == true,
+            'renc_layanan_medis': khs['renc_layanan_medis'] == true,
+            'renc_tergnt_org': khs['renc_tergnt_org'] == true,
+
+            // Risiko summary: compute on the fly is not available here; leave null or empty
+            'risiko': null,
+            // jenis_perawatan if present in medis
+            'jenis_perawatan': med['jenis_perawatan'],
+          };
+          debugPrint('📤 SyncService: Upserting /anamnesa payload built');
+
+          // Avoid duplicates: check if server already has anamnesa for this registrasi
+          int? targetId;
+          try {
+            final check = await _dio.get(
+              '/anamnesa',
+              queryParameters: {'registrasi_id': registrasi.serverId},
+            );
+            final list = check.data is Map && check.data['data'] is List
+                ? (check.data['data'] as List)
+                : (check.data is List ? (check.data as List) : <dynamic>[]);
+            if (list.isNotEmpty && list.first is Map) {
+              targetId = (list.first as Map<String, dynamic>)['id'] as int?;
+            }
+          } catch (e) {
+            debugPrint('ℹ️ SyncService: Unable to check existing anamnesa: $e');
+          }
+
+          final response = targetId != null
+              ? await _dio.put('/anamnesa/$targetId', data: payload)
+              : await _dio.post('/anamnesa', data: payload);
 
           if (response.statusCode == 200 || response.statusCode == 201) {
-            final serverId = response.data['data']['id'] as int;
+            final body = response.data;
+            int serverId;
+            if (body is Map &&
+                body['data'] is Map &&
+                (body['data']['id'] is int)) {
+              serverId = body['data']['id'] as int;
+            } else if (body is Map && body['id'] is int) {
+              serverId = body['id'] as int;
+            } else {
+              // Fallback to existing id when PUT
+              serverId = targetId ?? -1;
+            }
 
             // Mark as synced
             await _database.markAnamnesaSynced(anamnesa.id, serverId);
 
             debugPrint('✅ Anamnesa for registrasi ${registrasi.noReg} synced');
           }
+        } on DioException catch (e) {
+          debugPrint('❌ Error syncing anamnesa: ${e.type}');
+          debugPrint('   Status: ${e.response?.statusCode}');
+          debugPrint('   Response: ${e.response?.data}');
+          // Continue to next item
         } catch (e) {
-          debugPrint('❌ Error syncing anamnesa: $e');
+          debugPrint('❌ Error syncing anamnesa (unexpected): $e');
         }
       }
     } catch (e) {

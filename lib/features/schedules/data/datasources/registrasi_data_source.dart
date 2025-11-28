@@ -1,7 +1,8 @@
+import 'dart:convert';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:homecare_mobile/features/schedules/domain/models/registrasi.dart';
-import 'package:homecare_mobile/features/patients/domain/models/pasien.dart';
+// Removed unused pasien import
 
 class RegistrasiDataSource {
   final Dio _dio;
@@ -25,34 +26,16 @@ class RegistrasiDataSource {
 
       debugPrint('✅ GET /registrasi - Status: ${response.statusCode}');
 
-      if (response.data == null) {
-        throw Exception('Response data is null');
+      final parsed = _parseResponseData(response.data);
+      if (parsed is List) {
+        debugPrint('📥 Received ${parsed.length} registrations');
+        return RegistrasiCollection.fromJson({'data': parsed});
       }
 
-      // Handle pagination response
-      if (response.data is Map) {
-        final data = response.data as Map<String, dynamic>;
-
-        // Check if it's a paginated response with 'data' field
-        if (data.containsKey('data') && data['data'] is List) {
-          final dataArray = data['data'] as List;
-          debugPrint('📥 Received ${dataArray.length} registrations');
-
-          return RegistrasiCollection.fromJson({'data': dataArray});
-        }
-      }
-
-      // Direct list response
-      if (response.data is List) {
-        final dataArray = response.data as List;
-        debugPrint(
-          '📥 Received ${dataArray.length} registrations (direct array)',
-        );
-        return RegistrasiCollection.fromJson({'data': dataArray});
-      }
-
-      // Default - try to parse as is
-      return RegistrasiCollection.fromJson(response.data);
+      // As a last resort, try constructing from the original structure
+      return RegistrasiCollection.fromJson(
+        parsed is Map<String, dynamic> ? parsed : {'data': []},
+      );
     } on DioException catch (e) {
       debugPrint('❌ DioError GET /registrasi:');
       debugPrint('   Type: ${e.type}');
@@ -67,6 +50,7 @@ class RegistrasiDataSource {
     } catch (e, stackTrace) {
       debugPrint('❌ Error GET /registrasi: $e');
       debugPrint('   Type: ${e.runtimeType}');
+      debugPrint('   Stack: $stackTrace');
       rethrow;
     }
   }
@@ -75,7 +59,14 @@ class RegistrasiDataSource {
   Future<Registrasi> getRegistrasiById(int id) async {
     try {
       final response = await _dio.get('/registrasi/$id');
-      return Registrasi.fromJson(response.data['data']);
+      final parsed = _parseResponseData(response.data);
+      if (parsed is Map<String, dynamic>) {
+        return Registrasi.fromJson(parsed);
+      }
+      if (parsed is List && parsed.isNotEmpty && parsed.first is Map) {
+        return Registrasi.fromJson(parsed.first as Map<String, dynamic>);
+      }
+      throw const FormatException('Unexpected response shape for registrasi');
     } catch (e) {
       rethrow;
     }
@@ -92,7 +83,14 @@ class RegistrasiDataSource {
       debugPrint('✅ POST /registrasi - Status: ${response.statusCode}');
       debugPrint('📥 Response: ${response.data}');
 
-      return Registrasi.fromJson(response.data['data'] ?? response.data);
+      final parsed = _parseResponseData(response.data);
+      if (parsed is Map<String, dynamic>) {
+        return Registrasi.fromJson(parsed);
+      }
+      if (parsed is List && parsed.isNotEmpty && parsed.first is Map) {
+        return Registrasi.fromJson(parsed.first as Map<String, dynamic>);
+      }
+      throw const FormatException('Unexpected response shape after create');
     } on DioException catch (e) {
       debugPrint('❌ DioError POST /registrasi:');
       debugPrint('   Type: ${e.type}');
@@ -111,7 +109,11 @@ class RegistrasiDataSource {
   Future<Registrasi> updateRegistrasi(int id, Map<String, dynamic> data) async {
     try {
       final response = await _dio.put('/registrasi/$id', data: data);
-      return Registrasi.fromJson(response.data['data']);
+      final parsed = _parseResponseData(response.data);
+      if (parsed is Map<String, dynamic>) {
+        return Registrasi.fromJson(parsed);
+      }
+      throw const FormatException('Unexpected response shape after update');
     } catch (e) {
       rethrow;
     }
@@ -133,7 +135,13 @@ class RegistrasiDataSource {
         '/registrasi',
         queryParameters: {'search': query},
       );
-      return RegistrasiCollection.fromJson(response.data);
+      final parsed = _parseResponseData(response.data);
+      if (parsed is List) {
+        return RegistrasiCollection.fromJson({'data': parsed});
+      }
+      return RegistrasiCollection.fromJson(
+        parsed is Map<String, dynamic> ? parsed : {'data': []},
+      );
     } catch (e) {
       rethrow;
     }
@@ -146,7 +154,13 @@ class RegistrasiDataSource {
         '/registrasi',
         queryParameters: {'pasien_id': pasienId},
       );
-      return RegistrasiCollection.fromJson(response.data);
+      final parsed = _parseResponseData(response.data);
+      if (parsed is List) {
+        return RegistrasiCollection.fromJson({'data': parsed});
+      }
+      return RegistrasiCollection.fromJson(
+        parsed is Map<String, dynamic> ? parsed : {'data': []},
+      );
     } catch (e) {
       rethrow;
     }
@@ -159,9 +173,53 @@ class RegistrasiDataSource {
         '/registrasi',
         queryParameters: {'date': date},
       );
-      return RegistrasiCollection.fromJson(response.data);
+      final parsed = _parseResponseData(response.data);
+      if (parsed is List) {
+        return RegistrasiCollection.fromJson({'data': parsed});
+      }
+      return RegistrasiCollection.fromJson(
+        parsed is Map<String, dynamic> ? parsed : {'data': []},
+      );
     } catch (e) {
       rethrow;
     }
+  }
+
+  /// Normalize various API response shapes to either List or Map
+  dynamic _parseResponseData(dynamic raw) {
+    if (raw == null) return {'data': []};
+
+    // If server returned a JSON string
+    if (raw is String) {
+      try {
+        raw = jsonDecode(raw);
+      } catch (_) {
+        // Not JSON, return empty
+        return {'data': []};
+      }
+    }
+
+    // Direct list
+    if (raw is List) return raw;
+
+    if (raw is Map) {
+      // Common: { data: [...] }
+      final dataField = raw['data'];
+      if (dataField is List) return dataField;
+
+      // Sometimes: { data: { data: [...] } }
+      if (dataField is Map && dataField['data'] is List) {
+        return dataField['data'];
+      }
+
+      // Other shapes like { items: [...] } or { rows: [...] }
+      if (raw['items'] is List) return raw['items'];
+      if (raw['rows'] is List) return raw['rows'];
+
+      // If it's a single object
+      return raw;
+    }
+
+    return {'data': []};
   }
 }

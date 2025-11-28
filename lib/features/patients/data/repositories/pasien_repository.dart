@@ -70,7 +70,7 @@ class PasienRepository {
     }
   }
 
-  Future<void> _fetchAndSyncFromRegistrasi() async {
+  Future<void> _fetchAndSyncFromRegistrasi({bool strict = false}) async {
     try {
       debugPrint('🔄 Starting sync patients from /registrasi API...');
 
@@ -91,6 +91,20 @@ class PasienRepository {
       debugPrint('🔄 Fetching registrations from /registrasi...');
       final registrasis = await _registrasiRepository.getAllRegistrasi();
       debugPrint('📥 Received ${registrasis.length} registrations');
+
+      // If registrasi returns empty, preserve previous cache to avoid flicker/regression
+      if (registrasis.isEmpty) {
+        if (_cachedPatients != null && _cachedPatients!.isNotEmpty) {
+          debugPrint(
+            '⚠️ Registrasi empty from API, preserving cached registration flags',
+          );
+          // Still upsert base patients for freshness
+          for (var pasien in pasienMap.values) {
+            await _localDataSource.upsertPasien(pasien);
+          }
+          return; // keep existing _cachedPatients
+        }
+      }
 
       // Track pasien yang sudah registrasi
       final registeredPasienIds = <int>{};
@@ -137,32 +151,15 @@ class PasienRepository {
       debugPrint('   Type: ${e.type}');
       debugPrint('   Message: ${e.message}');
       debugPrint('   Status: ${e.response?.statusCode}');
-      // Jangan throw error, biarkan cached data tetap ada
-      // throw e;  // ❌ Jangan throw, biar cache tetap ada
+      if (strict) rethrow;
     } catch (e, stackTrace) {
       debugPrint('⚠️ Failed to sync from API (offline mode): $e');
       debugPrint('   StackTrace: $stackTrace');
-      // Jangan throw error, biarkan cached data tetap ada
-      // throw e;  // ❌ Jangan throw, biar cache tetap ada
+      if (strict) rethrow;
     }
   }
 
-  Future<void> _fetchAndSyncFromApi() async {
-    try {
-      // Fetch from API
-      final response = await _remoteDataSource.getAllPasien();
-
-      // Update local database
-      for (var pasien in response.data) {
-        await _localDataSource.upsertPasien(pasien);
-      }
-
-      debugPrint('✅ Synced ${response.data.length} patients from API');
-    } catch (e) {
-      debugPrint('⚠️ Failed to sync from API (offline mode): $e');
-      // Silently fail - user can still use local data
-    }
-  }
+  // _fetchAndSyncFromApi unused; removed to satisfy lints
 
   Future<Pasien> getPasienById(int id) async {
     try {
@@ -306,6 +303,31 @@ class PasienRepository {
     } catch (e) {
       debugPrint('❌ Error searching patients: $e');
       rethrow;
+    }
+  }
+
+  // ========== API-FIRST STRATEGY (requested) ==========
+  /// Fetch patients from API first (including merging with registrasi),
+  /// then fallback to local database if API fails.
+  Future<List<Pasien>> getAllPasienApiFirst() async {
+    try {
+      debugPrint('🌐 [API-FIRST] Loading patients from API...');
+      await _fetchAndSyncFromRegistrasi(strict: true);
+      if (_cachedPatients != null && _cachedPatients!.isNotEmpty) {
+        debugPrint(
+          '🌐 [API-FIRST] Returning ${_cachedPatients!.length} patients from API',
+        );
+        return _cachedPatients!;
+      }
+      // If for some reason cache is empty after API, fallback to local
+      final local = await _localDataSource.getAllPasien();
+      debugPrint(
+        '💾 [API-FIRST] Cache empty after API, returning local: ${local.length}',
+      );
+      return local;
+    } catch (e) {
+      debugPrint('⚠️ [API-FIRST] API failed, falling back to local: $e');
+      return await _localDataSource.getAllPasien();
     }
   }
 }

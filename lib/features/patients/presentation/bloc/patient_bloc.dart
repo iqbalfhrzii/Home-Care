@@ -25,7 +25,7 @@ class PatientBloc extends Bloc<PatientEvent, PatientState> {
   ) async {
     emit(const PatientLoading());
     try {
-      final patients = await repository.getAllPasien();
+      final patients = await repository.getAllPasienApiFirst();
       emit(PatientListLoaded(patients: patients, filteredPatients: patients));
     } catch (e) {
       emit(PatientError('Gagal memuat data pasien: ${e.toString()}'));
@@ -169,7 +169,7 @@ class PatientBloc extends Bloc<PatientEvent, PatientState> {
       );
 
       // Reload patient list
-      final patients = await repository.getAllPasien();
+      final patients = await repository.getAllPasienApiFirst();
       emit(PatientListLoaded(patients: patients, filteredPatients: patients));
 
       emit(
@@ -204,7 +204,7 @@ class PatientBloc extends Bloc<PatientEvent, PatientState> {
 
       // Reload patient list or detail
       if (currentState is PatientListLoaded) {
-        final patients = await repository.getAllPasien();
+        final patients = await repository.getAllPasienApiFirst();
         emit(PatientListLoaded(patients: patients, filteredPatients: patients));
       } else if (currentState is PatientDetailLoaded) {
         final patient = await repository.getPasienById(event.id);
@@ -240,7 +240,7 @@ class PatientBloc extends Bloc<PatientEvent, PatientState> {
       print('✅ Patient deleted successfully: ${event.id}');
 
       // Reload patient list
-      final patients = await repository.getAllPasien();
+      final patients = await repository.getAllPasienApiFirst();
 
       // Emit success with loaded data (single emit to prevent loops)
       emit(
@@ -268,7 +268,7 @@ class PatientBloc extends Bloc<PatientEvent, PatientState> {
     print('🔄 RefreshPatients called');
 
     try {
-      final patients = await repository.getAllPasien();
+      final patients = await repository.getAllPasienApiFirst();
 
       // Preserve search and filter state if exists
       if (currentState is PatientListLoaded) {

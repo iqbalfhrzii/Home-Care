@@ -150,10 +150,53 @@ class _RegistrationFormPageState extends State<RegistrationFormPage> {
       );
 
       if (registration != null && mounted) {
+        // Normalize incoming values to match allowed dropdown items to avoid assertion failures
+        const jenisKunjunganItems = [
+          'HOME CARE',
+          'KUNJUNGAN BARU',
+          'KUNJUNGAN LANJUTAN',
+        ];
+        const tipePasienItems = ['UMUM', 'BPJS', 'ASURANSI'];
+        const asalPasienItems = ['POLIKLINIK', 'LANGSUNG', 'RUJUKAN', 'IGD'];
+        const waktuKunjunganItems = ['PAGI', 'SORE'];
+
+        String _norm(String? v) => (v ?? '').trim().toUpperCase();
+
+        final normJenis = _norm(registration.jenisKunjungan);
+        final normTipe = _norm(registration.tipePasien);
+        final normAsal = _norm(registration.asalPasien);
+        final normWaktu = _norm(registration.pagiSore);
+
+        if (!jenisKunjunganItems.contains(normJenis)) {
+          debugPrint(
+            "ℹ️ jenis_kunjungan '${registration.jenisKunjungan}' tidak ditemukan di opsi. Fallback ke 'HOME CARE'.",
+          );
+        }
+        if (registration.asalPasien != null &&
+            !asalPasienItems.contains(normAsal)) {
+          debugPrint(
+            "ℹ️ asal_pasien '${registration.asalPasien}' tidak ditemukan di opsi. Fallback ke 'POLIKLINIK'.",
+          );
+        }
+        if (registration.pagiSore != null &&
+            !waktuKunjunganItems.contains(normWaktu)) {
+          debugPrint(
+            "ℹ️ waktu_kunjungan '${registration.pagiSore}' tidak ditemukan di opsi. Fallback ke 'PAGI'.",
+          );
+        }
+        if (!tipePasienItems.contains(normTipe)) {
+          debugPrint(
+            "ℹ️ tipe_pasien '${registration.tipePasien}' tidak ditemukan di opsi. Fallback ke 'UMUM'.",
+          );
+        }
+
         setState(() {
           _noRegController.text = registration.noReg;
-          _jenisKunjungan = registration.jenisKunjungan;
-          _tipePasien = registration.tipePasien;
+
+          _jenisKunjungan = jenisKunjunganItems.contains(normJenis)
+              ? normJenis
+              : 'HOME CARE';
+          _tipePasien = tipePasienItems.contains(normTipe) ? normTipe : 'UMUM';
 
           // Only set selected values if they exist in the dropdown lists
           if (registration.dokterId != null &&
@@ -166,8 +209,13 @@ class _RegistrationFormPageState extends State<RegistrationFormPage> {
             _selectedPoliKode = registration.kodePoli;
           }
 
-          _pagiSore = registration.pagiSore ?? 'PAGI';
-          _asalPasien = registration.asalPasien ?? 'POLIKLINIK';
+          _pagiSore = waktuKunjunganItems.contains(normWaktu)
+              ? normWaktu
+              : 'PAGI';
+          _asalPasien = asalPasienItems.contains(normAsal)
+              ? normAsal
+              : 'POLIKLINIK';
+
           _penanggungNamaController.text = registration.penanggungNama ?? '';
           _penanggungNoPegawaiController.text =
               registration.penanggungNoPegawai ?? '';

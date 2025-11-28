@@ -63,6 +63,7 @@ class _PatientListView extends StatefulWidget {
 class _PatientListViewState extends State<_PatientListView> {
   final TextEditingController _searchController = TextEditingController();
   Timer? _debounce;
+  final Map<int, bool> _hasRegistrationCache = {};
 
   @override
   void initState() {
@@ -84,6 +85,22 @@ class _PatientListViewState extends State<_PatientListView> {
     _debounce = Timer(const Duration(milliseconds: 300), () {
       context.read<PatientBloc>().add(SearchPatients(_searchController.text));
     });
+  }
+
+  Future<bool> _hasRegistration(int? pasienId) async {
+    if (pasienId == null) return false;
+    if (_hasRegistrationCache.containsKey(pasienId)) {
+      return _hasRegistrationCache[pasienId]!;
+    }
+    try {
+      final database = getIt<db.AppDatabase>();
+      final regs = await database.getRegistrasiByPasienId(pasienId);
+      final has = regs.isNotEmpty;
+      _hasRegistrationCache[pasienId] = has;
+      return has;
+    } catch (_) {
+      return false;
+    }
   }
 
   String _formatDate(String isoDate) {
@@ -151,13 +168,10 @@ class _PatientListViewState extends State<_PatientListView> {
     if (hasRegistrations) {
       try {
         final database = getIt<db.AppDatabase>();
-        final pasienIdInt = patient.id;
-        if (pasienIdInt != null) {
-          final registration = await database.getLatestRegistrasiByPasienId(
-            pasienIdInt,
-          );
-          registrasiId = registration?.id;
-        }
+        final registration = await database.getLatestRegistrasiByPasienId(
+          patient.id,
+        );
+        registrasiId = registration?.id;
       } catch (e) {
         debugPrint('❌ Error loading registration: $e');
       }
@@ -772,34 +786,44 @@ class _PatientListViewState extends State<_PatientListView> {
                           ),
                         ],
                       ),
-                      child: Material(
-                        color: Colors.transparent,
-                        child: InkWell(
-                          borderRadius: BorderRadius.circular(16),
-                          onTap: () => _onRegisterPatient(patient),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                const Icon(
-                                  Icons.app_registration,
-                                  color: kWhite,
-                                  size: 20,
+                      child: FutureBuilder<bool>(
+                        future: _hasRegistration(patient.id),
+                        builder: (context, snap) {
+                          final has = snap.data ?? false;
+                          final label = has
+                              ? 'Edit Registrasi'
+                              : 'Registrasikan Kunjungan';
+                          final icon = has
+                              ? Icons.edit_calendar
+                              : Icons.app_registration;
+                          return Material(
+                            color: Colors.transparent,
+                            child: InkWell(
+                              borderRadius: BorderRadius.circular(16),
+                              onTap: () => _onRegisterPatient(patient),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 14,
                                 ),
-                                const SizedBox(width: 8),
-                                const Text(
-                                  'Registrasikan Kunjungan',
-                                  style: const TextStyle(
-                                    color: kWhite,
-                                    fontSize: 15,
-                                    fontWeight: FontWeight.w700,
-                                  ),
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(icon, color: kWhite, size: 20),
+                                    const SizedBox(width: 8),
+                                    Text(
+                                      label,
+                                      style: const TextStyle(
+                                        color: kWhite,
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                  ],
                                 ),
-                              ],
+                              ),
                             ),
-                          ),
-                        ),
+                          );
+                        },
                       ),
                     ),
                     const SizedBox(height: 12),
@@ -953,13 +977,23 @@ class _PatientListViewState extends State<_PatientListView> {
                 DataCell(
                   Row(
                     children: [
-                      TextButton.icon(
-                        icon: const Icon(Icons.app_registration, size: 14),
-                        label: const Text('Registrasi'),
-                        style: TextButton.styleFrom(
-                          foregroundColor: kSecondaryColor,
-                        ),
-                        onPressed: () => _onRegisterPatient(patient),
+                      FutureBuilder<bool>(
+                        future: _hasRegistration(patient.id),
+                        builder: (context, snap) {
+                          final has = snap.data ?? false;
+                          final label = has ? 'Edit Registrasi' : 'Registrasi';
+                          final icon = has
+                              ? Icons.edit_calendar
+                              : Icons.app_registration;
+                          return TextButton.icon(
+                            icon: Icon(icon, size: 14),
+                            label: Text(label),
+                            style: TextButton.styleFrom(
+                              foregroundColor: kSecondaryColor,
+                            ),
+                            onPressed: () => _onRegisterPatient(patient),
+                          );
+                        },
                       ),
                       TextButton.icon(
                         icon: const Icon(Icons.edit_outlined, size: 14),
