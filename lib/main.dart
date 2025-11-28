@@ -1,15 +1,20 @@
 // lib/main.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:homecare_mobile/core/router/app_router.dart';
 import 'package:homecare_mobile/core/theme/theme.dart';
 import 'package:homecare_mobile/core/utils/injections.dart';
 import 'package:homecare_mobile/core/utils/logger.dart';
 import 'package:homecare_mobile/features/auth/presentation/bloc/auth_bloc.dart';
+import 'package:intl/date_symbol_data_local.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await initInjections();
+
+  // Initialize locale data for DateFormat
+  await initializeDateFormatting('id_ID', null);
 
   logger.i('App started');
   runApp(const MyApp());
@@ -53,6 +58,16 @@ class _MyAppState extends State<MyApp> {
         // theme: brightness == Brightness.light ? theme.light() : theme.dark(),
         theme: theme.light(),
         routerConfig: _appRouter.router,
+        localizationsDelegates: const [
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+        supportedLocales: const [
+          Locale('id', 'ID'), // Indonesian
+          Locale('en', 'US'), // English
+        ],
+        locale: const Locale('id', 'ID'),
       ),
     );
   }

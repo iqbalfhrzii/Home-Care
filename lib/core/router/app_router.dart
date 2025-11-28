@@ -5,12 +5,21 @@ import 'package:go_router/go_router.dart';
 import 'package:homecare_mobile/core/utils/logger.dart';
 import 'package:homecare_mobile/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:homecare_mobile/features/auth/presentation/pages/login_page.dart';
-import 'package:homecare_mobile/features/reports/report_list_page.dart';
+import 'package:homecare_mobile/features/reports/presentation/pages/report_list_page.dart';
 import 'package:homecare_mobile/features/schedules/presentation/pages/schedule_list_page.dart';
-import 'package:homecare_mobile/features/schedules/presentation/pages/schedule_page.dart';
-import 'package:homecare_mobile/shared/presentation/pages/home_page.dart';
+import 'package:homecare_mobile/pages/home_page.dart';
 import 'package:homecare_mobile/shared/presentation/pages/main_page.dart';
 import 'package:homecare_mobile/shared/presentation/pages/splash_page.dart';
+import 'package:homecare_mobile/features/patients/presentation/pages/patient_list_pages.dart';
+import 'package:homecare_mobile/features/patients/presentation/pages/patient_detail_pages.dart';
+import 'package:homecare_mobile/features/patients/domain/models/pasien.dart';
+import 'package:homecare_mobile/features/patients/presentation/pages/patient_add_page.dart';
+import 'package:homecare_mobile/features/patients/presentation/pages/patient_edit_page.dart';
+import 'package:homecare_mobile/features/patients/presentation/pages/registration_form_page.dart';
+import 'package:homecare_mobile/features/schedules/presentation/pages/schedule_detail_page.dart';
+import 'package:homecare_mobile/features/schedules/presentation/pages/schedule_anamnesa_page.dart';
+import 'package:homecare_mobile/features/schedules/presentation/pages/schedule_tindakan_page.dart';
+import 'package:homecare_mobile/features/schedules/presentation/pages/schedule_icd_pages.dart';
 
 class AppRouter {
   static const String splash = '/';
@@ -18,6 +27,7 @@ class AppRouter {
   static const String home = '/home';
   static const String schedules = '/schedules';
   static const String reports = '/reports';
+  static const String patients = '/patients';
 
   final AuthBloc _authBloc;
 
@@ -53,21 +63,108 @@ class AppRouter {
           GoRoute(
             path: schedules,
             name: 'scheduleList',
-            pageBuilder: (context, state) => NoTransitionPage(
-              key: state.pageKey,
-              child: const ScheduleListPage(),
+            pageBuilder: (context, state) => const NoTransitionPage(
+              key: ValueKey('schedules'),
+              child: ScheduleListPage(),
             ),
             routes: [
               GoRoute(
-                path: ':id',
-                name: 'schedule',
+                path: 'detail/:id',
+                name: 'scheduleDetail',
                 builder: (context, state) {
                   final id = int.parse(state.pathParameters['id']!);
-                  return SchedulePage(id: id);
+                  return ScheduleDetailPage(registrationId: id);
+                },
+                routes: [
+                  GoRoute(
+                    path: 'anamnesa',
+                    name: 'scheduleAnamnesa',
+                    builder: (context, state) {
+                      final id = int.parse(state.pathParameters['id']!);
+                      return ScheduleAnamnesaPage(registrationId: id);
+                    },
+                  ),
+                  GoRoute(
+                    path: 'tindakan',
+                    name: 'scheduleTindakan',
+                    builder: (context, state) {
+                      final id = int.parse(state.pathParameters['id']!);
+                      return ScheduleTindakanPage(registrationId: id);
+                    },
+                  ),
+                  GoRoute(
+                    path: 'icd',
+                    name: 'scheduleIcd',
+                    builder: (context, state) {
+                      final id = int.parse(state.pathParameters['id']!);
+                      return ScheduleIcdPage(registrationId: id);
+                    },
+                  ),
+                ],
+              ),
+            ],
+          ),
+          GoRoute(
+            path: patients,
+            name: 'patientList',
+            pageBuilder: (context, state) => NoTransitionPage(
+              key: state.pageKey,
+              child: PatientMasterListPage(),
+            ),
+            routes: [
+              GoRoute(
+                path: 'add',
+                name: 'patientAdd',
+                builder: (context, state) {
+                  return const PatientAddPage();
+                },
+              ),
+              GoRoute(
+                path: ':id',
+                name: 'patientDetail',
+                builder: (context, state) {
+                  final id = state.pathParameters['id']!;
+                  final extra = state.extra;
+                  if (extra is Pasien) {
+                    return PatientDetailPage(pasien: extra);
+                  }
+                  return PatientDetailPage(patientId: int.tryParse(id));
+                },
+              ),
+              GoRoute(
+                path: ':id/edit',
+                name: 'patientEdit',
+                builder: (context, state) {
+                  final extra = state.extra;
+                  if (extra is Pasien) {
+                    return PatientEditPage(patient: extra);
+                  }
+                  // Fallback if no patient data provided
+                  return const Scaffold(
+                    body: Center(child: Text('Data pasien tidak ditemukan')),
+                  );
+                },
+              ),
+              GoRoute(
+                path: 'register/:id',
+                name: 'patientRegister',
+                builder: (context, state) {
+                  final id = state.pathParameters['id']!;
+                  final extra = state.extra as Map<String, dynamic>?;
+                  final name = extra?['pasienNama'] as String?;
+                  final registrasiId = extra?['registrasiId'] as int?;
+                  final isEdit = extra?['isEdit'] as bool? ?? false;
+                  return RegistrationFormPage(
+                    pasienId: id,
+                    pasienNama: name,
+                    registrasiId: registrasiId,
+                    isEdit: isEdit,
+                  );
                 },
               ),
             ],
           ),
+
           GoRoute(
             path: reports,
             name: 'reports',

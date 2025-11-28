@@ -1,10 +1,7 @@
 part of 'patient_bloc.dart';
 
-abstract class PatientState extends Equatable {
+abstract class PatientState {
   const PatientState();
-
-  @override
-  List<Object?> get props => [];
 }
 
 class PatientInitial extends PatientState {
@@ -15,31 +12,61 @@ class PatientLoading extends PatientState {
   const PatientLoading();
 }
 
-class PatientReadManySuccess extends PatientState {
-  final List<Patient> patients;
-  final PaginationMeta pagination;
+class PatientListLoaded extends PatientState {
+  final List<Pasien> patients;
+  final List<Pasien> filteredPatients;
+  final String searchQuery;
+  final String? activeFilter; // null, 'registered', 'unregistered'
 
-  const PatientReadManySuccess({
+  const PatientListLoaded({
     required this.patients,
-    required this.pagination,
+    required this.filteredPatients,
+    this.searchQuery = '',
+    this.activeFilter,
   });
 
-  @override
-  List<Object?> get props => [patients, pagination];
+  PatientListLoaded copyWith({
+    List<Pasien>? patients,
+    List<Pasien>? filteredPatients,
+    String? searchQuery,
+    String? activeFilter,
+    bool clearFilter = false,
+  }) {
+    return PatientListLoaded(
+      patients: patients ?? this.patients,
+      filteredPatients: filteredPatients ?? this.filteredPatients,
+      searchQuery: searchQuery ?? this.searchQuery,
+      activeFilter: clearFilter ? null : (activeFilter ?? this.activeFilter),
+    );
+  }
+
+  int get totalPatients => patients.length;
+  int get maleCount => patients.where((p) => p.jenisKelamin == 'L').length;
+  int get femaleCount => patients.where((p) => p.jenisKelamin == 'P').length;
+
+  // Hitung berdasarkan array registrasi dari API
+  int get registeredCount => patients.where((p) => p.isRegistered).length;
+  int get unregisteredCount => patients.where((p) => !p.isRegistered).length;
 }
 
-class PatientReadSuccess extends PatientState {
-  final Patient patient;
+class PatientDetailLoaded extends PatientState {
+  final Pasien patient;
 
-  const PatientReadSuccess(this.patient);
+  const PatientDetailLoaded(this.patient);
+}
 
-  @override
-  List<Object?> get props => [patient];
+class PatientOperationSuccess extends PatientState {
+  final String message;
+  final PatientOperationType type;
+
+  const PatientOperationSuccess({required this.message, required this.type});
 }
 
 class PatientError extends PatientState {
   final String message;
-  const PatientError(this.message);
-  @override
-  List<Object?> get props => [message];
+  final PatientState? previousState;
+
+  const PatientError(this.message, [this.previousState]);
 }
+
+enum PatientOperationType { create, update, delete }

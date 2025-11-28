@@ -2,26 +2,26 @@ import 'package:json_annotation/json_annotation.dart';
 
 part 'patient.g.dart';
 
-@JsonSerializable(fieldRename: FieldRename.snake)
+@JsonSerializable()
 class Patient {
   final int id;
-  final String noRekamMedis;
+  @JsonKey(name: 'no_rm')
+  final String noRM;
+  @JsonKey(name: 'nama_pasien')
   final String namaPasien;
-  final String tanggalLahir;
-  final String alamat;
+  @JsonKey(name: 'tanggal_lahir')
+  final String? tanggalLahir;
+  final String? alamat;
+  @JsonKey(name: 'status_rujukan')
   final String statusRujukan;
-  final String createdAt;
-  final String updatedAt;
 
-  const Patient({
+  Patient({
     required this.id,
-    required this.noRekamMedis,
+    required this.noRM,
     required this.namaPasien,
-    required this.tanggalLahir,
-    required this.alamat,
+    this.tanggalLahir,
+    this.alamat,
     required this.statusRujukan,
-    required this.createdAt,
-    required this.updatedAt,
   });
 
   factory Patient.fromJson(Map<String, dynamic> json) =>
