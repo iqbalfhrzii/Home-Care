@@ -56,9 +56,8 @@ class PatientBloc extends Bloc<PatientEvent, PatientState> {
         var filtered = currentState.patients.where((patient) {
           final query = event.query.toLowerCase();
           return patient.nama.toLowerCase().contains(query) ||
-              patient.noRm.toLowerCase().contains(query) ||
-              (patient.nik?.toLowerCase().contains(query) ?? false) ||
-              (patient.noBpjs?.toLowerCase().contains(query) ?? false);
+              patient.mrn.toLowerCase().contains(query) ||
+              patient.telepon.toLowerCase().contains(query);
         }).toList();
 
         print('🔍 Found ${filtered.length} results for "${event.query}"');
@@ -114,9 +113,8 @@ class PatientBloc extends Bloc<PatientEvent, PatientState> {
         filtered = filtered.where((patient) {
           final query = currentState.searchQuery.toLowerCase();
           return patient.nama.toLowerCase().contains(query) ||
-              patient.noRm.toLowerCase().contains(query) ||
-              (patient.nik?.toLowerCase().contains(query) ?? false) ||
-              (patient.noBpjs?.toLowerCase().contains(query) ?? false);
+              patient.mrn.toLowerCase().contains(query) ||
+              patient.telepon.toLowerCase().contains(query);
         }).toList();
       }
 
@@ -133,9 +131,9 @@ class PatientBloc extends Bloc<PatientEvent, PatientState> {
   List<Pasien> _applyFilter(List<Pasien> patients, String filterType) {
     switch (filterType) {
       case 'registered':
-        return patients.where((p) => p.isRegistered ?? false).toList();
+        return patients.where((p) => p.isRegistered).toList();
       case 'unregistered':
-        return patients.where((p) => !(p.isRegistered ?? false)).toList();
+        return patients.where((p) => !p.isRegistered).toList();
       default:
         return patients;
     }
@@ -164,14 +162,10 @@ class PatientBloc extends Bloc<PatientEvent, PatientState> {
     try {
       await repository.createPasien(
         nama: event.nama,
-        tempatLahir: event.tempatLahir,
         tanggalLahir: event.tanggalLahir,
         jenisKelamin: event.jenisKelamin,
         alamat: event.alamat,
-        noTelp: event.noTelp,
-        nik: event.nik,
-        noBpjs: event.noBpjs,
-        golonganDarah: event.golonganDarah,
+        telepon: event.telepon,
       );
 
       // Reload patient list
@@ -202,14 +196,10 @@ class PatientBloc extends Bloc<PatientEvent, PatientState> {
       await repository.updatePasien(
         id: event.id,
         nama: event.nama,
-        tempatLahir: event.tempatLahir,
         tanggalLahir: event.tanggalLahir,
         jenisKelamin: event.jenisKelamin,
         alamat: event.alamat,
-        noTelp: event.noTelp,
-        nik: event.nik,
-        noBpjs: event.noBpjs,
-        golonganDarah: event.golonganDarah,
+        telepon: event.telepon,
       );
 
       // Reload patient list or detail
@@ -297,9 +287,8 @@ class PatientBloc extends Bloc<PatientEvent, PatientState> {
           filtered = filtered.where((patient) {
             final query = currentState.searchQuery.toLowerCase();
             return patient.nama.toLowerCase().contains(query) ||
-                patient.noRm.toLowerCase().contains(query) ||
-                (patient.nik?.toLowerCase().contains(query) ?? false) ||
-                (patient.noBpjs?.toLowerCase().contains(query) ?? false);
+                patient.mrn.toLowerCase().contains(query) ||
+                patient.telepon.toLowerCase().contains(query);
           }).toList();
           print('🔄 After re-applying search: ${filtered.length} results');
         }

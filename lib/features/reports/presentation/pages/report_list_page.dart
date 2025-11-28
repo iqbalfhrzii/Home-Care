@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:homecare_mobile/features/reports/presentation/pages/report_detail_tagihan_pages.dart';
+import 'package:homecare_mobile/features/reports/data/repositories/tagihan_repository.dart';
+import 'package:homecare_mobile/features/reports/domain/models/tagihan.dart';
+import 'package:homecare_mobile/shared/app_injections.dart';
 
 const Color kPrimaryColor = Color(0xFF004B8C);
 const Color kPrimaryLight = Color(0xFF0063B2);
@@ -12,33 +15,6 @@ const Color kSuccessColor = Color(0xFF22C55E);
 const Color kWarningColor = Color(0xFFF59E0B);
 const Color kDangerColor = Color(0xFFEF4444);
 
-// Mock data model
-class BillingData {
-  final String id;
-  final String noInvoice;
-  final String patientName;
-  final String mrNumber;
-  final DateTime tanggalTagihan;
-  final int totalBiaya;
-  final int deposit;
-  final int sisaBiaya;
-  final String statusPembayaran;
-  final String primaryIcd;
-
-  BillingData({
-    required this.id,
-    required this.noInvoice,
-    required this.patientName,
-    required this.mrNumber,
-    required this.tanggalTagihan,
-    required this.totalBiaya,
-    required this.deposit,
-    required this.sisaBiaya,
-    required this.statusPembayaran,
-    required this.primaryIcd,
-  });
-}
-
 class ReportListPage extends StatefulWidget {
   const ReportListPage({super.key});
 
@@ -48,67 +24,18 @@ class ReportListPage extends StatefulWidget {
 
 class _ReportListPageState extends State<ReportListPage> {
   final TextEditingController _searchController = TextEditingController();
+  final TagihanRepository _repository = getIt<TagihanRepository>();
+
   String _selectedFilter = 'semua';
-
-  // Mock data - nanti diganti dengan API call
-  final List<BillingData> _allBillings = [
-    BillingData(
-      id: '1',
-      noInvoice: 'INV-2025-001',
-      patientName: 'Budi Santoso',
-      mrNumber: 'MR-2025-001',
-      tanggalTagihan: DateTime(2025, 11, 15),
-      totalBiaya: 850000,
-      deposit: 500000,
-      sisaBiaya: 350000,
-      statusPembayaran: 'lunas',
-      primaryIcd: 'E11 - Diabetes Mellitus Tipe 2',
-    ),
-    BillingData(
-      id: '2',
-      noInvoice: 'INV-2025-002',
-      patientName: 'Siti Aminah',
-      mrNumber: 'MR-2025-002',
-      tanggalTagihan: DateTime(2025, 11, 16),
-      totalBiaya: 1200000,
-      deposit: 600000,
-      sisaBiaya: 600000,
-      statusPembayaran: 'belum_lunas',
-      primaryIcd: 'I10 - Hipertensi Esensial',
-    ),
-    BillingData(
-      id: '3',
-      noInvoice: 'INV-2025-003',
-      patientName: 'Ahmad Hidayat',
-      mrNumber: 'MR-2025-003',
-      tanggalTagihan: DateTime(2025, 11, 17),
-      totalBiaya: 650000,
-      deposit: 0,
-      sisaBiaya: 650000,
-      statusPembayaran: 'pending',
-      primaryIcd: 'J06.9 - Common Cold',
-    ),
-    BillingData(
-      id: '4',
-      noInvoice: 'INV-2025-004',
-      patientName: 'Dewi Lestari',
-      mrNumber: 'MR-2025-004',
-      tanggalTagihan: DateTime(2025, 11, 14),
-      totalBiaya: 950000,
-      deposit: 950000,
-      sisaBiaya: 0,
-      statusPembayaran: 'lunas',
-      primaryIcd: 'J45.0 - Asma',
-    ),
-  ];
-
-  List<BillingData> _filteredBillings = [];
+  List<Tagihan> _allTagihan = [];
+  List<Tagihan> _filteredTagihan = [];
+  bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
-    _filteredBillings = _allBillings;
-    _searchController.addListener(_filterBillings);
+    _loadTagihan();
+    _searchController.addListener(_filterTagihan);
   }
 
   @override
@@ -117,18 +44,36 @@ class _ReportListPageState extends State<ReportListPage> {
     super.dispose();
   }
 
-  void _filterBillings() {
+  Future<void> _loadTagihan() async {
+    setState(() => _isLoading = true);
+    try {
+      final tagihan = await _repository.getAllTagihan();
+      setState(() {
+        _allTagihan = tagihan;
+        _filteredTagihan = tagihan;
+        _isLoading = false;
+      });
+    } catch (e) {
+      setState(() => _isLoading = false);
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error loading tagihan: $e')));
+      }
+    }
+  }
+
+  void _filterTagihan() {
     final query = _searchController.text.toLowerCase();
     setState(() {
-      _filteredBillings = _allBillings.where((billing) {
+      _filteredTagihan = _allTagihan.where((tagihan) {
         final matchesSearch =
-            billing.noInvoice.toLowerCase().contains(query) ||
-            billing.patientName.toLowerCase().contains(query) ||
-            billing.mrNumber.toLowerCase().contains(query);
+            tagihan.noInvoice.toLowerCase().contains(query) ||
+            (tagihan.tanggalInvoice?.toLowerCase().contains(query) ?? false);
 
         final matchesFilter =
             _selectedFilter == 'semua' ||
-            billing.statusPembayaran == _selectedFilter;
+            tagihan.statusPembayaran == _selectedFilter;
 
         return matchesSearch && matchesFilter;
       }).toList();
@@ -139,7 +84,7 @@ class _ReportListPageState extends State<ReportListPage> {
     setState(() {
       _selectedFilter = filter;
     });
-    _filterBillings();
+    _filterTagihan();
   }
 
   @override
@@ -208,15 +153,15 @@ class _ReportListPageState extends State<ReportListPage> {
   }
 
   Widget _buildSummaryCards() {
-    final total = _allBillings.length;
-    final lunas = _allBillings
-        .where((b) => b.statusPembayaran == 'lunas')
+    final total = _allTagihan.length;
+    final lunas = _allTagihan
+        .where((t) => t.statusPembayaran == 'lunas')
         .length;
-    final belumLunas = _allBillings
-        .where((b) => b.statusPembayaran == 'belum_lunas')
+    final belumBayar = _allTagihan
+        .where((t) => t.statusPembayaran == 'belum_bayar')
         .length;
-    final pending = _allBillings
-        .where((b) => b.statusPembayaran == 'pending')
+    final pending = _allTagihan
+        .where((t) => t.statusPembayaran == 'pending')
         .length;
 
     return Padding(
@@ -244,7 +189,7 @@ class _ReportListPageState extends State<ReportListPage> {
           Expanded(
             child: _SummaryCard(
               title: 'Belum',
-              count: belumLunas,
+              count: belumBayar,
               color: kWarningColor,
               icon: Icons.pending,
             ),
@@ -255,7 +200,7 @@ class _ReportListPageState extends State<ReportListPage> {
               title: 'Pending',
               count: pending,
               color: kDangerColor,
-              icon: Icons.schedule,
+              icon: Icons.hourglass_empty,
             ),
           ),
         ],
@@ -311,9 +256,9 @@ class _ReportListPageState extends State<ReportListPage> {
             ),
             const SizedBox(width: 8),
             _FilterChip(
-              label: 'Belum Lunas',
-              isSelected: _selectedFilter == 'belum_lunas',
-              onTap: () => _setFilter('belum_lunas'),
+              label: 'Belum Bayar',
+              isSelected: _selectedFilter == 'belum_bayar',
+              onTap: () => _setFilter('belum_bayar'),
               color: kWarningColor,
             ),
             const SizedBox(width: 8),
@@ -330,7 +275,13 @@ class _ReportListPageState extends State<ReportListPage> {
   }
 
   Widget _buildBillingList() {
-    if (_filteredBillings.isEmpty) {
+    if (_isLoading) {
+      return const SliverFillRemaining(
+        child: Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    if (_filteredTagihan.isEmpty) {
       return SliverFillRemaining(
         child: Center(
           child: Column(
@@ -356,20 +307,20 @@ class _ReportListPageState extends State<ReportListPage> {
       padding: const EdgeInsets.symmetric(horizontal: 16.0),
       sliver: SliverList(
         delegate: SliverChildBuilderDelegate((context, index) {
-          final billing = _filteredBillings[index];
-          return _BillingCard(
-            billing: billing,
+          final tagihan = _filteredTagihan[index];
+          return _TagihanCard(
+            tagihan: tagihan,
             onTap: () {
               Navigator.push(
                 context,
                 MaterialPageRoute(
                   builder: (_) =>
-                      ReportDetailTagihanPage(billingId: billing.id),
+                      ReportDetailTagihanPage(tagihanId: tagihan.id),
                 ),
               );
             },
           );
-        }, childCount: _filteredBillings.length),
+        }, childCount: _filteredTagihan.length),
       ),
     );
   }
@@ -464,17 +415,17 @@ class _FilterChip extends StatelessWidget {
   }
 }
 
-class _BillingCard extends StatelessWidget {
-  final BillingData billing;
+class _TagihanCard extends StatelessWidget {
+  final Tagihan tagihan;
   final VoidCallback onTap;
 
-  const _BillingCard({required this.billing, required this.onTap});
+  const _TagihanCard({required this.tagihan, required this.onTap});
 
   Color _getStatusColor(String status) {
     switch (status) {
       case 'lunas':
         return kSuccessColor;
-      case 'belum_lunas':
+      case 'belum_bayar':
         return kWarningColor;
       case 'pending':
         return kDangerColor;
@@ -487,8 +438,8 @@ class _BillingCard extends StatelessWidget {
     switch (status) {
       case 'lunas':
         return 'Lunas';
-      case 'belum_lunas':
-        return 'Belum Lunas';
+      case 'belum_bayar':
+        return 'Belum Bayar';
       case 'pending':
         return 'Pending';
       default:
@@ -496,9 +447,27 @@ class _BillingCard extends StatelessWidget {
     }
   }
 
+  int _parseStringToInt(String? value) {
+    if (value == null || value.isEmpty) return 0;
+    return int.tryParse(value.replaceAll(RegExp(r'[^0-9]'), '')) ?? 0;
+  }
+
+  DateTime? _parseDate(String? dateStr) {
+    if (dateStr == null || dateStr.isEmpty) return null;
+    try {
+      return DateTime.parse(dateStr);
+    } catch (e) {
+      return null;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final statusColor = _getStatusColor(billing.statusPembayaran);
+    final statusColor = _getStatusColor(tagihan.statusPembayaran);
+    final totalBiaya = _parseStringToInt(tagihan.totalBiaya);
+    final deposit = _parseStringToInt(tagihan.deposit);
+    final sisaBiaya = _parseStringToInt(tagihan.biayaYangHarusDibayar);
+    final tanggal = _parseDate(tagihan.tanggalInvoice);
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -531,7 +500,7 @@ class _BillingCard extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            billing.noInvoice,
+                            tagihan.noInvoice,
                             style: const TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.bold,
@@ -540,7 +509,7 @@ class _BillingCard extends StatelessWidget {
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            billing.patientName,
+                            'Pasien #${tagihan.registrasiId}',
                             style: const TextStyle(
                               fontSize: 14,
                               color: kTextGrey,
@@ -559,7 +528,7 @@ class _BillingCard extends StatelessWidget {
                         borderRadius: BorderRadius.circular(20),
                       ),
                       child: Text(
-                        _getStatusText(billing.statusPembayaran),
+                        _getStatusText(tagihan.statusPembayaran),
                         style: TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.bold,
@@ -586,7 +555,7 @@ class _BillingCard extends StatelessWidget {
                             style: TextStyle(fontSize: 13, color: kTextGrey),
                           ),
                           Text(
-                            'Rp ${NumberFormat('#,###', 'id_ID').format(billing.totalBiaya)}',
+                            'Rp ${NumberFormat('#,###', 'id_ID').format(totalBiaya)}',
                             style: const TextStyle(
                               fontSize: 14,
                               fontWeight: FontWeight.bold,
@@ -595,7 +564,7 @@ class _BillingCard extends StatelessWidget {
                           ),
                         ],
                       ),
-                      if (billing.deposit > 0) ...[
+                      if (deposit > 0) ...[
                         const SizedBox(height: 8),
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -605,7 +574,7 @@ class _BillingCard extends StatelessWidget {
                               style: TextStyle(fontSize: 13, color: kTextGrey),
                             ),
                             Text(
-                              'Rp ${NumberFormat('#,###', 'id_ID').format(billing.deposit)}',
+                              'Rp ${NumberFormat('#,###', 'id_ID').format(deposit)}',
                               style: const TextStyle(
                                 fontSize: 13,
                                 color: kSuccessColor,
@@ -627,11 +596,11 @@ class _BillingCard extends StatelessWidget {
                             ),
                           ),
                           Text(
-                            'Rp ${NumberFormat('#,###', 'id_ID').format(billing.sisaBiaya)}',
+                            'Rp ${NumberFormat('#,###', 'id_ID').format(sisaBiaya)}',
                             style: TextStyle(
                               fontSize: 15,
                               fontWeight: FontWeight.bold,
-                              color: billing.sisaBiaya > 0
+                              color: sisaBiaya > 0
                                   ? kDangerColor
                                   : kSuccessColor,
                             ),
@@ -647,14 +616,16 @@ class _BillingCard extends StatelessWidget {
                     Icon(Icons.calendar_today, size: 14, color: kTextGrey),
                     const SizedBox(width: 6),
                     Text(
-                      DateFormat('d MMM yyyy').format(billing.tanggalTagihan),
+                      tanggal != null
+                          ? DateFormat('d MMM yyyy').format(tanggal)
+                          : '-',
                       style: const TextStyle(fontSize: 12, color: kTextGrey),
                     ),
                     const SizedBox(width: 16),
                     Icon(Icons.badge, size: 14, color: kTextGrey),
                     const SizedBox(width: 6),
                     Text(
-                      billing.mrNumber,
+                      'Reg #${tagihan.registrasiId}',
                       style: const TextStyle(fontSize: 12, color: kTextGrey),
                     ),
                   ],

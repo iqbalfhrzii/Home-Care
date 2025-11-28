@@ -20,7 +20,7 @@ const Color kSuccessColor = Color(0xFF22C55E);
 const Color kDangerColor = Color(0xFFEF4444);
 
 class PatientDetailPage extends StatelessWidget {
-  final String? patientId;
+  final int? patientId;
   final Pasien? pasien;
 
   const PatientDetailPage({super.key, this.patientId, this.pasien});
@@ -69,17 +69,15 @@ class _PatientDetailViewState extends State<_PatientDetailView> {
     setState(() => _loadingRegistration = true);
     try {
       final database = getIt<db.AppDatabase>();
-      final pasienIdInt = int.tryParse(patient.id);
-      if (pasienIdInt != null) {
-        final registration = await database.getLatestRegistrasiByPasienId(
-          pasienIdInt,
-        );
-        if (mounted) {
-          setState(() {
-            _latestRegistration = registration;
-            _loadingRegistration = false;
-          });
-        }
+      final pasienIdInt = patient.id;
+      final registration = await database.getLatestRegistrasiByPasienId(
+        pasienIdInt,
+      );
+      if (mounted) {
+        setState(() {
+          _latestRegistration = registration;
+          _loadingRegistration = false;
+        });
       }
     } catch (e) {
       debugPrint('❌ Error loading registration: $e');
@@ -98,18 +96,13 @@ class _PatientDetailViewState extends State<_PatientDetailView> {
         if (patient != null && mounted) {
           setState(() {
             _currentPatient = Pasien(
-              id: patient.id.toString(),
-              noRm: patient.noRm,
+              id: patient.id,
+              mrn: patient.mrn,
               nama: patient.nama,
-              nik: patient.nik,
-              noBpjs: patient.noBpjs,
-              tempatLahir: patient.tempatLahir,
               tanggalLahir: patient.tanggalLahir.toIso8601String(),
               jenisKelamin: patient.jenisKelamin,
-              golonganDarah: patient.golonganDarah,
               alamat: patient.alamat,
-              noTelp: patient.noTelp,
-              isRegistered: patient.isRegistered,
+              telepon: patient.telepon,
               createdAt: patient.createdAt.toIso8601String(),
               updatedAt: patient.updatedAt.toIso8601String(),
             );
@@ -121,27 +114,19 @@ class _PatientDetailViewState extends State<_PatientDetailView> {
     }
   }
 
-  String _formatDate(String isoDate) {
+  String _formatDate(String dateString) {
     try {
-      final date = DateTime.parse(isoDate);
+      final date = DateTime.parse(dateString);
       return DateFormat('d MMMM yyyy', 'id_ID').format(date);
     } catch (e) {
-      return isoDate;
+      return dateString;
     }
   }
 
-  String _formatDateTime(DateTime dateTime) {
-    try {
-      return DateFormat('d MMMM yyyy, HH:mm', 'id_ID').format(dateTime);
-    } catch (e) {
-      return dateTime.toString();
-    }
-  }
-
-  int _calculateAge(String isoDate) {
+  int _calculateAge(String dateString) {
     try {
       final today = DateTime.now();
-      final birth = DateTime.parse(isoDate);
+      final birth = DateTime.parse(dateString);
       int age = today.year - birth.year;
       final monthDiff = today.month - birth.month;
       if (monthDiff < 0 || (monthDiff == 0 && today.day < birth.day)) {
@@ -270,7 +255,7 @@ class _PatientDetailViewState extends State<_PatientDetailView> {
                       children: [
                         _buildInfoCard(currentPatient),
                         const SizedBox(height: 16),
-                        if (currentPatient.isRegistered ?? false) ...[
+                        if (_latestRegistration != null) ...[
                           _buildRegistrationCard(),
                           const SizedBox(height: 16),
                         ],
@@ -345,7 +330,7 @@ class _PatientDetailViewState extends State<_PatientDetailView> {
                     border: Border.all(color: kWhite.withOpacity(0.3)),
                   ),
                   child: Text(
-                    patient.noRm,
+                    patient.mrn,
                     style: const TextStyle(
                       color: kWhite,
                       fontSize: 12,
@@ -396,21 +381,15 @@ class _PatientDetailViewState extends State<_PatientDetailView> {
           ),
           _buildInfoRow(
             'No. Rekam Medis',
-            patient.noRm,
+            patient.mrn,
             Icons.badge_outlined,
             const Color(0xFF3B82F6),
           ),
           _buildInfoRow(
-            'NIK',
-            patient.nik ?? '-',
-            Icons.credit_card_outlined,
-            const Color(0xFF8B5CF6),
-          ),
-          _buildInfoRow(
-            'No. BPJS',
-            patient.noBpjs ?? '-',
-            Icons.medical_information_outlined,
-            const Color(0xFF10B981),
+            'No. Telepon',
+            patient.telepon,
+            Icons.phone_outlined,
+            const Color(0xFF22C55E),
           ),
           _buildInfoRow(
             'Jenis Kelamin',
@@ -421,28 +400,10 @@ class _PatientDetailViewState extends State<_PatientDetailView> {
                 : const Color(0xFFEC4899),
           ),
           _buildInfoRow(
-            'Tempat Lahir',
-            patient.tempatLahir,
-            Icons.location_city_outlined,
-            const Color(0xFFF59E0B),
-          ),
-          _buildInfoRow(
             'Tanggal Lahir',
             '${_formatDate(patient.tanggalLahir)} (${_calculateAge(patient.tanggalLahir)} tahun)',
             Icons.cake_outlined,
             const Color(0xFFEF4444),
-          ),
-          _buildInfoRow(
-            'Golongan Darah',
-            patient.golonganDarah ?? '-',
-            Icons.bloodtype_outlined,
-            const Color(0xFFDC2626),
-          ),
-          _buildInfoRow(
-            'No. Telepon',
-            patient.noTelp,
-            Icons.phone_outlined,
-            const Color(0xFF22C55E),
           ),
           _buildInfoRow(
             'Alamat',
@@ -577,16 +538,13 @@ class _PatientDetailViewState extends State<_PatientDetailView> {
           ),
           const SizedBox(height: 16),
           _buildRegInfoRow('No. Registrasi', reg.noReg),
-          _buildRegInfoRow(
-            'Tanggal Registrasi',
-            _formatDateTime(reg.tglJamReg),
-          ),
-          _buildRegInfoRow(
-            'Jadwal Kunjungan',
-            '${_formatDate(reg.tanggalKunjungan.toIso8601String())} - ${reg.jamKunjungan}',
-          ),
+          _buildRegInfoRow('Tanggal Registrasi', _formatDate(reg.tglJamReg)),
           _buildRegInfoRow('Jenis Kunjungan', reg.jenisKunjungan),
           _buildRegInfoRow('Tipe Pasien', reg.tipePasien),
+          if (reg.kodePoli != null && reg.kodePoli!.isNotEmpty)
+            _buildRegInfoRow('Poli', reg.kodePoli!),
+          if (reg.dokterId != null && reg.dokterId!.isNotEmpty)
+            _buildRegInfoRow('Dokter', reg.dokterId!),
           const Divider(color: Colors.white54, height: 24),
           const Text(
             'Penanggung Jawab',
@@ -597,9 +555,9 @@ class _PatientDetailViewState extends State<_PatientDetailView> {
             ),
           ),
           const SizedBox(height: 8),
-          _buildRegInfoRow('Nama', reg.penanggungNama),
-          _buildRegInfoRow('Telepon', reg.penanggungTelepon),
-          _buildRegInfoRow('Alamat', reg.penanggungAlamat),
+          _buildRegInfoRow('Nama', reg.penanggungNama ?? '-'),
+          _buildRegInfoRow('Telepon', reg.penanggungTelepon ?? '-'),
+          _buildRegInfoRow('Alamat', reg.penanggungAlamat ?? '-'),
           if (reg.penanggungNoPegawai != null &&
               reg.penanggungNoPegawai!.isNotEmpty)
             _buildRegInfoRow('No. Pegawai', reg.penanggungNoPegawai!),
@@ -640,7 +598,6 @@ class _PatientDetailViewState extends State<_PatientDetailView> {
   }
 
   Widget _buildActionButtons(BuildContext context, Pasien patient) {
-    final bool isRegistered = patient.isRegistered ?? false;
     final bool hasRegistrationData = _latestRegistration != null;
 
     return Column(
@@ -649,7 +606,7 @@ class _PatientDetailViewState extends State<_PatientDetailView> {
           width: double.infinity,
           decoration: BoxDecoration(
             gradient: LinearGradient(
-              colors: isRegistered
+              colors: hasRegistrationData
                   ? [const Color(0xFF3B82F6), const Color(0xFF2563EB)]
                   : [kSecondaryColor, kSecondaryColor.withOpacity(0.8)],
             ),
@@ -657,7 +614,9 @@ class _PatientDetailViewState extends State<_PatientDetailView> {
             boxShadow: [
               BoxShadow(
                 color:
-                    (isRegistered ? const Color(0xFF3B82F6) : kSecondaryColor)
+                    (hasRegistrationData
+                            ? const Color(0xFF3B82F6)
+                            : kSecondaryColor)
                         .withOpacity(0.3),
                 blurRadius: 12,
                 offset: const Offset(0, 4),
@@ -687,7 +646,7 @@ class _PatientDetailViewState extends State<_PatientDetailView> {
                 if (result != null && mounted) {
                   debugPrint('✅ Processing result: $result');
 
-                  await _reloadPatientData(patient.id);
+                  await _reloadPatientData(patient.id.toString());
                   debugPrint('✅ Patient data reloaded');
 
                   await _loadRegistrationData();
@@ -734,7 +693,7 @@ class _PatientDetailViewState extends State<_PatientDetailView> {
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Icon(
-                      isRegistered
+                      hasRegistrationData
                           ? Icons.edit_calendar
                           : Icons.app_registration,
                       color: kWhite,
@@ -742,7 +701,7 @@ class _PatientDetailViewState extends State<_PatientDetailView> {
                     ),
                     const SizedBox(width: 12),
                     Text(
-                      isRegistered
+                      hasRegistrationData
                           ? 'Edit Registrasi Kunjungan'
                           : 'Registrasikan Kunjungan',
                       style: const TextStyle(

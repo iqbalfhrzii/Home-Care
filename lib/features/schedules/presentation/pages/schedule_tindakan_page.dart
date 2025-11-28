@@ -1,9 +1,13 @@
+// TEMPORARILY DISABLED - Needs refactoring for schema v7
+// Kunjungan table removed, use Registrasi directly
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:intl/intl.dart';
+// intl import removed - not needed
 import 'package:homecare_mobile/shared/app_injections.dart';
 import 'package:homecare_mobile/shared/local_db/app_database.dart' as db;
 import 'package:drift/drift.dart' as drift;
+import 'package:dio/dio.dart';
 
 const Color kPrimaryColor = Color(0xFF004B8C);
 const Color kPrimaryLight = Color(0xFF0063B2);
@@ -44,10 +48,14 @@ class TindakanItem {
 }
 
 class ScheduleTindakanPage extends StatefulWidget {
-  final db.Kunjungan? kunjungan;
+  final int registrationId;
   final VoidCallback? onCompleted;
 
-  const ScheduleTindakanPage({super.key, this.kunjungan, this.onCompleted});
+  const ScheduleTindakanPage({
+    super.key,
+    required this.registrationId,
+    this.onCompleted,
+  });
 
   @override
   State<ScheduleTindakanPage> createState() => _ScheduleTindakanPageState();
@@ -55,96 +63,91 @@ class ScheduleTindakanPage extends StatefulWidget {
 
 class _ScheduleTindakanPageState extends State<ScheduleTindakanPage> {
   late final db.AppDatabase _database;
+  late final Dio _dio;
   final TextEditingController _searchController = TextEditingController();
   final List<TindakanItem> _selectedTindakan = [];
   bool _isLoading = false;
   bool _isSaving = false;
+  bool _isLoadingTindakan = false;
 
-  // Mock data - nanti diganti dengan API call
-  final List<TindakanItem> _allTindakan = [
-    TindakanItem(
-      id: '1',
-      kode: 'T001',
-      namaTindakan: 'Pemasangan Infus',
-      kategori: 'Tindakan Keperawatan',
-      harga: 50000,
-    ),
-    TindakanItem(
-      id: '2',
-      kode: 'T002',
-      namaTindakan: 'Pemberian Obat Injeksi',
-      kategori: 'Tindakan Keperawatan',
-      harga: 35000,
-    ),
-    TindakanItem(
-      id: '3',
-      kode: 'T003',
-      namaTindakan: 'Perawatan Luka',
-      kategori: 'Tindakan Keperawatan',
-      harga: 75000,
-    ),
-    TindakanItem(
-      id: '4',
-      kode: 'T004',
-      namaTindakan: 'Pengambilan Darah',
-      kategori: 'Tindakan Laboratorium',
-      harga: 25000,
-    ),
-    TindakanItem(
-      id: '5',
-      kode: 'T005',
-      namaTindakan: 'EKG',
-      kategori: 'Tindakan Pemeriksaan',
-      harga: 100000,
-    ),
-    TindakanItem(
-      id: '6',
-      kode: 'T006',
-      namaTindakan: 'Nebulizer',
-      kategori: 'Tindakan Terapi',
-      harga: 60000,
-    ),
-    TindakanItem(
-      id: '7',
-      kode: 'T007',
-      namaTindakan: 'Kateterisasi Urin',
-      kategori: 'Tindakan Keperawatan',
-      harga: 85000,
-    ),
-  ];
-
+  List<TindakanItem> _allTindakan = [];
   List<TindakanItem> _filteredTindakan = [];
 
   @override
   void initState() {
     super.initState();
     _database = getIt<db.AppDatabase>();
-    _filteredTindakan = _allTindakan;
+    _dio = getIt<Dio>();
     _searchController.addListener(_filterTindakan);
+    _loadAllTindakan();
     _loadExistingTindakan();
   }
 
-  Future<void> _loadExistingTindakan() async {
-    if (widget.kunjungan == null) return;
+  Future<void> _loadAllTindakan() async {
+    setState(() => _isLoadingTindakan = true);
+    try {
+      debugPrint('🔍 Fetching tindakan from /tindakan API...');
+      final response = await _dio.get('/tindakan');
 
+      debugPrint('✅ GET /tindakan - Status: ${response.statusCode}');
+      if (response.statusCode == 200) {
+        // Handle both direct array and wrapped response
+        final data = response.data is List
+            ? response.data as List
+            : (response.data['data'] as List? ?? []);
+
+        setState(() {
+          _allTindakan = data.map((item) {
+            return TindakanItem(
+              id: item['id'].toString(),
+              kode: item['kode'] ?? '',
+              namaTindakan: item['deskripsi'] ?? '',
+              kategori: 'Tindakan', // API tidak punya kategori
+              harga: int.tryParse(item['tarif']?.toString() ?? '0') ?? 0,
+            );
+          }).toList();
+          _filteredTindakan = _allTindakan;
+          _isLoadingTindakan = false;
+        });
+
+        debugPrint(
+          '✅ Loaded ${_allTindakan.length} tindakan from /tindakan API',
+        );
+      }
+    } catch (e) {
+      debugPrint('❌ Error fetching tindakan from API: $e');
+      // Use empty list if API fails
+      if (mounted) {
+        setState(() {
+          _allTindakan = [];
+          _filteredTindakan = [];
+          _isLoadingTindakan = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _loadExistingTindakan() async {
     setState(() => _isLoading = true);
     try {
-      final tindakans = await _database.getTindakansByKunjunganId(
-        widget.kunjungan!.id,
+      final tindakans = await _database.getRegistrasiTindakansByRegistrasiId(
+        widget.registrationId,
       );
 
       setState(() {
         _selectedTindakan.clear();
         for (var tindakan in tindakans) {
+          // TODO: Join with Tindakans table to get actual data
+          // For now, create placeholder
           _selectedTindakan.add(
             TindakanItem(
-              id: tindakan.id.toString(),
-              kode: tindakan.kodeTindakan,
-              namaTindakan: tindakan.namaTindakan,
+              id: tindakan.tindakanId.toString(),
+              kode: 'T${tindakan.tindakanId.toString().padLeft(3, '0')}',
+              namaTindakan: 'Tindakan #${tindakan.tindakanId}',
               kategori: 'Tindakan',
-              harga: tindakan.hargaSatuan,
-              jumlah: tindakan.jumlah,
-              hargaSatuan: tindakan.hargaSatuan,
+              harga: int.tryParse(tindakan.hargaSatuan ?? '0') ?? 0,
+              jumlah: int.tryParse(tindakan.jumlah ?? '1') ?? 1,
+              hargaSatuan: int.tryParse(tindakan.hargaSatuan ?? '0') ?? 0,
               keterangan: tindakan.keterangan ?? '',
             ),
           );
@@ -323,47 +326,31 @@ class _ScheduleTindakanPageState extends State<ScheduleTindakanPage> {
       return;
     }
 
-    if (widget.kunjungan == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Data kunjungan tidak valid'),
-          backgroundColor: kDangerColor,
-        ),
-      );
-      return;
-    }
-
     setState(() => _isSaving = true);
 
     try {
       // Delete existing tindakan
-      final existingTindakan = await _database.getTindakansByKunjunganId(
-        widget.kunjungan!.id,
-      );
+      final existingTindakan = await _database
+          .getRegistrasiTindakansByRegistrasiId(widget.registrationId);
       for (var tindakan in existingTindakan) {
-        await _database.deleteTindakanKunjungan(tindakan.id);
+        await _database.deleteRegistrasiTindakan(tindakan.id);
       }
 
       // Insert new tindakan
       for (var tindakan in _selectedTindakan) {
-        await _database.insertTindakanKunjungan(
-          db.TindakanKunjungansCompanion(
-            kunjunganId: drift.Value(widget.kunjungan!.id),
-            kodeTindakan: drift.Value(tindakan.kode),
-            namaTindakan: drift.Value(tindakan.namaTindakan),
-            jumlah: drift.Value(tindakan.jumlah),
-            hargaSatuan: drift.Value(tindakan.hargaSatuan),
-            totalHarga: drift.Value(tindakan.subtotal),
+        await _database.insertRegistrasiTindakan(
+          db.RegistrasiTindakansCompanion(
+            registrasiId: drift.Value(widget.registrationId),
+            tindakanId: drift.Value(int.tryParse(tindakan.id) ?? 0),
+            jumlah: drift.Value(tindakan.jumlah.toString()),
+            hargaSatuan: drift.Value(tindakan.hargaSatuan.toString()),
+            subtotal: drift.Value(tindakan.subtotal.toString()),
+            diskon: drift.Value(tindakan.diskon.toString()),
             keterangan: drift.Value(tindakan.keterangan),
+            isSynced: const drift.Value(false), // Will be synced automatically
           ),
         );
       }
-
-      // Update kunjungan progress
-      await _database.updateKunjunganProgress(
-        widget.kunjungan!.id,
-        tindakanDone: true,
-      );
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -707,131 +694,137 @@ class _ScheduleTindakanPageState extends State<ScheduleTindakanPage> {
             ),
           ),
         ),
-        Container(
-          constraints: BoxConstraints(
-            maxHeight: MediaQuery.of(context).size.height * 0.4,
-          ),
-          child: _filteredTindakan.isEmpty
-              ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        Icons.search_off,
-                        size: 64,
-                        color: kTextGrey.withOpacity(0.5),
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        'Tidak ada tindakan ditemukan',
-                        style: TextStyle(color: kTextGrey, fontSize: 16),
-                      ),
-                    ],
-                  ),
-                )
-              : ListView.builder(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  itemCount: _filteredTindakan.length,
-                  itemBuilder: (context, index) {
-                    final tindakan = _filteredTindakan[index];
+        if (_isLoadingTindakan)
+          const Padding(
+            padding: EdgeInsets.all(32),
+            child: CircularProgressIndicator(color: kPrimaryColor),
+          )
+        else
+          Container(
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.of(context).size.height * 0.4,
+            ),
+            child: _filteredTindakan.isEmpty
+                ? Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.search_off,
+                          size: 64,
+                          color: kTextGrey.withOpacity(0.5),
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          'Tidak ada tindakan ditemukan',
+                          style: TextStyle(color: kTextGrey, fontSize: 16),
+                        ),
+                      ],
+                    ),
+                  )
+                : ListView.builder(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    itemCount: _filteredTindakan.length,
+                    itemBuilder: (context, index) {
+                      final tindakan = _filteredTindakan[index];
 
-                    return Card(
-                      margin: const EdgeInsets.only(bottom: 12),
-                      color: kWhite,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: InkWell(
-                        onTap: () => _addTindakan(tindakan),
-                        borderRadius: BorderRadius.circular(12),
-                        child: Padding(
-                          padding: const EdgeInsets.all(16.0),
-                          child: Row(
-                            children: [
-                              Container(
-                                width: 50,
-                                height: 50,
-                                decoration: BoxDecoration(
-                                  gradient: const LinearGradient(
-                                    colors: [kPrimaryColor, kPrimaryLight],
+                      return Card(
+                        margin: const EdgeInsets.only(bottom: 12),
+                        color: kWhite,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: InkWell(
+                          onTap: () => _addTindakan(tindakan),
+                          borderRadius: BorderRadius.circular(12),
+                          child: Padding(
+                            padding: const EdgeInsets.all(16.0),
+                            child: Row(
+                              children: [
+                                Container(
+                                  width: 50,
+                                  height: 50,
+                                  decoration: BoxDecoration(
+                                    gradient: const LinearGradient(
+                                      colors: [kPrimaryColor, kPrimaryLight],
+                                    ),
+                                    borderRadius: BorderRadius.circular(10),
                                   ),
-                                  borderRadius: BorderRadius.circular(10),
+                                  child: const Icon(
+                                    Icons.medical_services,
+                                    color: kWhite,
+                                    size: 24,
+                                  ),
                                 ),
-                                child: const Icon(
-                                  Icons.medical_services,
-                                  color: kWhite,
-                                  size: 24,
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      tindakan.kode,
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 12,
-                                        color: kPrimaryColor,
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        tindakan.kode,
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 12,
+                                          color: kPrimaryColor,
+                                        ),
                                       ),
-                                    ),
-                                    const SizedBox(height: 2),
-                                    Text(
-                                      tindakan.namaTindakan,
-                                      style: const TextStyle(
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.w600,
-                                        color: kTextDark,
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        tindakan.namaTindakan,
+                                        style: const TextStyle(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w600,
+                                          color: kTextDark,
+                                        ),
                                       ),
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Row(
-                                      children: [
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 8,
-                                            vertical: 2,
-                                          ),
-                                          decoration: BoxDecoration(
-                                            color: kPrimaryColor.withOpacity(
-                                              0.1,
+                                      const SizedBox(height: 4),
+                                      Row(
+                                        children: [
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 8,
+                                              vertical: 2,
                                             ),
-                                            borderRadius: BorderRadius.circular(
-                                              4,
+                                            decoration: BoxDecoration(
+                                              color: kPrimaryColor.withOpacity(
+                                                0.1,
+                                              ),
+                                              borderRadius:
+                                                  BorderRadius.circular(4),
+                                            ),
+                                            child: Text(
+                                              tindakan.kategori,
+                                              style: const TextStyle(
+                                                fontSize: 10,
+                                                color: kPrimaryColor,
+                                                fontWeight: FontWeight.w600,
+                                              ),
                                             ),
                                           ),
-                                          child: Text(
-                                            tindakan.kategori,
+                                          const Spacer(),
+                                          Text(
+                                            'Rp ${tindakan.harga.toString().replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (Match m) => '${m[1]}.')}',
                                             style: const TextStyle(
-                                              fontSize: 10,
-                                              color: kPrimaryColor,
-                                              fontWeight: FontWeight.w600,
+                                              fontSize: 14,
+                                              fontWeight: FontWeight.bold,
+                                              color: kSuccessColor,
                                             ),
                                           ),
-                                        ),
-                                        const Spacer(),
-                                        Text(
-                                          'Rp ${tindakan.harga.toString().replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (Match m) => '${m[1]}.')}',
-                                          style: const TextStyle(
-                                            fontSize: 14,
-                                            fontWeight: FontWeight.bold,
-                                            color: kSuccessColor,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ],
+                                        ],
+                                      ),
+                                    ],
+                                  ),
                                 ),
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
                         ),
-                      ),
-                    );
-                  },
-                ),
-        ),
+                      );
+                    },
+                  ),
+          ),
       ],
     );
   }

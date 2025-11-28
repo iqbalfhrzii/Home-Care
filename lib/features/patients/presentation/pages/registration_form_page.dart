@@ -3,9 +3,12 @@ import 'package:intl/intl.dart';
 import 'package:go_router/go_router.dart';
 import 'package:homecare_mobile/shared/app_injections.dart';
 import 'package:homecare_mobile/core/services/notification_service.dart';
-import 'package:homecare_mobile/features/patients/data/repositories/pasien_repository.dart';
-import 'package:homecare_mobile/shared/local_db/app_database.dart' as db;
-import 'package:drift/drift.dart' as drift;
+import 'package:homecare_mobile/features/schedules/data/repositories/registrasi_repository.dart';
+import 'package:homecare_mobile/features/schedules/domain/models/dokter.dart';
+import 'package:homecare_mobile/features/schedules/domain/models/poli.dart';
+import 'package:homecare_mobile/features/schedules/data/datasources/dokter_data_source.dart';
+import 'package:homecare_mobile/features/schedules/data/datasources/poli_data_source.dart';
+import 'package:dio/dio.dart';
 
 const Color kPrimaryColor = Color(0xFF004B8C);
 const Color kPrimaryLight = Color(0xFF0063B2);
@@ -42,65 +45,137 @@ class _RegistrationFormPageState extends State<RegistrationFormPage> {
   final _penanggungIdController = TextEditingController();
 
   bool _isLoading = false;
-  db.Registrasi? _existingRegistration;
+  bool _isLoadingDokter = false;
+  bool _isLoadingPoli = false;
 
-  DateTime _selectedDateTime = DateTime.now();
-  DateTime _tanggalKunjungan = DateTime.now().add(
-    const Duration(days: 1),
-  ); // Default besok
-  TimeOfDay _jamKunjungan = const TimeOfDay(
-    hour: 9,
-    minute: 0,
-  ); // Default jam 9 pagi
-  String _jenisKunjungan = 'Kunjungan Baru';
-  String _tipePasien = 'Umum';
-  String _eselon = 'I';
+  String _jenisKunjungan = 'HOME CARE';
+  String _tipePasien = 'UMUM';
+  String? _selectedDokterId;
+  String? _selectedPoliKode;
+  String _pagiSore = 'PAGI';
+  String _asalPasien = 'POLIKLINIK';
+  String _status = 'butuh_diisi';
+  bool _isCash = true;
+  bool _isPribadi = true;
+  bool _pasienBaru = false;
+
+  List<Dokter> _dokterList = [];
+  List<Poli> _poliList = [];
 
   @override
   void initState() {
     super.initState();
+    _initializeData();
+  }
+
+  Future<void> _initializeData() async {
+    // Load dokter and poli data first
+    await _loadDokterAndPoli();
+
+    // Then load existing registration if in edit mode
     if (widget.isEdit && widget.registrasiId != null) {
-      _loadExistingRegistration();
+      await _loadExistingRegistration();
     } else {
-      // Generate nomor registrasi otomatis
-      _noRegController.text =
-          'REG-${DateFormat('yyyyMMdd').format(DateTime.now())}-${DateTime.now().millisecondsSinceEpoch.toString().substring(8)}';
+      // Generate nomor registrasi otomatis dengan format: R[YYMMDD][BS][RANDOM5]
+      final now = DateTime.now();
+      final dateStr = DateFormat('yyMMdd').format(now);
+      final random = now.millisecondsSinceEpoch.toString().substring(8, 13);
+      _noRegController.text = 'R${dateStr}BS$random';
+    }
+  }
+
+  Future<void> _loadDokterAndPoli() async {
+    setState(() {
+      _isLoadingDokter = true;
+      _isLoadingPoli = true;
+    });
+
+    try {
+      final dio = getIt<Dio>();
+      final dokterDataSource = DokterDataSource(dio);
+      final poliDataSource = PoliDataSource(dio);
+
+      // Load dokter list
+      try {
+        debugPrint('🔍 Fetching dokter data from API...');
+        final dokterCollection = await dokterDataSource.getActiveDokter();
+        debugPrint(
+          '✅ Dokter data received: ${dokterCollection.data.length} items',
+        );
+        if (mounted) {
+          setState(() {
+            _dokterList = dokterCollection.data;
+            _isLoadingDokter = false;
+          });
+        }
+      } catch (e, stackTrace) {
+        debugPrint('❌ Error loading dokter: $e');
+        debugPrint('📍 Stack trace: $stackTrace');
+        if (mounted) setState(() => _isLoadingDokter = false);
+      }
+
+      // Load poli list
+      try {
+        debugPrint('🔍 Fetching poli data from API...');
+        final poliCollection = await poliDataSource.getActivePoli();
+        debugPrint('✅ Poli data received: ${poliCollection.data.length} items');
+        if (mounted) {
+          setState(() {
+            _poliList = poliCollection.data;
+            _isLoadingPoli = false;
+          });
+        }
+      } catch (e, stackTrace) {
+        debugPrint('❌ Error loading poli: $e');
+        debugPrint('📍 Stack trace: $stackTrace');
+        if (mounted) setState(() => _isLoadingPoli = false);
+      }
+    } catch (e) {
+      debugPrint('❌ Error in _loadDokterAndPoli: $e');
+      if (mounted) {
+        setState(() {
+          _isLoadingDokter = false;
+          _isLoadingPoli = false;
+        });
+      }
     }
   }
 
   Future<void> _loadExistingRegistration() async {
     setState(() => _isLoading = true);
     try {
-      final database = getIt<db.AppDatabase>();
-      final registration = await database.getRegistrasiById(
+      final repository = getIt<RegistrasiRepository>();
+      final registration = await repository.getRegistrasiById(
         widget.registrasiId!,
       );
 
       if (registration != null && mounted) {
         setState(() {
-          _existingRegistration = registration;
           _noRegController.text = registration.noReg;
-          _selectedDateTime = registration.tglJamReg;
-          _tanggalKunjungan = registration.tanggalKunjungan;
-
-          // Parse jam kunjungan (HH:mm format)
-          final timeParts = registration.jamKunjungan.split(':');
-          if (timeParts.length == 2) {
-            _jamKunjungan = TimeOfDay(
-              hour: int.tryParse(timeParts[0]) ?? 9,
-              minute: int.tryParse(timeParts[1]) ?? 0,
-            );
-          }
-
           _jenisKunjungan = registration.jenisKunjungan;
           _tipePasien = registration.tipePasien;
-          _penanggungNamaController.text = registration.penanggungNama;
+
+          // Only set selected values if they exist in the dropdown lists
+          if (registration.dokterId != null &&
+              _dokterList.any((d) => d.dokterId == registration.dokterId)) {
+            _selectedDokterId = registration.dokterId;
+          }
+
+          if (registration.kodePoli != null &&
+              _poliList.any((p) => p.kodePoli == registration.kodePoli)) {
+            _selectedPoliKode = registration.kodePoli;
+          }
+
+          _pagiSore = registration.pagiSore ?? 'PAGI';
+          _asalPasien = registration.asalPasien ?? 'POLIKLINIK';
+          _penanggungNamaController.text = registration.penanggungNama ?? '';
           _penanggungNoPegawaiController.text =
               registration.penanggungNoPegawai ?? '';
-          _penanggungAlamatController.text = registration.penanggungAlamat;
-          _penanggungTeleponController.text = registration.penanggungTelepon;
+          _penanggungAlamatController.text =
+              registration.penanggungAlamat ?? '';
+          _penanggungTeleponController.text =
+              registration.penanggungTelepon ?? '';
           _penanggungIdController.text = registration.penanggungId ?? '';
-          _eselon = registration.eselon ?? 'I';
           _isLoading = false;
         });
       }
@@ -129,140 +204,126 @@ class _RegistrationFormPageState extends State<RegistrationFormPage> {
     super.dispose();
   }
 
-  Future<void> _selectDateTime() async {
-    final date = await showDatePicker(
-      context: context,
-      initialDate: _selectedDateTime,
-      firstDate: DateTime(2020),
-      lastDate: DateTime(2030),
-    );
-
-    if (date != null && mounted) {
-      final time = await showTimePicker(
-        context: context,
-        initialTime: TimeOfDay.fromDateTime(_selectedDateTime),
-      );
-
-      if (time != null) {
-        setState(() {
-          _selectedDateTime = DateTime(
-            date.year,
-            date.month,
-            date.day,
-            time.hour,
-            time.minute,
-          );
-        });
-      }
-    }
-  }
-
   Future<void> _submitRegistration() async {
     if (_formKey.currentState!.validate()) {
-      try {
-        final jamKunjunganFormatted =
-            '${_jamKunjungan.hour.toString().padLeft(2, '0')}:${_jamKunjungan.minute.toString().padLeft(2, '0')}';
+      setState(() => _isLoading = true);
 
-        // Get database and patient ID
-        final database = getIt<db.AppDatabase>();
+      try {
         final pasienIdInt = int.tryParse(widget.pasienId ?? '0');
 
         if (pasienIdInt == null || pasienIdInt == 0) {
           throw Exception('Invalid patient ID');
         }
 
+        // Validate required fields
+        if (_selectedDokterId == null || _selectedDokterId!.isEmpty) {
+          throw Exception('Dokter harus dipilih');
+        }
+        if (_selectedPoliKode == null || _selectedPoliKode!.isEmpty) {
+          throw Exception('Poli harus dipilih');
+        }
+
+        // Calculate no_urut (increment based on today's registrations)
+        final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
+        final repository = getIt<RegistrasiRepository>();
+        final todayRegs = await repository.getRegistrasiByDate(today);
+        final noUrut = (todayRegs.length + 1);
+
+        // Use current datetime for registration
+        final currentDateTime = DateTime.now();
+
+        final registrationData = {
+          'no_reg': _noRegController.text,
+          'no_urut': noUrut,
+          'pasien_id': pasienIdInt,
+          'tgl_jam_reg': currentDateTime.toIso8601String(),
+          'tgl_jam_kunjungan': currentDateTime.toIso8601String(),
+          'kode_poli': _selectedPoliKode!,
+          'dokter_id': _selectedDokterId!,
+          'jenis_kunjungan': _jenisKunjungan,
+          'asal_pasien': _asalPasien,
+          'tipe_pasien': _tipePasien,
+          'pasien_baru': _pasienBaru,
+          'pagi_sore': _pagiSore,
+          'is_cash': _isCash,
+          'is_pribadi': _isPribadi,
+          'eselon': null,
+          'status': _status,
+          'penanggung_id': _penanggungIdController.text.isNotEmpty
+              ? _penanggungIdController.text
+              : null,
+          'penanggung_nama': _penanggungNamaController.text.isNotEmpty
+              ? _penanggungNamaController.text
+              : null,
+          'penanggung_no_pegawai':
+              _penanggungNoPegawaiController.text.isNotEmpty
+              ? _penanggungNoPegawaiController.text
+              : null,
+          'penanggung_alamat': _penanggungAlamatController.text.isNotEmpty
+              ? _penanggungAlamatController.text
+              : null,
+          'penanggung_telepon': _penanggungTeleponController.text.isNotEmpty
+              ? _penanggungTeleponController.text
+              : null,
+        };
+
+        debugPrint('📤 Registration data to save:');
+        debugPrint(
+          '   no_reg: ${registrationData['no_reg']} (${registrationData['no_reg'].runtimeType})',
+        );
+        debugPrint(
+          '   no_urut: ${registrationData['no_urut']} (${registrationData['no_urut'].runtimeType})',
+        );
+        debugPrint(
+          '   pasien_id: ${registrationData['pasien_id']} (${registrationData['pasien_id'].runtimeType})',
+        );
+        debugPrint(
+          '   kode_poli: ${registrationData['kode_poli']} (${registrationData['kode_poli'].runtimeType})',
+        );
+        debugPrint(
+          '   dokter_id: ${registrationData['dokter_id']} (${registrationData['dokter_id'].runtimeType})',
+        );
+        debugPrint(
+          '   pasien_baru: ${registrationData['pasien_baru']} (${registrationData['pasien_baru'].runtimeType})',
+        );
+        debugPrint(
+          '   is_cash: ${registrationData['is_cash']} (${registrationData['is_cash'].runtimeType})',
+        );
+        debugPrint(
+          '   is_pribadi: ${registrationData['is_pribadi']} (${registrationData['is_pribadi'].runtimeType})',
+        );
+
         if (widget.isEdit && widget.registrasiId != null) {
           // UPDATE existing registration
-          final registrasiCompanion = db.RegistrasisCompanion(
-            noReg: drift.Value(_noRegController.text),
-            pasienId: drift.Value(pasienIdInt),
-            tglJamReg: drift.Value(_selectedDateTime),
-            tanggalKunjungan: drift.Value(_tanggalKunjungan),
-            jamKunjungan: drift.Value(jamKunjunganFormatted),
-            jenisKunjungan: drift.Value(_jenisKunjungan),
-            tipePasien: drift.Value(_tipePasien),
-            penanggungNama: drift.Value(_penanggungNamaController.text),
-            penanggungNoPegawai: drift.Value(
-              _penanggungNoPegawaiController.text,
-            ),
-            penanggungAlamat: drift.Value(_penanggungAlamatController.text),
-            penanggungTelepon: drift.Value(_penanggungTeleponController.text),
-            penanggungId: drift.Value(_penanggungIdController.text),
-            eselon: drift.Value(_eselon),
-          );
-
-          await database.updateRegistrasi(
+          final updateRepo = getIt<RegistrasiRepository>();
+          await updateRepo.updateRegistrasi(
             widget.registrasiId!,
-            registrasiCompanion,
+            registrationData,
           );
           debugPrint('✅ Registration updated with ID: ${widget.registrasiId}');
         } else {
-          // INSERT new registration
-          final registrasiCompanion = db.RegistrasisCompanion(
-            noReg: drift.Value(_noRegController.text),
-            pasienId: drift.Value(pasienIdInt),
-            tglJamReg: drift.Value(_selectedDateTime),
-            tanggalKunjungan: drift.Value(_tanggalKunjungan),
-            jamKunjungan: drift.Value(jamKunjunganFormatted),
-            jenisKunjungan: drift.Value(_jenisKunjungan),
-            tipePasien: drift.Value(_tipePasien),
-            penanggungNama: drift.Value(_penanggungNamaController.text),
-            penanggungNoPegawai: drift.Value(
-              _penanggungNoPegawaiController.text,
-            ),
-            penanggungAlamat: drift.Value(_penanggungAlamatController.text),
-            penanggungTelepon: drift.Value(_penanggungTeleponController.text),
-            penanggungId: drift.Value(_penanggungIdController.text),
-            eselon: drift.Value(_eselon),
+          // CREATE new registration
+          final newRegistration = await repository.createRegistrasi(
+            registrationData,
           );
-
-          final registrasiId = await database.insertRegistrasi(
-            registrasiCompanion,
-          );
-          debugPrint('✅ Registration saved with ID: $registrasiId');
-
-          // Update patient isRegistered flag (only for new registration)
-          final repository = getIt<PasienRepository>();
-          await repository.markAsRegistered(widget.pasienId!);
-          debugPrint('✅ Patient marked as registered');
+          debugPrint('✅ Registration saved with ID: ${newRegistration.id}');
 
           // Send notification for successful registration
           final notificationService = getIt<NotificationService>();
-          final patient = await database.getPasienById(pasienIdInt);
+          await notificationService.showPatientRegisteredNotification(
+            patientName: widget.pasienNama ?? 'Pasien',
+            noRm: 'REG-${newRegistration.id}',
+            visitDate: DateFormat(
+              'd MMMM yyyy',
+              'id_ID',
+            ).format(currentDateTime),
+          );
 
-          if (patient != null) {
-            // Show immediate notification
-            await notificationService.showPatientRegisteredNotification(
-              patientName: patient.nama,
-              noRm: patient.noRm,
-              visitDate: DateFormat(
-                'd MMMM yyyy',
-                'id_ID',
-              ).format(_tanggalKunjungan),
-            );
-
-            // Schedule reminder notification (1 hour before visit)
-            final visitDateTime = DateTime(
-              _tanggalKunjungan.year,
-              _tanggalKunjungan.month,
-              _tanggalKunjungan.day,
-              _jamKunjungan.hour,
-              _jamKunjungan.minute,
-            );
-
-            await notificationService.scheduleVisitReminder(
-              id: registrasiId,
-              patientName: patient.nama,
-              visitDateTime: visitDateTime,
-              visitTime: jamKunjunganFormatted,
-              address: patient.alamat,
-            );
-
-            debugPrint('✅ Notifications sent and scheduled');
-          }
+          debugPrint('✅ Notification sent');
         }
 
         if (mounted) {
+          setState(() => _isLoading = false);
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(
@@ -279,6 +340,7 @@ class _RegistrationFormPageState extends State<RegistrationFormPage> {
       } catch (e) {
         debugPrint('❌ Error saving registration: $e');
         if (mounted) {
+          setState(() => _isLoading = false);
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text('Gagal menyimpan registrasi: $e'),
@@ -316,23 +378,12 @@ class _RegistrationFormPageState extends State<RegistrationFormPage> {
     if (confirmed != true) return;
 
     try {
-      final database = getIt<db.AppDatabase>();
-
       if (widget.registrasiId != null) {
-        await database.deleteRegistrasi(widget.registrasiId!);
+        final repository = getIt<RegistrasiRepository>();
+        await repository.deleteRegistrasi(widget.registrasiId!);
         debugPrint('✅ Registration deleted with ID: ${widget.registrasiId}');
-      }
-
-      if (widget.pasienId != null) {
-        final repository = getIt<PasienRepository>();
-        final pasienIdInt = int.tryParse(widget.pasienId!);
-        if (pasienIdInt != null) {
-          final pasienCompanion = db.PasiensCompanion(
-            isRegistered: drift.Value(false),
-          );
-          await database.updatePasien(pasienIdInt, pasienCompanion);
-          debugPrint('✅ Patient marked as not registered');
-        }
+      } else {
+        debugPrint('✅ Registration cancelled (not saved yet)');
       }
 
       if (mounted) {
@@ -394,16 +445,14 @@ class _RegistrationFormPageState extends State<RegistrationFormPage> {
                             readOnly: true,
                           ),
                           const SizedBox(height: 16),
-                          _buildDateTimeField(),
-                          const SizedBox(height: 16),
                           _buildDropdownField(
                             label: 'Jenis Kunjungan',
                             icon: Icons.local_hospital,
                             value: _jenisKunjungan,
                             items: [
-                              'Kunjungan Baru',
-                              'Kunjungan Lanjutan',
-                              'Kunjungan Darurat',
+                              'HOME CARE',
+                              'KUNJUNGAN BARU',
+                              'KUNJUNGAN LANJUTAN',
                             ],
                             onChanged: (value) {
                               setState(() {
@@ -416,10 +465,34 @@ class _RegistrationFormPageState extends State<RegistrationFormPage> {
                             label: 'Tipe Pasien',
                             icon: Icons.person,
                             value: _tipePasien,
-                            items: ['Umum', 'BPJS', 'Asuransi'],
+                            items: ['UMUM', 'BPJS', 'ASURANSI'],
                             onChanged: (value) {
                               setState(() {
                                 _tipePasien = value!;
+                              });
+                            },
+                          ),
+                          const SizedBox(height: 16),
+                          _buildDropdownField(
+                            label: 'Asal Pasien',
+                            icon: Icons.directions_walk,
+                            value: _asalPasien,
+                            items: ['POLIKLINIK', 'LANGSUNG', 'RUJUKAN', 'IGD'],
+                            onChanged: (value) {
+                              setState(() {
+                                _asalPasien = value!;
+                              });
+                            },
+                          ),
+                          const SizedBox(height: 16),
+                          _buildDropdownField(
+                            label: 'Waktu Kunjungan',
+                            icon: Icons.wb_sunny,
+                            value: _pagiSore,
+                            items: ['PAGI', 'SORE'],
+                            onChanged: (value) {
+                              setState(() {
+                                _pagiSore = value!;
                               });
                             },
                           ),
@@ -427,29 +500,23 @@ class _RegistrationFormPageState extends State<RegistrationFormPage> {
                       ),
                       const SizedBox(height: 20),
                       _buildSectionCard(
-                        title: 'Jadwal Kunjungan',
-                        icon: Icons.calendar_today,
+                        title: 'Layanan Medis',
+                        icon: Icons.medical_services,
                         children: [
-                          _buildScheduleDateField(),
+                          _buildDokterDropdown(),
                           const SizedBox(height: 16),
-                          _buildScheduleTimeField(),
+                          _buildPoliDropdown(),
                         ],
                       ),
                       const SizedBox(height: 20),
                       _buildSectionCard(
-                        title: 'Data Penanggung Jawab',
+                        title: 'Data Penanggung Jawab (Opsional)',
                         icon: Icons.family_restroom,
                         children: [
                           _buildTextField(
                             controller: _penanggungNamaController,
                             label: 'Nama Penanggung',
                             icon: Icons.person_outline,
-                            validator: (value) {
-                              if (value == null || value.isEmpty) {
-                                return 'Nama penanggung harus diisi';
-                              }
-                              return null;
-                            },
                           ),
                           const SizedBox(height: 16),
                           _buildTextField(
@@ -464,29 +531,11 @@ class _RegistrationFormPageState extends State<RegistrationFormPage> {
                             icon: Icons.credit_card,
                           ),
                           const SizedBox(height: 16),
-                          _buildDropdownField(
-                            label: 'Eselon',
-                            icon: Icons.military_tech,
-                            value: _eselon,
-                            items: ['I', 'II', 'III', 'IV', 'V'],
-                            onChanged: (value) {
-                              setState(() {
-                                _eselon = value!;
-                              });
-                            },
-                          ),
-                          const SizedBox(height: 16),
                           _buildTextField(
                             controller: _penanggungTeleponController,
                             label: 'No. Telepon',
                             icon: Icons.phone,
                             keyboardType: TextInputType.phone,
-                            validator: (value) {
-                              if (value == null || value.isEmpty) {
-                                return 'No. telepon harus diisi';
-                              }
-                              return null;
-                            },
                           ),
                           const SizedBox(height: 16),
                           _buildTextField(
@@ -494,12 +543,6 @@ class _RegistrationFormPageState extends State<RegistrationFormPage> {
                             label: 'Alamat Penanggung',
                             icon: Icons.location_on,
                             maxLines: 3,
-                            validator: (value) {
-                              if (value == null || value.isEmpty) {
-                                return 'Alamat harus diisi';
-                              }
-                              return null;
-                            },
                           ),
                         ],
                       ),
@@ -668,28 +711,6 @@ class _RegistrationFormPageState extends State<RegistrationFormPage> {
     );
   }
 
-  Widget _buildDateTimeField() {
-    return InkWell(
-      onTap: _selectDateTime,
-      child: InputDecorator(
-        decoration: InputDecoration(
-          labelText: 'Tanggal & Jam Registrasi',
-          prefixIcon: const Icon(Icons.calendar_today, color: kPrimaryColor),
-          filled: true,
-          fillColor: kScaffoldBg,
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide.none,
-          ),
-        ),
-        child: Text(
-          DateFormat('dd MMM yyyy, HH:mm', 'id_ID').format(_selectedDateTime),
-          style: const TextStyle(fontSize: 16),
-        ),
-      ),
-    );
-  }
-
   Widget _buildDropdownField({
     required String label,
     required IconData icon,
@@ -716,93 +737,194 @@ class _RegistrationFormPageState extends State<RegistrationFormPage> {
     );
   }
 
-  Widget _buildScheduleDateField() {
-    return InkWell(
-      onTap: () async {
-        final date = await showDatePicker(
-          context: context,
-          initialDate: _tanggalKunjungan,
-          firstDate: DateTime.now(),
-          lastDate: DateTime.now().add(const Duration(days: 365)),
-          locale: const Locale('id', 'ID'),
-        );
-        if (date != null) {
-          setState(() {
-            _tanggalKunjungan = date;
-          });
-        }
-      },
-      child: InputDecorator(
-        decoration: InputDecoration(
-          labelText: 'Tanggal Kunjungan',
-          prefixIcon: const Icon(Icons.event, color: kPrimaryColor),
-          filled: true,
-          fillColor: kScaffoldBg,
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide.none,
-          ),
+  Widget _buildDokterDropdown() {
+    if (_isLoadingDokter) {
+      return Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: kScaffoldBg,
+          borderRadius: BorderRadius.circular(12),
         ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        child: const Row(
           children: [
-            Text(
-              DateFormat(
-                'EEEE, dd MMMM yyyy',
-                'id_ID',
-              ).format(_tanggalKunjungan),
-              style: const TextStyle(fontSize: 16),
+            SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(strokeWidth: 2),
             ),
-            const Icon(Icons.arrow_drop_down, color: kTextGrey),
+            SizedBox(width: 12),
+            Text('Memuat data dokter...'),
           ],
         ),
+      );
+    }
+
+    if (_dokterList.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.orange.shade50,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.orange.shade200),
+        ),
+        child: const Row(
+          children: [
+            Icon(Icons.warning_amber, color: Colors.orange),
+            SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                'Data dokter tidak tersedia. Pastikan koneksi internet aktif.',
+                style: TextStyle(color: Colors.orange),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return DropdownButtonFormField<String>(
+      value: _selectedDokterId,
+      decoration: InputDecoration(
+        labelText: 'Pilih Dokter *',
+        prefixIcon: const Icon(Icons.medical_information, color: kPrimaryColor),
+        filled: true,
+        fillColor: kScaffoldBg,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide.none,
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide.none,
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: kPrimaryColor, width: 2),
+        ),
       ),
+      hint: const Text('Pilih dokter'),
+      isExpanded: true,
+      items: _dokterList.toSet().toList().map((dokter) {
+        return DropdownMenuItem(
+          value: dokter.dokterId,
+          child: Text(
+            '${dokter.namaDokter}${dokter.bidangKeahlian != null ? ' - ${dokter.bidangKeahlian}' : ''}',
+            style: const TextStyle(fontSize: 14),
+            overflow: TextOverflow.ellipsis,
+            maxLines: 1,
+          ),
+        );
+      }).toList(),
+      onChanged: (value) {
+        setState(() {
+          _selectedDokterId = value;
+        });
+      },
+      validator: (value) {
+        if (value == null || value.isEmpty) {
+          return 'Dokter harus dipilih';
+        }
+        return null;
+      },
     );
   }
 
-  Widget _buildScheduleTimeField() {
-    return InkWell(
-      onTap: () async {
-        final time = await showTimePicker(
-          context: context,
-          initialTime: _jamKunjungan,
-          builder: (context, child) {
-            return MediaQuery(
-              data: MediaQuery.of(
-                context,
-              ).copyWith(alwaysUse24HourFormat: true),
-              child: child!,
-            );
-          },
-        );
-        if (time != null) {
-          setState(() {
-            _jamKunjungan = time;
-          });
-        }
-      },
-      child: InputDecorator(
-        decoration: InputDecoration(
-          labelText: 'Jam Kunjungan',
-          prefixIcon: const Icon(Icons.access_time, color: kPrimaryColor),
-          filled: true,
-          fillColor: kScaffoldBg,
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide.none,
-          ),
+  Widget _buildPoliDropdown() {
+    if (_isLoadingPoli) {
+      return Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: kScaffoldBg,
+          borderRadius: BorderRadius.circular(12),
         ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        child: const Row(
           children: [
-            Text(
-              '${_jamKunjungan.hour.toString().padLeft(2, '0')}:${_jamKunjungan.minute.toString().padLeft(2, '0')} WIB',
-              style: const TextStyle(fontSize: 16),
+            SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(strokeWidth: 2),
             ),
-            const Icon(Icons.arrow_drop_down, color: kTextGrey),
+            SizedBox(width: 12),
+            Text('Memuat data poli...'),
           ],
         ),
+      );
+    }
+
+    if (_poliList.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.orange.shade50,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.orange.shade200),
+        ),
+        child: const Row(
+          children: [
+            Icon(Icons.warning_amber, color: Colors.orange),
+            SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                'Data poli tidak tersedia. Pastikan koneksi internet aktif.',
+                style: TextStyle(color: Colors.orange),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return DropdownButtonFormField<String>(
+      value: _selectedPoliKode,
+      decoration: InputDecoration(
+        labelText: 'Pilih Poli *',
+        prefixIcon: const Icon(Icons.local_hospital, color: kPrimaryColor),
+        filled: true,
+        fillColor: kScaffoldBg,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide.none,
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide.none,
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: kPrimaryColor, width: 2),
+        ),
       ),
+      hint: const Text('Pilih poliklinik'),
+      items: _poliList.toSet().toList().map((poli) {
+        return DropdownMenuItem(
+          value: poli.kodePoli,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                poli.namaPoli,
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
+              Text(
+                poli.kodePoli,
+                style: const TextStyle(fontSize: 12, color: kTextGrey),
+              ),
+            ],
+          ),
+        );
+      }).toList(),
+      onChanged: (value) {
+        setState(() {
+          _selectedPoliKode = value;
+        });
+      },
+      validator: (value) {
+        if (value == null || value.isEmpty) {
+          return 'Poli harus dipilih';
+        }
+        return null;
+      },
     );
   }
 

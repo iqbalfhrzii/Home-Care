@@ -60,18 +60,10 @@ class _PatientEditFormState extends State<_PatientEditForm> {
     super.initState();
 
     _namaController = TextEditingController(text: widget.patient.nama);
-    _nikController = TextEditingController(text: widget.patient.nik ?? '');
-    _noBpjsController = TextEditingController(
-      text: widget.patient.noBpjs ?? '',
-    );
-    _tempatLahirController = TextEditingController(
-      text: widget.patient.tempatLahir,
-    );
     _alamatController = TextEditingController(text: widget.patient.alamat);
-    _noTelpController = TextEditingController(text: widget.patient.noTelp);
+    _noTelpController = TextEditingController(text: widget.patient.telepon);
 
     _jenisKelamin = widget.patient.jenisKelamin;
-    _golonganDarah = widget.patient.golonganDarah;
     _selectedDate = DateTime.parse(widget.patient.tanggalLahir);
     _tanggalLahirController = TextEditingController(
       text: DateFormat('d MMMM yyyy', 'id_ID').format(_selectedDate),
@@ -130,18 +122,10 @@ class _PatientEditFormState extends State<_PatientEditForm> {
         UpdatePatient(
           id: widget.patient.id,
           nama: _namaController.text.trim(),
-          tempatLahir: _tempatLahirController.text.trim(),
           tanggalLahir: _selectedDate.toIso8601String(),
           jenisKelamin: _jenisKelamin,
           alamat: _alamatController.text.trim(),
-          noTelp: _noTelpController.text.trim(),
-          nik: _nikController.text.trim().isEmpty
-              ? null
-              : _nikController.text.trim(),
-          noBpjs: _noBpjsController.text.trim().isEmpty
-              ? null
-              : _noBpjsController.text.trim(),
-          golonganDarah: _golonganDarah,
+          telepon: _noTelpController.text.trim(),
         ),
       );
     }
@@ -375,7 +359,7 @@ class _PatientEditFormState extends State<_PatientEditForm> {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  widget.patient.noRm,
+                  widget.patient.mrn,
                   style: const TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.bold,

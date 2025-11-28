@@ -35,9 +35,8 @@ class _PatientMasterListPageState extends State<PatientMasterListPage> {
   void initState() {
     super.initState();
     _patientBloc = getIt<PatientBloc>();
-    if (_patientBloc.state is PatientInitial) {
-      _patientBloc.add(const LoadPatients());
-    }
+    // Always load patients when page opens (refresh on navigation)
+    _patientBloc.add(const LoadPatients());
   }
 
   @override
@@ -142,13 +141,17 @@ class _PatientListViewState extends State<_PatientListView> {
   }
 
   void _onRegisterPatient(Pasien patient) async {
-    final isRegistered = patient.isRegistered ?? false;
     int? registrasiId;
 
-    if (isRegistered) {
+    // Check if patient has existing registrations
+    final database = getIt<db.AppDatabase>();
+    final registrations = await database.getRegistrasiByPasienId(patient.id);
+    final hasRegistrations = registrations.isNotEmpty;
+
+    if (hasRegistrations) {
       try {
         final database = getIt<db.AppDatabase>();
-        final pasienIdInt = int.tryParse(patient.id);
+        final pasienIdInt = patient.id;
         if (pasienIdInt != null) {
           final registration = await database.getLatestRegistrasiByPasienId(
             pasienIdInt,
@@ -166,7 +169,7 @@ class _PatientListViewState extends State<_PatientListView> {
         'pasienId': patient.id,
         'pasienNama': patient.nama,
         if (registrasiId != null) 'registrasiId': registrasiId,
-        if (isRegistered) 'isEdit': true,
+        if (hasRegistrations) 'isEdit': true,
       },
     );
 
@@ -175,10 +178,10 @@ class _PatientListViewState extends State<_PatientListView> {
     if (result != null && mounted) {
       debugPrint('✅ Processing registration result: $result');
 
+      // Trigger refresh to fetch latest data from API
       await Future.delayed(const Duration(milliseconds: 150));
-
-      context.read<PatientBloc>().add(const LoadPatients());
-      debugPrint('✅ LoadPatients event triggered');
+      context.read<PatientBloc>().add(const RefreshPatients());
+      debugPrint('✅ RefreshPatients event triggered');
 
       String message;
       Color backgroundColor;
@@ -696,7 +699,7 @@ class _PatientListViewState extends State<_PatientListView> {
                                   ),
                                 ),
                                 child: Text(
-                                  patient.noRm,
+                                  patient.mrn,
                                   style: const TextStyle(
                                     color: kPrimaryColor,
                                     fontSize: 12,
@@ -712,9 +715,8 @@ class _PatientListViewState extends State<_PatientListView> {
                           children: [
                             _GenderBadge(jenisKelamin: patient.jenisKelamin),
                             const SizedBox(height: 6),
-                            _RegistrationStatusBadge(
-                              isRegistered: patient.isRegistered,
-                            ),
+                            // TODO: Implement registration status check
+                            // _RegistrationStatusBadge(isRegistered: hasRegistrations),
                           ],
                         ),
                       ],
@@ -741,7 +743,7 @@ class _PatientListViewState extends State<_PatientListView> {
                             icon: Icons.phone_rounded,
                             iconColor: const Color(0xFF22C55E),
                             label: 'Telepon',
-                            value: patient.noTelp,
+                            value: patient.telepon,
                           ),
                           const SizedBox(height: 12),
                           _ModernInfoRow(
@@ -758,25 +760,13 @@ class _PatientListViewState extends State<_PatientListView> {
 
                     Container(
                       decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: (patient.isRegistered ?? false)
-                              ? [
-                                  const Color(0xFF3B82F6),
-                                  const Color(0xFF2563EB),
-                                ]
-                              : [
-                                  kSecondaryColor,
-                                  kSecondaryColor.withOpacity(0.8),
-                                ],
+                        gradient: const LinearGradient(
+                          colors: [kSecondaryColor, Color(0xFF059669)],
                         ),
                         borderRadius: BorderRadius.circular(16),
                         boxShadow: [
                           BoxShadow(
-                            color:
-                                ((patient.isRegistered ?? false)
-                                        ? const Color(0xFF3B82F6)
-                                        : kSecondaryColor)
-                                    .withOpacity(0.3),
+                            color: kSecondaryColor.withOpacity(0.3),
                             blurRadius: 12,
                             offset: const Offset(0, 4),
                           ),
@@ -792,18 +782,14 @@ class _PatientListViewState extends State<_PatientListView> {
                             child: Row(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
-                                Icon(
-                                  (patient.isRegistered ?? false)
-                                      ? Icons.edit_calendar
-                                      : Icons.app_registration,
+                                const Icon(
+                                  Icons.app_registration,
                                   color: kWhite,
                                   size: 20,
                                 ),
                                 const SizedBox(width: 8),
-                                Text(
-                                  (patient.isRegistered ?? false)
-                                      ? 'Edit Registrasi Kunjungan'
-                                      : 'Registrasikan Kunjungan',
+                                const Text(
+                                  'Registrasikan Kunjungan',
                                   style: const TextStyle(
                                     color: kWhite,
                                     fontSize: 15,
@@ -937,7 +923,7 @@ class _PatientListViewState extends State<_PatientListView> {
               cells: [
                 DataCell(
                   Text(
-                    patient.noRm,
+                    patient.mrn,
                     style: const TextStyle(
                       color: kPrimaryColor,
                       fontWeight: FontWeight.bold,
@@ -962,7 +948,7 @@ class _PatientListViewState extends State<_PatientListView> {
                 ),
                 DataCell(_GenderBadge(jenisKelamin: patient.jenisKelamin)),
                 DataCell(Text('${_calculateAge(patient.tanggalLahir)} tahun')),
-                DataCell(Text(patient.noTelp)),
+                DataCell(Text(patient.telepon)),
                 DataCell(Text(patient.alamat, overflow: TextOverflow.ellipsis)),
                 DataCell(
                   Row(
@@ -1110,9 +1096,10 @@ class _GenderBadge extends StatelessWidget {
   }
 }
 
+/* Commented out - not used currently
 class _RegistrationStatusBadge extends StatelessWidget {
   final bool? isRegistered;
-  const _RegistrationStatusBadge({required this.isRegistered});
+  const _RegistrationStatusBadge({this.isRegistered});
 
   @override
   Widget build(BuildContext context) {
@@ -1156,3 +1143,4 @@ class _RegistrationStatusBadge extends StatelessWidget {
     );
   }
 }
+*/

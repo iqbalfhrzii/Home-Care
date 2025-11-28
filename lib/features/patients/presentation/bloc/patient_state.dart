@@ -43,10 +43,10 @@ class PatientListLoaded extends PatientState {
   int get totalPatients => patients.length;
   int get maleCount => patients.where((p) => p.jenisKelamin == 'L').length;
   int get femaleCount => patients.where((p) => p.jenisKelamin == 'P').length;
-  int get registeredCount =>
-      patients.where((p) => p.isRegistered ?? false).length;
-  int get unregisteredCount =>
-      patients.where((p) => !(p.isRegistered ?? false)).length;
+
+  // Hitung berdasarkan array registrasi dari API
+  int get registeredCount => patients.where((p) => p.isRegistered).length;
+  int get unregisteredCount => patients.where((p) => !p.isRegistered).length;
 }
 
 class PatientDetailLoaded extends PatientState {

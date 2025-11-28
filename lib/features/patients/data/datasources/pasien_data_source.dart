@@ -17,7 +17,7 @@ class PasienDataSource {
   }
 
   // Get patient by ID
-  Future<Pasien> getPasienById(String id) async {
+  Future<Pasien> getPasienById(int id) async {
     try {
       final response = await _dio.get('/pasien/$id');
       return Pasien.fromJson(response.data['data']);
@@ -37,7 +37,7 @@ class PasienDataSource {
   }
 
   // Update patient
-  Future<Pasien> updatePasien(String id, Map<String, dynamic> data) async {
+  Future<Pasien> updatePasien(int id, Map<String, dynamic> data) async {
     try {
       final response = await _dio.put('/pasien/$id', data: data);
       return Pasien.fromJson(response.data['data']);
@@ -47,7 +47,7 @@ class PasienDataSource {
   }
 
   // Delete patient
-  Future<void> deletePasien(String id) async {
+  Future<void> deletePasien(int id) async {
     try {
       await _dio
           .delete('/pasien/$id')

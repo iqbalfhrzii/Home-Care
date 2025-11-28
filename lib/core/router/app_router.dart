@@ -7,7 +7,6 @@ import 'package:homecare_mobile/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:homecare_mobile/features/auth/presentation/pages/login_page.dart';
 import 'package:homecare_mobile/features/reports/presentation/pages/report_list_page.dart';
 import 'package:homecare_mobile/features/schedules/presentation/pages/schedule_list_page.dart';
-import 'package:homecare_mobile/features/schedules/presentation/pages/schedule_page.dart';
 import 'package:homecare_mobile/pages/home_page.dart';
 import 'package:homecare_mobile/shared/presentation/pages/main_page.dart';
 import 'package:homecare_mobile/shared/presentation/pages/splash_page.dart';
@@ -21,7 +20,6 @@ import 'package:homecare_mobile/features/schedules/presentation/pages/schedule_d
 import 'package:homecare_mobile/features/schedules/presentation/pages/schedule_anamnesa_page.dart';
 import 'package:homecare_mobile/features/schedules/presentation/pages/schedule_tindakan_page.dart';
 import 'package:homecare_mobile/features/schedules/presentation/pages/schedule_icd_pages.dart';
-import 'package:homecare_mobile/shared/local_db/app_database.dart' as db;
 
 class AppRouter {
   static const String splash = '/';
@@ -65,19 +63,11 @@ class AppRouter {
           GoRoute(
             path: schedules,
             name: 'scheduleList',
-            pageBuilder: (context, state) => NoTransitionPage(
-              key: state.pageKey,
-              child: const ScheduleListPage(),
+            pageBuilder: (context, state) => const NoTransitionPage(
+              key: ValueKey('schedules'),
+              child: ScheduleListPage(),
             ),
             routes: [
-              GoRoute(
-                path: ':id',
-                name: 'schedule',
-                builder: (context, state) {
-                  final id = int.parse(state.pathParameters['id']!);
-                  return SchedulePage(id: id);
-                },
-              ),
               GoRoute(
                 path: 'detail/:id',
                 name: 'scheduleDetail',
@@ -90,24 +80,24 @@ class AppRouter {
                     path: 'anamnesa',
                     name: 'scheduleAnamnesa',
                     builder: (context, state) {
-                      final kunjungan = state.extra as db.Kunjungan?;
-                      return ScheduleAnamnesaPage(kunjungan: kunjungan);
+                      final id = int.parse(state.pathParameters['id']!);
+                      return ScheduleAnamnesaPage(registrationId: id);
                     },
                   ),
                   GoRoute(
                     path: 'tindakan',
                     name: 'scheduleTindakan',
                     builder: (context, state) {
-                      final kunjungan = state.extra as db.Kunjungan?;
-                      return ScheduleTindakanPage(kunjungan: kunjungan);
+                      final id = int.parse(state.pathParameters['id']!);
+                      return ScheduleTindakanPage(registrationId: id);
                     },
                   ),
                   GoRoute(
                     path: 'icd',
                     name: 'scheduleIcd',
                     builder: (context, state) {
-                      final kunjungan = state.extra as db.Kunjungan?;
-                      return ScheduleIcdPage(kunjungan: kunjungan);
+                      final id = int.parse(state.pathParameters['id']!);
+                      return ScheduleIcdPage(registrationId: id);
                     },
                   ),
                 ],
@@ -138,7 +128,7 @@ class AppRouter {
                   if (extra is Pasien) {
                     return PatientDetailPage(pasien: extra);
                   }
-                  return PatientDetailPage(patientId: id);
+                  return PatientDetailPage(patientId: int.tryParse(id));
                 },
               ),
               GoRoute(

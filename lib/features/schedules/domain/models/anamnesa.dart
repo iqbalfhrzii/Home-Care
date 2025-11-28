@@ -5,45 +5,30 @@ part 'anamnesa.g.dart';
 @JsonSerializable(fieldRename: FieldRename.snake)
 class Anamnesa {
   final int id;
-  @JsonKey(name: 'kunjungan_id')
-  final int kunjunganId;
-  @JsonKey(name: 'keluhan_utama')
-  final String keluhanUtama;
-  @JsonKey(name: 'riwayat_penyakit_sekarang')
-  final String riwayatPenyakitSekarang;
-  @JsonKey(name: 'riwayat_penyakit_dahulu')
-  final String? riwayatPenyakitDahulu;
-  @JsonKey(name: 'riwayat_penyakit_keluarga')
-  final String? riwayatPenyakitKeluarga;
-  @JsonKey(name: 'riwayat_alergi')
-  final String? riwayatAlergi;
-  @JsonKey(name: 'tekanan_darah')
-  final String? tekananDarah; // e.g., "120/80"
-  final int? nadi; // beats per minute
-  @JsonKey(name: 'suhu_tubuh')
-  final double? suhuTubuh; // Celsius
-  final int? pernapasan; // breaths per minute
-  final String? catatan;
-  @JsonKey(name: 'created_at')
-  final DateTime createdAt;
-  @JsonKey(name: 'updated_at')
-  final DateTime updatedAt;
+  final int registrasiId;
+  final int? dokterId;
+  final String? poliId;
+  final String? tanggal;
 
-  Anamnesa({
+  // JSON fields - stored as Map in domain, String in DB
+  final Map<String, dynamic>? pengkajianKeperawatan;
+  final Map<String, dynamic>? pengkajianMedis;
+  final Map<String, dynamic>? khususPerawat;
+
+  final String? createdAt;
+  final String? updatedAt;
+
+  const Anamnesa({
     required this.id,
-    required this.kunjunganId,
-    required this.keluhanUtama,
-    required this.riwayatPenyakitSekarang,
-    this.riwayatPenyakitDahulu,
-    this.riwayatPenyakitKeluarga,
-    this.riwayatAlergi,
-    this.tekananDarah,
-    this.nadi,
-    this.suhuTubuh,
-    this.pernapasan,
-    this.catatan,
-    required this.createdAt,
-    required this.updatedAt,
+    required this.registrasiId,
+    this.dokterId,
+    this.poliId,
+    this.tanggal,
+    this.pengkajianKeperawatan,
+    this.pengkajianMedis,
+    this.khususPerawat,
+    this.createdAt,
+    this.updatedAt,
   });
 
   factory Anamnesa.fromJson(Map<String, dynamic> json) =>
@@ -53,38 +38,40 @@ class Anamnesa {
 
   Anamnesa copyWith({
     int? id,
-    int? kunjunganId,
-    String? keluhanUtama,
-    String? riwayatPenyakitSekarang,
-    String? riwayatPenyakitDahulu,
-    String? riwayatPenyakitKeluarga,
-    String? riwayatAlergi,
-    String? tekananDarah,
-    int? nadi,
-    double? suhuTubuh,
-    int? pernapasan,
-    String? catatan,
-    DateTime? createdAt,
-    DateTime? updatedAt,
+    int? registrasiId,
+    int? dokterId,
+    String? poliId,
+    String? tanggal,
+    Map<String, dynamic>? pengkajianKeperawatan,
+    Map<String, dynamic>? pengkajianMedis,
+    Map<String, dynamic>? khususPerawat,
+    String? createdAt,
+    String? updatedAt,
   }) {
     return Anamnesa(
       id: id ?? this.id,
-      kunjunganId: kunjunganId ?? this.kunjunganId,
-      keluhanUtama: keluhanUtama ?? this.keluhanUtama,
-      riwayatPenyakitSekarang:
-          riwayatPenyakitSekarang ?? this.riwayatPenyakitSekarang,
-      riwayatPenyakitDahulu:
-          riwayatPenyakitDahulu ?? this.riwayatPenyakitDahulu,
-      riwayatPenyakitKeluarga:
-          riwayatPenyakitKeluarga ?? this.riwayatPenyakitKeluarga,
-      riwayatAlergi: riwayatAlergi ?? this.riwayatAlergi,
-      tekananDarah: tekananDarah ?? this.tekananDarah,
-      nadi: nadi ?? this.nadi,
-      suhuTubuh: suhuTubuh ?? this.suhuTubuh,
-      pernapasan: pernapasan ?? this.pernapasan,
-      catatan: catatan ?? this.catatan,
+      registrasiId: registrasiId ?? this.registrasiId,
+      dokterId: dokterId ?? this.dokterId,
+      poliId: poliId ?? this.poliId,
+      tanggal: tanggal ?? this.tanggal,
+      pengkajianKeperawatan:
+          pengkajianKeperawatan ?? this.pengkajianKeperawatan,
+      pengkajianMedis: pengkajianMedis ?? this.pengkajianMedis,
+      khususPerawat: khususPerawat ?? this.khususPerawat,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );
   }
+}
+
+@JsonSerializable()
+class AnamnesaCollection {
+  final List<Anamnesa> data;
+
+  const AnamnesaCollection({required this.data});
+
+  factory AnamnesaCollection.fromJson(Map<String, dynamic> json) =>
+      _$AnamnesaCollectionFromJson(json);
+
+  Map<String, dynamic> toJson() => _$AnamnesaCollectionToJson(this);
 }

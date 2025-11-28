@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import 'package:homecare_mobile/features/auth/presentation/widgets/logout_confirmation_dialog.dart';
 import 'package:homecare_mobile/shared/app_injections.dart';
 import 'package:homecare_mobile/shared/local_db/app_database.dart' as db;
+import 'package:homecare_mobile/shared/widgets/sync_status_widget.dart';
 
 // --- Palet Warna Baru ---
 const Color kPrimaryColor = Color(0xFF004B8C); // Deep Blue
@@ -54,17 +55,18 @@ class NotificationInfo {
   });
 }
 
-class UpcomingVisit {
-  final db.Registrasi registration;
-  final db.Pasien patient;
-  final db.Kunjungan? visit;
-
-  UpcomingVisit({
-    required this.registration,
-    required this.patient,
-    this.visit,
-  });
-}
+// DISABLED - Kunjungan table removed in schema v7
+// class UpcomingVisit {
+//   final db.Registrasi registration;
+//   final db.Pasien patient;
+//   final db.Kunjungan? visit;
+//
+//   UpcomingVisit({
+//     required this.registration,
+//     required this.patient,
+//     this.visit,
+//   });
+// }
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -77,7 +79,8 @@ class _HomePageState extends State<HomePage> {
   late DateTime _selectedDate;
   List<DateTime> _weekDays = [];
   late final db.AppDatabase _database;
-  List<UpcomingVisit> _upcomingVisits = [];
+  // DISABLED - Kunjungan table removed in schema v7, using empty list for now
+  final List<dynamic> _upcomingVisits = [];
   bool _isLoadingVisits = true;
 
   // Stats data
@@ -104,16 +107,16 @@ class _HomePageState extends State<HomePage> {
     setState(() => _isLoadingStats = true);
 
     try {
-      // Get total patients (semua pasien, tidak perlu filter isRegistered)
+      // Get total patients
       final patients = await _database.getAllPasiens();
 
-      // Get total visits (kunjungan)
-      final visits = await _database.getAllKunjungans();
+      // DISABLED - Kunjungan table removed in schema v7
+      // final visits = await _database.getAllKunjungans();
 
       if (mounted) {
         setState(() {
           _totalPatients = patients.length;
-          _totalVisits = visits.length;
+          _totalVisits = 0; // TODO: Count from Registrasis
           _isLoadingStats = false;
         });
       }
@@ -128,54 +131,11 @@ class _HomePageState extends State<HomePage> {
   Future<void> _loadNotifications() async {
     setState(() => _isLoadingNotifications = true);
 
+    // DISABLED - Kunjungan table removed in schema v7
     try {
-      final notifications = <NotificationInfo>[];
-      final today = DateTime.now();
-
-      // Get kunjungan hari ini
-      final registrations = await _database.getAllRegistrasis();
-      for (final reg in registrations) {
-        if (_isSameDay(reg.tanggalKunjungan, today)) {
-          final patient = await _database.getPasienById(reg.pasienId);
-          if (patient != null) {
-            notifications.add(
-              NotificationInfo(
-                id: 'visit_${reg.id}',
-                icon: Icons.home_work_outlined,
-                title: 'Kunjungan ke rumah ${patient.nama}',
-                subtitle: '${patient.noRm} - ${reg.jamKunjungan}',
-                type: 'visit',
-              ),
-            );
-          }
-        }
-      }
-
-      // Get kunjungan dengan anamnesa belum diisi
-      final kunjungans = await _database.getAllKunjungans();
-      for (final kunjungan in kunjungans) {
-        if (!kunjungan.anamnesaDone && kunjungan.status != 'selesai') {
-          final reg = await _database.getRegistrasiById(kunjungan.registrasiId);
-          final patient = await _database.getPasienById(kunjungan.pasienId);
-
-          if (reg != null && patient != null) {
-            notifications.add(
-              NotificationInfo(
-                id: 'anamnesa_${kunjungan.id}',
-                icon: Icons.playlist_add_check_rounded,
-                title: 'Input Anamnesa ${patient.nama}',
-                subtitle: '${reg.noReg} - Belum diisi',
-                type: 'anamnesa',
-              ),
-            );
-          }
-        }
-      }
-
-      // Limit to 2 notifications untuk UI
       if (mounted) {
         setState(() {
-          _notifications = notifications.take(2).toList();
+          _notifications = [];
           _isLoadingNotifications = false;
         });
       }
@@ -190,33 +150,12 @@ class _HomePageState extends State<HomePage> {
   Future<void> _loadUpcomingVisits() async {
     setState(() => _isLoadingVisits = true);
 
+    // DISABLED - Kunjungan table removed in schema v7
+    // Needs refactoring to use Registrasi directly
     try {
-      final registrations = await _database.getAllRegistrasis();
-      final List<UpcomingVisit> visits = [];
-
-      for (final reg in registrations) {
-        // Filter berdasarkan tanggal yang dipilih
-        if (_isSameDay(reg.tanggalKunjungan, _selectedDate)) {
-          final patient = await _database.getPasienById(reg.pasienId);
-          if (patient == null || !patient.isRegistered) continue;
-
-          final visit = await _database.getKunjunganByRegistrasiId(reg.id);
-          visits.add(
-            UpcomingVisit(registration: reg, patient: patient, visit: visit),
-          );
-        }
-      }
-
-      // Sort berdasarkan jam (yang paling dekat dulu)
-      visits.sort((a, b) {
-        final timeA = _parseTime(a.registration.jamKunjungan);
-        final timeB = _parseTime(b.registration.jamKunjungan);
-        return timeA.compareTo(timeB);
-      });
-
+      // TODO: Implement using Registrasis table only
       if (mounted) {
         setState(() {
-          _upcomingVisits = visits;
           _isLoadingVisits = false;
         });
       }
@@ -320,6 +259,9 @@ class _HomePageState extends State<HomePage> {
           children: [
             _buildFuturisticHeader(),
             const SizedBox(height: 24),
+            // Sync Status Widget
+            const SyncStatusWidget(),
+            const SizedBox(height: 8),
             _buildDateSelector(),
             const SizedBox(height: 24),
             _buildNextVisitCard(),
@@ -720,7 +662,7 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  Widget _buildVisitCard(UpcomingVisit visit, int index) {
+  Widget _buildVisitCard(dynamic visit, int index) {
     final isFirst = index == 0;
 
     return Container(
@@ -784,7 +726,7 @@ class _HomePageState extends State<HomePage> {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  visit.patient.noRm,
+                  visit.patient.mrn,
                   style: TextStyle(
                     color: kWhite.withOpacity(0.7),
                     fontSize: 13,
@@ -806,7 +748,10 @@ class _HomePageState extends State<HomePage> {
                       ),
                       const SizedBox(width: 6),
                       Text(
-                        visit.registration.jamKunjungan,
+                        DateFormat(
+                          'HH:mm',
+                          'id_ID',
+                        ).format(DateTime.parse(visit.registration.tglJamReg)),
                         style: const TextStyle(
                           color: kWhite,
                           fontWeight: FontWeight.w600,

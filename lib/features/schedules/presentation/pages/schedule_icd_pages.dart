@@ -1,7 +1,10 @@
+// ICD Selection Page - Uses API data stored in local database
+
 import 'package:flutter/material.dart';
 import 'package:homecare_mobile/shared/app_injections.dart';
 import 'package:homecare_mobile/shared/local_db/app_database.dart' as db;
 import 'package:drift/drift.dart' as drift;
+import 'package:dio/dio.dart';
 
 const Color kPrimaryColor = Color(0xFF004B8C);
 const Color kPrimaryLight = Color(0xFF0063B2);
@@ -30,10 +33,14 @@ class IcdItem {
 }
 
 class ScheduleIcdPage extends StatefulWidget {
-  final db.Kunjungan? kunjungan;
+  final int registrationId;
   final VoidCallback? onCompleted;
 
-  const ScheduleIcdPage({super.key, this.kunjungan, this.onCompleted});
+  const ScheduleIcdPage({
+    super.key,
+    required this.registrationId,
+    this.onCompleted,
+  });
 
   @override
   State<ScheduleIcdPage> createState() => _ScheduleIcdPageState();
@@ -41,88 +48,131 @@ class ScheduleIcdPage extends StatefulWidget {
 
 class _ScheduleIcdPageState extends State<ScheduleIcdPage> {
   late final db.AppDatabase _database;
+  late final Dio _dio;
   final TextEditingController _searchController = TextEditingController();
   final List<IcdItem> _selectedIcds = [];
   bool _isLoading = false;
   bool _isSaving = false;
+  bool _isLoadingIcds = false;
 
-  // Mock data - nanti diganti dengan API call
-  final List<IcdItem> _allIcds = [
-    IcdItem(
-      id: '1',
-      kode: 'A00.0',
-      namaPenyakit: 'Cholera due to Vibrio cholerae 01, biovar cholerae',
-      deskripsi: 'Kolera yang disebabkan oleh Vibrio cholerae 01',
-    ),
-    IcdItem(
-      id: '2',
-      kode: 'A00.1',
-      namaPenyakit: 'Cholera due to Vibrio cholerae 01, biovar eltor',
-      deskripsi: 'Kolera yang disebabkan oleh Vibrio cholerae 01 biovar eltor',
-    ),
-    IcdItem(
-      id: '3',
-      kode: 'E11.9',
-      namaPenyakit: 'Type 2 diabetes mellitus without complications',
-      deskripsi: 'Diabetes melitus tipe 2 tanpa komplikasi',
-    ),
-    IcdItem(
-      id: '4',
-      kode: 'I10',
-      namaPenyakit: 'Essential (primary) hypertension',
-      deskripsi: 'Hipertensi esensial (primer)',
-    ),
-    IcdItem(
-      id: '5',
-      kode: 'J00',
-      namaPenyakit: 'Acute nasopharyngitis [common cold]',
-      deskripsi: 'Nasofaringitis akut (pilek)',
-    ),
-    IcdItem(
-      id: '6',
-      kode: 'J45.9',
-      namaPenyakit: 'Asthma, unspecified',
-      deskripsi: 'Asma yang tidak spesifik',
-    ),
-  ];
-
-  List<IcdItem> _filteredIcds = [];
+  List<db.Icd> _allIcds = [];
+  List<db.Icd> _filteredIcds = [];
 
   @override
   void initState() {
     super.initState();
     _database = getIt<db.AppDatabase>();
-    _filteredIcds = _allIcds;
+    _dio = getIt<Dio>();
     _searchController.addListener(_filterIcds);
-    _loadExistingDiagnosas();
+    _loadExistingIcds();
+    _loadAllIcds();
   }
 
-  Future<void> _loadExistingDiagnosas() async {
-    if (widget.kunjungan == null) return;
+  Future<void> _loadAllIcds() async {
+    setState(() => _isLoadingIcds = true);
+    try {
+      // Try to load from local database first
+      final localIcds = await _database.getAllIcds();
 
+      if (localIcds.isNotEmpty) {
+        setState(() {
+          _allIcds = localIcds;
+          _filteredIcds = localIcds;
+          _isLoadingIcds = false;
+        });
+
+        // Fetch from API in background to update data
+        _fetchIcdsFromApi();
+      } else {
+        // No local data, fetch from API
+        await _fetchIcdsFromApi();
+      }
+    } catch (e) {
+      debugPrint('❌ Error loading ICDs: $e');
+      setState(() => _isLoadingIcds = false);
+    }
+  }
+
+  Future<void> _fetchIcdsFromApi() async {
+    try {
+      debugPrint('🔍 Fetching ICDs from /icd API...');
+      final response = await _dio.get('/icd');
+
+      debugPrint('✅ GET /icd - Status: ${response.statusCode}');
+      if (response.statusCode == 200) {
+        // Handle both direct array and wrapped response
+        final data = response.data is List
+            ? response.data as List
+            : (response.data['data'] as List? ?? []);
+
+        // Clear existing data
+        await _database.deleteAllIcds();
+
+        // Insert new data from API
+        for (var item in data) {
+          await _database.insertIcd(
+            db.IcdsCompanion(
+              id: drift.Value(item['id']),
+              kode: drift.Value(item['kode']),
+              deskripsi: drift.Value(item['deskripsi']),
+              katIcd: drift.Value(item['kat_icd']),
+              isActive: drift.Value(item['is_active'] ?? true),
+            ),
+          );
+        }
+
+        // Reload from database
+        final icds = await _database.getAllIcds();
+        if (mounted) {
+          setState(() {
+            _allIcds = icds;
+            _filteredIcds = icds;
+            _isLoadingIcds = false;
+          });
+        }
+
+        debugPrint('✅ Synced ${icds.length} ICDs from /icd API');
+      }
+    } catch (e) {
+      debugPrint('❌ Error fetching ICDs from API: $e');
+      // Keep using local data if API fails
+      if (mounted) {
+        setState(() => _isLoadingIcds = false);
+      }
+    }
+  }
+
+  Future<void> _loadExistingIcds() async {
     setState(() => _isLoading = true);
     try {
-      final diagnosas = await _database.getDiagnosasByKunjunganId(
-        widget.kunjungan!.id,
+      final icds = await _database.getRegistrasiIcdsByRegistrasiId(
+        widget.registrationId,
       );
 
       setState(() {
         _selectedIcds.clear();
-        for (var diagnosa in diagnosas) {
-          _selectedIcds.add(
-            IcdItem(
-              id: diagnosa.id.toString(),
-              kode: diagnosa.kodeIcd,
-              namaPenyakit: diagnosa.namaIcd,
-              deskripsi: diagnosa.namaIcd,
-              isPrimary: diagnosa.isPrimary,
-            ),
-          );
+        for (var registrasiIcd in icds) {
+          // Join with Icds table to get actual data
+          _database.getIcdById(registrasiIcd.icdId).then((icd) {
+            if (icd != null && mounted) {
+              setState(() {
+                _selectedIcds.add(
+                  IcdItem(
+                    id: icd.id.toString(),
+                    kode: icd.kode,
+                    namaPenyakit: icd.deskripsi,
+                    deskripsi: icd.deskripsi,
+                    isPrimary: false,
+                  ),
+                );
+              });
+            }
+          });
         }
         _isLoading = false;
       });
     } catch (e) {
-      debugPrint('❌ Error loading diagnosas: $e');
+      debugPrint('❌ Error loading existing ICDs: $e');
       setState(() => _isLoading = false);
     }
   }
@@ -138,15 +188,15 @@ class _ScheduleIcdPageState extends State<ScheduleIcdPage> {
     setState(() {
       _filteredIcds = _allIcds.where((icd) {
         return icd.kode.toLowerCase().contains(query) ||
-            icd.namaPenyakit.toLowerCase().contains(query) ||
-            icd.deskripsi.toLowerCase().contains(query);
+            icd.deskripsi.toLowerCase().contains(query) ||
+            (icd.katIcd?.toLowerCase().contains(query) ?? false);
       }).toList();
     });
   }
 
-  void _addIcd(IcdItem icd) {
+  void _addIcd(db.Icd icd) {
     // Check if already added
-    if (_selectedIcds.any((item) => item.id == icd.id)) {
+    if (_selectedIcds.any((item) => item.id == icd.id.toString())) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('ICD sudah ditambahkan'),
@@ -159,9 +209,9 @@ class _ScheduleIcdPageState extends State<ScheduleIcdPage> {
     setState(() {
       _selectedIcds.add(
         IcdItem(
-          id: icd.id,
+          id: icd.id.toString(),
           kode: icd.kode,
-          namaPenyakit: icd.namaPenyakit,
+          namaPenyakit: icd.deskripsi,
           deskripsi: icd.deskripsi,
           isPrimary: _selectedIcds.isEmpty, // First one is primary by default
         ),
@@ -211,44 +261,27 @@ class _ScheduleIcdPageState extends State<ScheduleIcdPage> {
       return;
     }
 
-    if (widget.kunjungan == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Data kunjungan tidak valid'),
-          backgroundColor: kDangerColor,
-        ),
-      );
-      return;
-    }
-
     setState(() => _isSaving = true);
 
     try {
-      // Delete existing diagnosas
-      final existingDiagnosas = await _database.getDiagnosasByKunjunganId(
-        widget.kunjungan!.id,
+      // Delete existing ICDs
+      final existingIcds = await _database.getRegistrasiIcdsByRegistrasiId(
+        widget.registrationId,
       );
-      for (var diagnosa in existingDiagnosas) {
-        await _database.deleteDiagnosa(diagnosa.id);
+      for (var icd in existingIcds) {
+        await _database.deleteRegistrasiIcd(icd.id);
       }
 
-      // Insert new diagnosas
+      // Insert new ICDs
       for (var icd in _selectedIcds) {
-        await _database.insertDiagnosa(
-          db.DiagnosasCompanion(
-            kunjunganId: drift.Value(widget.kunjungan!.id),
-            kodeIcd: drift.Value(icd.kode),
-            namaIcd: drift.Value(icd.namaPenyakit),
-            isPrimary: drift.Value(icd.isPrimary),
+        await _database.insertRegistrasiIcd(
+          db.RegistrasiIcdsCompanion(
+            registrasiId: drift.Value(widget.registrationId),
+            icdId: drift.Value(int.tryParse(icd.id) ?? 0),
+            isSynced: const drift.Value(false), // Will be synced automatically
           ),
         );
       }
-
-      // Update kunjungan progress
-      await _database.updateKunjunganProgress(
-        widget.kunjungan!.id,
-        icdDone: true,
-      );
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -553,7 +586,7 @@ class _ScheduleIcdPageState extends State<ScheduleIcdPage> {
           child: TextField(
             controller: _searchController,
             decoration: InputDecoration(
-              hintText: 'Cari kode atau nama penyakit...',
+              hintText: 'Cari kode atau deskripsi ICD...',
               prefixIcon: const Icon(Icons.search, color: kPrimaryColor),
               filled: true,
               fillColor: kWhite,
@@ -572,134 +605,158 @@ class _ScheduleIcdPageState extends State<ScheduleIcdPage> {
             ),
           ),
         ),
-        Container(
-          constraints: BoxConstraints(
-            maxHeight: MediaQuery.of(context).size.height * 0.4,
-          ),
-          child: _filteredIcds.isEmpty
-              ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        Icons.search_off,
-                        size: 64,
-                        color: kTextGrey.withOpacity(0.5),
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        'Tidak ada ICD ditemukan',
-                        style: TextStyle(color: kTextGrey, fontSize: 16),
-                      ),
-                    ],
-                  ),
-                )
-              : ListView.builder(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  itemCount: _filteredIcds.length,
-                  itemBuilder: (context, index) {
-                    final icd = _filteredIcds[index];
-                    final isSelected = _selectedIcds.any(
-                      (item) => item.id == icd.id,
-                    );
-
-                    return Card(
-                      margin: const EdgeInsets.only(bottom: 12),
-                      color: kWhite,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        side: BorderSide(
-                          color: isSelected
-                              ? kSuccessColor
-                              : kTextGrey.withOpacity(0.2),
-                          width: isSelected ? 2 : 1,
+        if (_isLoadingIcds)
+          const Padding(
+            padding: EdgeInsets.all(32),
+            child: CircularProgressIndicator(color: kPrimaryColor),
+          )
+        else
+          Container(
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.of(context).size.height * 0.4,
+            ),
+            child: _filteredIcds.isEmpty
+                ? Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          Icons.search_off,
+                          size: 64,
+                          color: kTextGrey.withOpacity(0.5),
                         ),
-                      ),
-                      child: InkWell(
-                        onTap: () => _addIcd(icd),
-                        borderRadius: BorderRadius.circular(12),
-                        child: Padding(
-                          padding: const EdgeInsets.all(16.0),
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Container(
-                                width: 50,
-                                height: 50,
-                                decoration: BoxDecoration(
-                                  gradient: LinearGradient(
-                                    colors: isSelected
-                                        ? [kSuccessColor, kSuccessColor]
-                                        : [kPrimaryColor, kPrimaryLight],
-                                  ),
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
-                                child: Center(
-                                  child: Text(
-                                    icd.kode.split('.')[0],
-                                    style: const TextStyle(
-                                      color: kWhite,
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 14,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Row(
-                                      children: [
-                                        Text(
-                                          icd.kode,
-                                          style: const TextStyle(
-                                            fontWeight: FontWeight.bold,
-                                            fontSize: 14,
-                                            color: kPrimaryColor,
-                                          ),
-                                        ),
-                                        if (isSelected) ...[
-                                          const SizedBox(width: 8),
-                                          const Icon(
-                                            Icons.check_circle,
-                                            color: kSuccessColor,
-                                            size: 18,
-                                          ),
-                                        ],
-                                      ],
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      icd.namaPenyakit,
-                                      style: const TextStyle(
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.w600,
-                                        color: kTextDark,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      icd.deskripsi,
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        color: kTextGrey,
-                                      ),
-                                      maxLines: 2,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
+                        const SizedBox(height: 16),
+                        Text(
+                          'Tidak ada ICD ditemukan',
+                          style: TextStyle(color: kTextGrey, fontSize: 16),
+                        ),
+                      ],
+                    ),
+                  )
+                : ListView.builder(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    itemCount: _filteredIcds.length,
+                    itemBuilder: (context, index) {
+                      final icd = _filteredIcds[index];
+                      final isSelected = _selectedIcds.any(
+                        (item) => item.id == icd.id.toString(),
+                      );
+
+                      return Card(
+                        margin: const EdgeInsets.only(bottom: 12),
+                        color: kWhite,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          side: BorderSide(
+                            color: isSelected
+                                ? kSuccessColor
+                                : kTextGrey.withOpacity(0.2),
+                            width: isSelected ? 2 : 1,
                           ),
                         ),
-                      ),
-                    );
-                  },
-                ),
-        ),
+                        child: InkWell(
+                          onTap: () => _addIcd(icd),
+                          borderRadius: BorderRadius.circular(12),
+                          child: Padding(
+                            padding: const EdgeInsets.all(16.0),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Container(
+                                  width: 50,
+                                  height: 50,
+                                  decoration: BoxDecoration(
+                                    gradient: LinearGradient(
+                                      colors: isSelected
+                                          ? [kSuccessColor, kSuccessColor]
+                                          : [kPrimaryColor, kPrimaryLight],
+                                    ),
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  child: Center(
+                                    child: Text(
+                                      icd.kode.split('.').first,
+                                      style: const TextStyle(
+                                        color: kWhite,
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 14,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          Text(
+                                            icd.kode,
+                                            style: const TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 14,
+                                              color: kPrimaryColor,
+                                            ),
+                                          ),
+                                          if (isSelected) ...[
+                                            const SizedBox(width: 8),
+                                            const Icon(
+                                              Icons.check_circle,
+                                              color: kSuccessColor,
+                                              size: 18,
+                                            ),
+                                          ],
+                                        ],
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        icd.deskripsi,
+                                        style: const TextStyle(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w600,
+                                          color: kTextDark,
+                                        ),
+                                        maxLines: 3,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                      if (icd.katIcd != null) ...[
+                                        const SizedBox(height: 4),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 8,
+                                            vertical: 2,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: kPrimaryColor.withOpacity(
+                                              0.1,
+                                            ),
+                                            borderRadius: BorderRadius.circular(
+                                              4,
+                                            ),
+                                          ),
+                                          child: Text(
+                                            'Kategori: ${icd.katIcd}',
+                                            style: TextStyle(
+                                              fontSize: 10,
+                                              color: kPrimaryColor,
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+          ),
       ],
     );
   }

@@ -1,9 +1,12 @@
+// TEMPORARILY DISABLED - Needs refactoring for schema v7
+// Kunjungan table removed, use Registrasi directly
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:go_router/go_router.dart';
 import 'package:homecare_mobile/shared/app_injections.dart';
 import 'package:homecare_mobile/shared/local_db/app_database.dart' as db;
-import 'package:drift/drift.dart' as drift;
+// Drift import not needed after refactor
 
 // --- Palet Warna ---
 const Color kPrimaryColor = Color(0xFF004B8C);
@@ -31,7 +34,12 @@ class _ScheduleDetailPageState extends State<ScheduleDetailPage> {
   late final db.AppDatabase _database;
   db.Registrasi? _registration;
   db.Pasien? _patient;
-  db.Kunjungan? _visit;
+
+  // Track progress without Kunjungan table
+  bool _anamnesaDone = false;
+  bool _tindakanDone = false;
+  bool _icdDone = false;
+  int _progressStep = 0;
 
   bool _isLoading = true;
 
@@ -59,38 +67,40 @@ class _ScheduleDetailPageState extends State<ScheduleDetailPage> {
       }
 
       final patient = await _database.getPasienById(registration.pasienId);
-      db.Kunjungan? visit = await _database.getKunjunganByRegistrasiId(
-        widget.registrationId,
+
+      // Check progress from related tables instead of Kunjungan
+      final anamnesa = await _database.getAnamnesaByRegistrasiId(
+        registration.id,
+      );
+      final icds = await _database.getRegistrasiIcdsByRegistrasiId(
+        registration.id,
+      );
+      final tindakans = await _database.getRegistrasiTindakansByRegistrasiId(
+        registration.id,
       );
 
-      if (visit == null) {
-        final noKunjungan =
-            'VST-${DateFormat('yyyyMMdd').format(DateTime.now())}-${DateTime.now().millisecondsSinceEpoch.toString().substring(8)}';
-        final visitId = await _database.insertKunjungan(
-          db.KunjungansCompanion(
-            noKunjungan: drift.Value(noKunjungan),
-            registrasiId: drift.Value(widget.registrationId),
-            pasienId: drift.Value(registration.pasienId),
-            tanggalKunjungan: drift.Value(registration.tanggalKunjungan),
-            status: const drift.Value('terjadwal'),
-            anamnesaDone: const drift.Value(false),
-            tindakanDone: const drift.Value(false),
-            icdDone: const drift.Value(false),
-            progressStep: const drift.Value(0),
-          ),
-        );
-        visit = await _database.getKunjunganById(visitId);
-      }
+      // Calculate progress
+      final anamnesaDone = anamnesa != null;
+      final icdDone = icds.isNotEmpty;
+      final tindakanDone = tindakans.isNotEmpty;
+
+      int progressStep = 0;
+      if (anamnesaDone) progressStep++;
+      if (tindakanDone) progressStep++;
+      if (icdDone) progressStep++;
 
       debugPrint(
-        '✅ Loaded visit data: anamnesaDone=${visit?.anamnesaDone}, tindakanDone=${visit?.tindakanDone}, icdDone=${visit?.icdDone}, progressStep=${visit?.progressStep}',
+        '✅ Loaded registration data: anamnesaDone=$anamnesaDone, tindakanDone=$tindakanDone, icdDone=$icdDone, progressStep=$progressStep',
       );
 
       if (mounted) {
         setState(() {
           _registration = registration;
           _patient = patient;
-          _visit = visit;
+          _anamnesaDone = anamnesaDone;
+          _tindakanDone = tindakanDone;
+          _icdDone = icdDone;
+          _progressStep = progressStep;
           _isLoading = false;
         });
       }
@@ -162,7 +172,7 @@ class _ScheduleDetailPageState extends State<ScheduleDetailPage> {
   }
 
   Widget _buildSliverAppBar() {
-    final progress = _visit?.progressStep ?? 0;
+    final progress = _progressStep;
     return SliverAppBar(
       expandedHeight: 180,
       pinned: true,
@@ -251,9 +261,9 @@ class _ScheduleDetailPageState extends State<ScheduleDetailPage> {
           const SizedBox(height: 16),
           _buildInfoRow(Icons.person, 'Nama', _patient!.nama),
           const SizedBox(height: 12),
-          _buildInfoRow(Icons.badge, 'No. RM', _patient!.noRm),
+          _buildInfoRow(Icons.badge, 'No. RM', _patient!.mrn),
           const SizedBox(height: 12),
-          _buildInfoRow(Icons.phone, 'Telepon', _patient!.noTelp),
+          _buildInfoRow(Icons.phone, 'Telepon', _patient!.telepon),
           const SizedBox(height: 12),
           _buildInfoRow(Icons.location_on, 'Alamat', _patient!.alamat),
         ],
@@ -290,10 +300,16 @@ class _ScheduleDetailPageState extends State<ScheduleDetailPage> {
           _buildInfoRow(
             Icons.calendar_today,
             'Tanggal',
-            _formatDate(_registration!.tanggalKunjungan),
+            _formatDate(DateTime.parse(_registration!.tglJamReg)),
           ),
           const SizedBox(height: 12),
-          _buildInfoRow(Icons.access_time, 'Jam', _registration!.jamKunjungan),
+          _buildInfoRow(
+            Icons.access_time,
+            'Jam',
+            DateFormat(
+              'HH:mm',
+            ).format(DateTime.parse(_registration!.tglJamReg)),
+          ),
           const SizedBox(height: 12),
           _buildInfoRow(
             Icons.medical_services,
@@ -312,9 +328,9 @@ class _ScheduleDetailPageState extends State<ScheduleDetailPage> {
   }
 
   Widget _buildProgressCard() {
-    final anamnesaDone = _visit?.anamnesaDone ?? false;
-    final tindakanDone = _visit?.tindakanDone ?? false;
-    final icdDone = _visit?.icdDone ?? false;
+    final anamnesaDone = _anamnesaDone;
+    final tindakanDone = _tindakanDone;
+    final icdDone = _icdDone;
 
     return Container(
       decoration: BoxDecoration(
@@ -413,9 +429,9 @@ class _ScheduleDetailPageState extends State<ScheduleDetailPage> {
   }
 
   Widget _buildActionButtons() {
-    final anamnesaDone = _visit?.anamnesaDone ?? false;
-    final tindakanDone = _visit?.tindakanDone ?? false;
-    final icdDone = _visit?.icdDone ?? false;
+    final anamnesaDone = _anamnesaDone;
+    final tindakanDone = _tindakanDone;
+    final icdDone = _icdDone;
 
     return Column(
       children: [
@@ -427,10 +443,7 @@ class _ScheduleDetailPageState extends State<ScheduleDetailPage> {
           anamnesaDone,
           () {
             context
-                .push(
-                  '/schedules/detail/${widget.registrationId}/anamnesa',
-                  extra: _visit,
-                )
+                .push('/schedules/detail/${widget.registrationId}/anamnesa')
                 .then((_) => _loadData());
           },
         ),
@@ -443,10 +456,7 @@ class _ScheduleDetailPageState extends State<ScheduleDetailPage> {
           tindakanDone,
           () {
             context
-                .push(
-                  '/schedules/detail/${widget.registrationId}/tindakan',
-                  extra: _visit,
-                )
+                .push('/schedules/detail/${widget.registrationId}/tindakan')
                 .then((_) => _loadData());
           },
         ),
@@ -459,10 +469,7 @@ class _ScheduleDetailPageState extends State<ScheduleDetailPage> {
           icdDone,
           () {
             context
-                .push(
-                  '/schedules/detail/${widget.registrationId}/icd',
-                  extra: _visit,
-                )
+                .push('/schedules/detail/${widget.registrationId}/icd')
                 .then((_) => _loadData());
           },
         ),

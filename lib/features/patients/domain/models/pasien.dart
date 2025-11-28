@@ -4,47 +4,65 @@ part 'pasien.g.dart';
 
 @JsonSerializable()
 class Pasien {
-  final String id;
-  @JsonKey(name: 'no_rm')
-  final String noRm;
+  final int id;
+  final String mrn;
   final String nama;
-  final String? nik;
-  @JsonKey(name: 'no_bpjs')
-  final String? noBpjs;
-  @JsonKey(name: 'tempat_lahir')
-  final String tempatLahir;
   @JsonKey(name: 'tanggal_lahir')
   final String tanggalLahir;
   @JsonKey(name: 'jenis_kelamin')
   final String jenisKelamin;
-  @JsonKey(name: 'golongan_darah')
-  final String? golonganDarah;
   final String alamat;
-  @JsonKey(name: 'no_telp')
-  final String noTelp;
-  @JsonKey(name: 'is_registered')
-  final bool? isRegistered;
+  final String telepon;
   @JsonKey(name: 'created_at')
   final String createdAt;
   @JsonKey(name: 'updated_at')
   final String updatedAt;
 
+  // Array registrasi dari API - empty array = belum registrasi
+  final List<dynamic>? registrasi;
+
   Pasien({
     required this.id,
-    required this.noRm,
+    required this.mrn,
     required this.nama,
-    this.nik,
-    this.noBpjs,
-    required this.tempatLahir,
     required this.tanggalLahir,
     required this.jenisKelamin,
-    this.golonganDarah,
     required this.alamat,
-    required this.noTelp,
-    this.isRegistered,
+    required this.telepon,
     required this.createdAt,
     required this.updatedAt,
+    this.registrasi,
   });
+
+  // Helper untuk cek apakah pasien sudah registrasi
+  bool get isRegistered => registrasi != null && registrasi!.isNotEmpty;
+
+  // CopyWith method untuk update data
+  Pasien copyWith({
+    int? id,
+    String? mrn,
+    String? nama,
+    String? tanggalLahir,
+    String? jenisKelamin,
+    String? alamat,
+    String? telepon,
+    String? createdAt,
+    String? updatedAt,
+    List<dynamic>? registrasi,
+  }) {
+    return Pasien(
+      id: id ?? this.id,
+      mrn: mrn ?? this.mrn,
+      nama: nama ?? this.nama,
+      tanggalLahir: tanggalLahir ?? this.tanggalLahir,
+      jenisKelamin: jenisKelamin ?? this.jenisKelamin,
+      alamat: alamat ?? this.alamat,
+      telepon: telepon ?? this.telepon,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      registrasi: registrasi ?? this.registrasi,
+    );
+  }
 
   factory Pasien.fromJson(Map<String, dynamic> json) => _$PasienFromJson(json);
   Map<String, dynamic> toJson() => _$PasienToJson(this);

@@ -69,9 +69,9 @@ class TagihanDetail {
 }
 
 class ReportDetailTagihanPage extends StatefulWidget {
-  final String billingId;
+  final int tagihanId;
 
-  const ReportDetailTagihanPage({super.key, required this.billingId});
+  const ReportDetailTagihanPage({super.key, required this.tagihanId});
 
   @override
   State<ReportDetailTagihanPage> createState() =>
@@ -93,7 +93,7 @@ class _ReportDetailTagihanPageState extends State<ReportDetailTagihanPage> {
     Future.delayed(const Duration(milliseconds: 500), () {
       setState(() {
         _tagihan = TagihanDetail(
-          id: widget.billingId,
+          id: widget.tagihanId.toString(),
           noInvoice: 'INV-2025-001',
           patientName: 'Budi Santoso',
           mrNumber: 'MR-2025-001',

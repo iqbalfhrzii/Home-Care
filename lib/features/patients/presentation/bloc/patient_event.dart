@@ -16,63 +16,47 @@ class SearchPatients extends PatientEvent {
 }
 
 class LoadPatientDetail extends PatientEvent {
-  final String id;
+  final int id;
 
   const LoadPatientDetail(this.id);
 }
 
 class CreatePatient extends PatientEvent {
   final String nama;
-  final String tempatLahir;
   final String tanggalLahir;
   final String jenisKelamin;
   final String alamat;
-  final String noTelp;
-  final String? nik;
-  final String? noBpjs;
-  final String? golonganDarah;
+  final String telepon;
 
   const CreatePatient({
     required this.nama,
-    required this.tempatLahir,
     required this.tanggalLahir,
     required this.jenisKelamin,
     required this.alamat,
-    required this.noTelp,
-    this.nik,
-    this.noBpjs,
-    this.golonganDarah,
+    required this.telepon,
   });
 }
 
 class UpdatePatient extends PatientEvent {
-  final String id;
+  final int id;
   final String nama;
-  final String tempatLahir;
   final String tanggalLahir;
   final String jenisKelamin;
   final String alamat;
-  final String noTelp;
-  final String? nik;
-  final String? noBpjs;
-  final String? golonganDarah;
+  final String telepon;
 
   const UpdatePatient({
     required this.id,
     required this.nama,
-    required this.tempatLahir,
     required this.tanggalLahir,
     required this.jenisKelamin,
     required this.alamat,
-    required this.noTelp,
-    this.nik,
-    this.noBpjs,
-    this.golonganDarah,
+    required this.telepon,
   });
 }
 
 class DeletePatient extends PatientEvent {
-  final String id;
+  final int id;
 
   const DeletePatient(this.id);
 }

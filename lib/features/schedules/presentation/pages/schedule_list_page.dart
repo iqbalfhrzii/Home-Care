@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:go_router/go_router.dart';
 import 'package:homecare_mobile/shared/app_injections.dart';
-import 'package:homecare_mobile/shared/local_db/app_database.dart' as db;
+import 'package:homecare_mobile/features/schedules/data/repositories/registrasi_repository.dart';
+import 'package:homecare_mobile/features/schedules/domain/models/registrasi.dart';
+import 'package:homecare_mobile/features/patients/domain/models/pasien.dart';
 
 // --- Palet Warna Baru (Futuristic) ---
 const Color kPrimaryColor = Color(0xFF004B8C); // Deep Blue
@@ -19,11 +21,10 @@ const Color kDangerColor = Color(0xFFEF4444);
 
 // --- Data class untuk schedule item ---
 class ScheduleItem {
-  final db.Registrasi registration;
-  final db.Pasien patient;
-  final db.Kunjungan? visit;
+  final Registrasi registration;
+  final Pasien? patient;
 
-  ScheduleItem({required this.registration, required this.patient, this.visit});
+  ScheduleItem({required this.registration, this.patient});
 }
 
 class ScheduleListPage extends StatefulWidget {
@@ -34,7 +35,7 @@ class ScheduleListPage extends StatefulWidget {
 }
 
 class _ScheduleListPageState extends State<ScheduleListPage> {
-  late final db.AppDatabase _database;
+  late final RegistrasiRepository _repository;
 
   List<ScheduleItem> _allSchedules = [];
   List<ScheduleItem> _filteredSchedules = [];
@@ -43,23 +44,15 @@ class _ScheduleListPageState extends State<ScheduleListPage> {
   bool _isLoading = true;
   String? _selectedStatus;
 
-  int get _totalSchedules => _allSchedules.length;
-  int get _notStartedCount =>
-      _allSchedules.where((s) => (s.visit?.progressStep ?? 0) == 0).length;
-  int get _inProgressCount => _allSchedules
-      .where(
-        (s) =>
-            (s.visit?.progressStep ?? 0) > 0 &&
-            (s.visit?.progressStep ?? 0) < 3,
-      )
-      .length;
-  int get _completedCount =>
-      _allSchedules.where((s) => s.visit?.progressStep == 3).length;
+  // Progress tracking removed - will be calculated from related records if needed
+  int get _notStartedCount => _allSchedules.length; // Stub: all schedules
+  int get _inProgressCount => 0; // Stub: progress tracking removed
+  int get _completedCount => 0; // Stub: progress tracking removed
 
   @override
   void initState() {
     super.initState();
-    _database = getIt<db.AppDatabase>();
+    _repository = getIt<RegistrasiRepository>();
     _loadSchedules();
   }
 
@@ -72,24 +65,27 @@ class _ScheduleListPageState extends State<ScheduleListPage> {
   Future<void> _loadSchedules() async {
     setState(() => _isLoading = true);
     try {
-      final registrations = await _database.getAllRegistrasis();
+      final registrations = await _repository.getAllRegistrasi();
       final List<ScheduleItem> schedules = [];
 
       for (final reg in registrations) {
-        final patient = await _database.getPasienById(reg.pasienId);
-        if (patient == null || !patient.isRegistered) continue;
-
-        final visit = await _database.getKunjunganByRegistrasiId(reg.id);
+        // Patient data comes from API nested in registration response
         schedules.add(
-          ScheduleItem(registration: reg, patient: patient, visit: visit),
+          ScheduleItem(
+            registration: reg,
+            patient: null, // Will be loaded from nested data if available
+          ),
         );
       }
 
-      schedules.sort(
-        (a, b) => b.registration.tanggalKunjungan.compareTo(
-          a.registration.tanggalKunjungan,
-        ),
-      );
+      // Sort by tglJamReg (newest first)
+      schedules.sort((a, b) {
+        final dateA =
+            DateTime.tryParse(a.registration.tglJamReg) ?? DateTime(1970);
+        final dateB =
+            DateTime.tryParse(b.registration.tglJamReg) ?? DateTime(1970);
+        return dateB.compareTo(dateA);
+      });
 
       if (mounted) {
         setState(() {
@@ -102,6 +98,12 @@ class _ScheduleListPageState extends State<ScheduleListPage> {
       debugPrint('❌ Error loading schedules: $e');
       if (mounted) {
         setState(() => _isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error loading schedules: $e'),
+            backgroundColor: kDangerColor,
+          ),
+        );
       }
     }
   }
@@ -114,27 +116,21 @@ class _ScheduleListPageState extends State<ScheduleListPage> {
       // Filter by date
       if (_selectedDate != null) {
         filtered = filtered.where((schedule) {
-          final scheduleDate = schedule.registration.tanggalKunjungan;
+          final scheduleDate = DateTime.tryParse(
+            schedule.registration.tglJamReg,
+          );
+          if (scheduleDate == null) return false;
           return (scheduleDate.year == _selectedDate!.year &&
               scheduleDate.month == _selectedDate!.month &&
               scheduleDate.day == _selectedDate!.day);
         }).toList();
       }
 
-      // Filter by status
+      // Filter by status (stub - all are 'not started')
       if (_selectedStatus != null) {
         filtered = filtered.where((schedule) {
-          final progress = schedule.visit?.progressStep ?? 0;
-          switch (_selectedStatus) {
-            case 'belum':
-              return progress == 0;
-            case 'proses':
-              return progress > 0 && progress < 3;
-            case 'selesai':
-              return progress == 3;
-            default:
-              return true;
-          }
+          // Stub: treat all as not started for now
+          return _selectedStatus == 'belum';
         }).toList();
       }
 
@@ -505,8 +501,9 @@ class _ScheduleCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final progress = schedule.visit?.progressStep ?? 0;
-    final status = schedule.visit?.status ?? 'terjadwal';
+    // Stub: Progress tracking removed, use 0 for all
+    final progress = 0;
+    final status = schedule.registration.status ?? 'terjadwal';
 
     return Container(
       margin: const EdgeInsets.only(bottom: 0),
@@ -546,8 +543,8 @@ class _ScheduleCard extends StatelessWidget {
                       ),
                       child: Center(
                         child: Text(
-                          schedule.patient.nama.isNotEmpty
-                              ? schedule.patient.nama[0].toUpperCase()
+                          schedule.patient?.nama.isNotEmpty == true
+                              ? schedule.patient!.nama[0].toUpperCase()
                               : 'P',
                           style: const TextStyle(
                             color: kWhite,
@@ -563,7 +560,8 @@ class _ScheduleCard extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            schedule.patient.nama,
+                            schedule.patient?.nama ??
+                                'Pasien #${schedule.registration.pasienId}',
                             style: const TextStyle(
                               fontSize: 15,
                               fontWeight: FontWeight.w600,
@@ -585,7 +583,8 @@ class _ScheduleCard extends StatelessWidget {
                                   borderRadius: BorderRadius.circular(6),
                                 ),
                                 child: Text(
-                                  schedule.patient.noRm,
+                                  schedule.patient?.mrn ??
+                                      'ID${schedule.registration.pasienId}',
                                   style: const TextStyle(
                                     fontSize: 11,
                                     color: kPrimaryColor,
@@ -676,10 +675,12 @@ class _ScheduleCard extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            DateFormat(
-                              'EEEE, d MMMM yyyy',
-                              'id_ID',
-                            ).format(schedule.registration.tanggalKunjungan),
+                            DateFormat('EEEE, d MMMM yyyy', 'id_ID').format(
+                              DateTime.tryParse(
+                                    schedule.registration.tglJamReg,
+                                  ) ??
+                                  DateTime.now(),
+                            ),
                             style: const TextStyle(
                               fontSize: 13,
                               color: kTextDark,
@@ -688,7 +689,7 @@ class _ScheduleCard extends StatelessWidget {
                           ),
                           const SizedBox(height: 2),
                           Text(
-                            '${schedule.registration.jamKunjungan} • ${_getStatusText(status)}',
+                            '${DateFormat('HH:mm').format(DateTime.tryParse(schedule.registration.tglJamReg) ?? DateTime.now())} • ${_getStatusText(status)}',
                             style: const TextStyle(
                               fontSize: 11,
                               color: kTextGrey,

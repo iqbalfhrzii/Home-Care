@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import 'package:homecare_mobile/features/patients/domain/models/pasien.dart';
 import 'package:homecare_mobile/features/patients/presentation/bloc/patient_bloc.dart';
 import 'package:homecare_mobile/shared/app_injections.dart';
 
@@ -114,18 +115,10 @@ class _PatientAddFormState extends State<_PatientAddForm> {
       context.read<PatientBloc>().add(
         CreatePatient(
           nama: _namaController.text.trim(),
-          tempatLahir: _tempatLahirController.text.trim(),
           tanggalLahir: _selectedDate!.toIso8601String(),
           jenisKelamin: _jenisKelamin,
           alamat: _alamatController.text.trim(),
-          noTelp: _noTelpController.text.trim(),
-          nik: _nikController.text.trim().isEmpty
-              ? null
-              : _nikController.text.trim(),
-          noBpjs: _noBpjsController.text.trim().isEmpty
-              ? null
-              : _noBpjsController.text.trim(),
-          golonganDarah: _golonganDarah,
+          telepon: _noTelpController.text.trim(),
         ),
       );
     }
@@ -139,7 +132,8 @@ class _PatientAddFormState extends State<_PatientAddForm> {
         listener: (context, state) {
           if (state is PatientOperationSuccess &&
               state.type == PatientOperationType.create) {
-            context.pop(true); // Return true to indicate success
+            // Show success dialog with option to register
+            _showSuccessDialog();
           } else if (state is PatientError) {
             setState(() => _isLoading = false);
             ScaffoldMessenger.of(context).showSnackBar(
@@ -572,5 +566,78 @@ class _PatientAddFormState extends State<_PatientAddForm> {
         ),
       ),
     );
+  }
+
+  Future<void> _showSuccessDialog() async {
+    if (!mounted) return;
+
+    final shouldRegister = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: kSuccessColor.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(
+                  Icons.check_circle,
+                  color: kSuccessColor,
+                  size: 28,
+                ),
+              ),
+              const SizedBox(width: 12),
+              const Text('Pasien Berhasil Ditambahkan'),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Data pasien telah disimpan.'),
+              const SizedBox(height: 8),
+              const Text('Apakah Anda ingin mendaftarkan pasien ini sekarang?'),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('Nanti Saja'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: kPrimaryColor,
+                foregroundColor: kWhite,
+              ),
+              child: const Text('Daftar Sekarang'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (!mounted) return;
+
+    if (shouldRegister == true) {
+      // Navigate to registration form with patient data from form
+      context.pop(); // Close add patient page
+      context.push(
+        '/registration-form',
+        extra: {
+          'pasienId': '0', // Will be filled by latest created patient
+          'pasienNama': _namaController.text,
+        },
+      );
+    } else {
+      context.pop(true); // Return to patient list
+    }
   }
 }
