@@ -690,6 +690,22 @@ class _ScheduleAnamnesaPageState extends State<ScheduleAnamnesaPage> {
             debugPrint('✅ Anamnesa synced to API successfully');
           }
         }
+      } on DioException catch (e) {
+        final status = e.response?.statusCode;
+        if (status == 401) {
+          debugPrint('🔒 Unauthenticated while saving anamnesa. Prompting re-login.');
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Sesi berakhir. Silakan login kembali.'),
+                backgroundColor: kDangerColor,
+              ),
+            );
+          }
+        } else {
+          debugPrint('⚠️ Failed to sync anamnesa to API (will retry later): ${e.message}');
+        }
+        // Keep isSynced = false, background service will retry
       } catch (e) {
         debugPrint('⚠️ Failed to sync anamnesa to API (will retry later): $e');
         // Keep isSynced = false, background service will retry

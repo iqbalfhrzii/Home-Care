@@ -86,34 +86,81 @@ class _ScheduleTindakanPageState extends State<ScheduleTindakanPage> {
   Future<void> _loadAllTindakan() async {
     setState(() => _isLoadingTindakan = true);
     try {
-      debugPrint('🔍 Fetching tindakan from /tindakan API...');
-      final response = await _dio.get('/tindakan');
+      debugPrint('🔍 Fetching tindakan from /tindakan API (with pagination)...');
 
-      debugPrint('✅ GET /tindakan - Status: ${response.statusCode}');
-      if (response.statusCode == 200) {
-        // Handle both direct array and wrapped response
-        final data = response.data is List
-            ? response.data as List
-            : (response.data['data'] as List? ?? []);
+      // Helper to parse tarif values like "553000.00" => 553000
+      int _parseTarif(dynamic raw) {
+        if (raw == null) return 0;
+        final s = raw.toString();
+        final d = double.tryParse(s);
+        if (d != null) return d.round();
+        // Fallback for non-standard formats
+        final cleaned = s.replaceAll(RegExp(r'[^0-9]'), '');
+        return int.tryParse(cleaned) ?? 0;
+      }
 
-        setState(() {
-          _allTindakan = data.map((item) {
-            return TindakanItem(
-              id: item['id'].toString(),
-              kode: item['kode'] ?? '',
-              namaTindakan: item['deskripsi'] ?? '',
-              kategori: 'Tindakan', // API tidak punya kategori
-              harga: int.tryParse(item['tarif']?.toString() ?? '0') ?? 0,
+      final List<TindakanItem> items = [];
+      int page = 1;
+      bool hasNext = true;
+      const perPage = 100; // reduce page count
+
+      while (hasNext) {
+        final resp = await _dio.get('/tindakan', queryParameters: {
+          'page': page,
+          'per_page': perPage,
+        });
+
+        if (resp.statusCode != 200) break;
+
+        // Accept both array and Laravel resource shape
+        final raw = resp.data;
+        final List dataList = raw is List
+            ? raw
+            : (raw is Map && raw['data'] is List)
+                ? (raw['data'] as List)
+                : const [];
+
+        for (final item in dataList) {
+          if (item is Map) {
+            final isActive = item['is_active'] == true || item['active'] == true;
+            if (!isActive) continue;
+            items.add(
+              TindakanItem(
+                id: item['id']?.toString() ?? '',
+                kode: (item['kode'] ?? '').toString(),
+                namaTindakan: (item['deskripsi'] ?? '').toString(),
+                kategori: 'Tindakan',
+                harga: _parseTarif(item['tarif']),
+              ),
             );
-          }).toList();
+          }
+        }
+
+        // Determine if there's a next page
+        if (raw is Map && raw['links'] is Map) {
+          final next = (raw['links'] as Map)['next'];
+          hasNext = next != null;
+        } else if (raw is Map && raw['meta'] is Map) {
+          final meta = raw['meta'] as Map;
+          final current = (meta['current_page'] as num?)?.toInt() ?? page;
+          final last = (meta['last_page'] as num?)?.toInt() ?? current;
+          hasNext = current < last;
+        } else {
+          // If shape unknown, stop after first page
+          hasNext = false;
+        }
+        page += 1;
+      }
+
+      if (mounted) {
+        setState(() {
+          _allTindakan = items;
           _filteredTindakan = _allTindakan;
           _isLoadingTindakan = false;
         });
-
-        debugPrint(
-          '✅ Loaded ${_allTindakan.length} tindakan from /tindakan API',
-        );
       }
+
+      debugPrint('✅ Loaded ${items.length} tindakan from /tindakan API');
     } catch (e) {
       debugPrint('❌ Error fetching tindakan from API: $e');
       // Use empty list if API fails
