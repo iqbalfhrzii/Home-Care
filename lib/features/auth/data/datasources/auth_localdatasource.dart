@@ -1,9 +1,9 @@
-import 'package:drift/drift.dart';
+import 'dart:convert';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import 'package:homecare_mobile/core/storage/database.dart' as db;
 import 'package:homecare_mobile/shared/domain/models/user.dart';
 
 const kAccessTokenKey = 'access_token';
+const kUserKey = 'user_data';
 
 abstract class AuthLocalDataSource {
   Future<void> saveTokens(String tokens);
@@ -16,9 +16,8 @@ abstract class AuthLocalDataSource {
 
 class AuthLocalDataSourceImpl implements AuthLocalDataSource {
   final FlutterSecureStorage _secureStorage;
-  final db.AppDatabase _database;
 
-  const AuthLocalDataSourceImpl(this._secureStorage, this._database);
+  const AuthLocalDataSourceImpl(this._secureStorage);
 
   @override
   Future<void> saveTokens(String token) async {
@@ -39,35 +38,21 @@ class AuthLocalDataSourceImpl implements AuthLocalDataSource {
 
   @override
   Future<void> saveUser(User user) async {
-    await _database
-        .into(_database.users)
-        .insertOnConflictUpdate(
-          db.UsersCompanion.insert(
-            id: user.id,
-            email: user.email,
-            name: user.name,
-            avatarUrl: Value(user.avatarUrl),
-          ),
-        );
+    final userJson = jsonEncode(user.toJson());
+    await _secureStorage.write(key: kUserKey, value: userJson);
   }
 
   @override
   Future<User?> getUser() async {
-    final query = _database.select(_database.users);
-    final result = await query.getSingleOrNull();
-
-    if (result == null) return null;
-
-    return User(
-      id: result.id,
-      email: result.email,
-      name: result.name,
-      avatarUrl: result.avatarUrl,
-    );
+    final userJson = await _secureStorage.read(key: kUserKey);
+    if (userJson == null) return null;
+    
+    final userMap = jsonDecode(userJson) as Map<String, dynamic>;
+    return User.fromJson(userMap);
   }
 
   @override
   Future<void> deleteUser() async {
-    await _database.delete(_database.users).go();
+    await _secureStorage.delete(key: kUserKey);
   }
 }

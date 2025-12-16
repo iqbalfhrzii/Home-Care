@@ -1,164 +1,237 @@
-import 'package:homecare_mobile/features/schedules/data/datasources/anamnesa_data_source.dart';
-import 'package:homecare_mobile/features/schedules/data/datasources/anamnesa_local_datasource.dart';
 import 'package:homecare_mobile/features/schedules/domain/models/anamnesa.dart';
+import 'package:flutter/foundation.dart';
+import 'package:homecare_mobile/core/network/dio.dart';
+import 'package:dio/dio.dart' as dio_pkg;
+import 'package:homecare_mobile/shared/app_injections.dart';
+import 'package:homecare_mobile/features/schedules/data/repositories/registrasi_repository.dart';
 
 class AnamnesaRepository {
-  final AnamnesaDataSource _remoteDataSource;
-  final AnamnesaLocalDataSource _localDataSource;
+  AnamnesaRepository();
 
-  AnamnesaRepository(this._remoteDataSource, this._localDataSource);
-
-  // Get all anamnesa - Offline-first
   Future<List<Anamnesa>> getAllAnamnesa() async {
-    // 1. Load from local database first (instant display)
-    final localAnamnesas = await _localDataSource.getAllAnamnesa();
-
-    // 2. Fetch from API in background (non-blocking)
-    _fetchAndSyncFromApi();
-
-    return localAnamnesas;
-  }
-
-  // Background sync from API
-  Future<void> _fetchAndSyncFromApi() async {
     try {
-      final response = await _remoteDataSource.getAllAnamnesa();
-
-      // Update local database with API data
-      for (var anamnesa in response.data) {
-        await _localDataSource.upsertAnamnesa(anamnesa);
+      final resp = await dio.get(
+        '/anamnesa',
+        options: dio_pkg.Options(
+          receiveTimeout: const Duration(seconds: 20),
+          sendTimeout: const Duration(seconds: 20),
+          validateStatus: (_) => true,
+        ),
+      );
+      if (resp.statusCode != null && resp.statusCode! >= 400) {
+        debugPrint('❌ Anamnesa list error: status=${resp.statusCode}, data=${resp.data}');
+        return [];
       }
-
-      print('✅ Synced ${response.data.length} anamnesa from API');
-    } catch (e) {
-      // Silent fail - offline support
-      print('⚠️ Failed to sync anamnesa from API (offline mode): $e');
+      final data = resp.data;
+      final List<dynamic> items = (data is Map && data['data'] is List)
+          ? (data['data'] as List)
+          : (data is List ? data : const <dynamic>[]);
+      return items.map((e) => Anamnesa.fromJson(Map<String, dynamic>.from(e))).toList();
+    } on dio_pkg.DioException catch (e) {
+      debugPrint('❌ DioException list anamnesa: type=${e.type}, message=${e.message}, response=${e.response?.data}');
+      return [];
     }
   }
 
-  // Get anamnesa by ID
   Future<Anamnesa> getAnamnesaById(int id) async {
     try {
-      // Try to get from API first
-      final anamnesa = await _remoteDataSource.getAnamnesaById(id);
-
-      // Update local cache
-      await _localDataSource.upsertAnamnesa(anamnesa);
-
-      return anamnesa;
-    } catch (apiError) {
-      // Fallback to local database
-      print('⚠️ API failed, using local data: $apiError');
-      return await _localDataSource.getAnamnesaById(id);
-    }
-  }
-
-  // Get anamnesa by registrasi ID - Try API first
-  Future<List<Anamnesa>> getAnamnesaByRegistrasiId(int registrasiId) async {
-    try {
-      final response = await _remoteDataSource.getAnamnesaByRegistrasiId(
-        registrasiId,
+      final resp = await dio.get(
+        '/anamnesa/$id',
+        options: dio_pkg.Options(
+          receiveTimeout: const Duration(seconds: 20),
+          sendTimeout: const Duration(seconds: 20),
+          validateStatus: (_) => true,
+        ),
       );
-
-      // Update local cache
-      for (var anamnesa in response.data) {
-        await _localDataSource.upsertAnamnesa(anamnesa);
+      if (resp.statusCode != null && resp.statusCode! >= 400) {
+        debugPrint('❌ Get anamnesa error: status=${resp.statusCode}, data=${resp.data}');
+        throw Exception('Gagal memuat anamnesa');
       }
-
-      return response.data;
-    } catch (apiError) {
-      // Fallback to local database
-      print('⚠️ API failed, using local data: $apiError');
-      return await _localDataSource.getAnamnesaByRegistrasiId(registrasiId);
+      final data = resp.data is Map && (resp.data as Map).containsKey('data') ? resp.data['data'] : resp.data;
+      return Anamnesa.fromJson(Map<String, dynamic>.from(data));
+    } on dio_pkg.DioException catch (e) {
+      debugPrint('❌ DioException get anamnesa: type=${e.type}, message=${e.message}, response=${e.response?.data}');
+      rethrow;
     }
   }
 
-  // Create anamnesa - Try server first
-  Future<Anamnesa> createAnamnesa(Map<String, dynamic> data) async {
+  Future<Anamnesa> createAnamnesa(Anamnesa anamnesa) async {
     try {
-      // Try to create on server first
-      final remoteAnamnesa = await _remoteDataSource.createAnamnesa(data);
-
-      // Save to local database with server ID
-      await _localDataSource.upsertAnamnesa(remoteAnamnesa);
-
-      print('✅ Anamnesa created on server and synced locally');
-      return remoteAnamnesa;
-    } catch (e) {
-      // Fallback: Save locally only (will sync via SyncService later)
-      print('⚠️ Failed to create on server, saving locally: $e');
-      return await _localDataSource.createAnamnesa(data);
+      final resp = await dio.post(
+        '/anamnesa',
+        data: anamnesa.toJson(),
+        options: dio_pkg.Options(
+          receiveTimeout: const Duration(seconds: 20),
+          sendTimeout: const Duration(seconds: 20),
+          validateStatus: (_) => true,
+        ),
+      );
+      if (resp.statusCode != null && resp.statusCode! >= 400) {
+        debugPrint('❌ Create anamnesa error: status=${resp.statusCode}, data=${resp.data}');
+        throw Exception('Gagal membuat anamnesa');
+      }
+      final data = resp.data is Map && (resp.data as Map).containsKey('data') ? resp.data['data'] : resp.data;
+      return Anamnesa.fromJson(Map<String, dynamic>.from(data));
+    } on dio_pkg.DioException catch (e) {
+      debugPrint('❌ DioException create anamnesa: type=${e.type}, message=${e.message}, response=${e.response?.data}');
+      rethrow;
     }
   }
 
-  // Update anamnesa - Try server first
-  Future<Anamnesa> updateAnamnesa(int id, Map<String, dynamic> data) async {
+  /// Alternate create using raw payload map following cURL spec
+  Future<void> createAnamnesaWithPayload({
+    required int registrasiId,
+    required Map<String, dynamic> data,
+  }) async {
+    final body = {
+      'registrasi_id': registrasiId,
+      ...data,
+    };
     try {
-      // Try to update on server first
-      final remoteAnamnesa = await _remoteDataSource.updateAnamnesa(id, data);
-
-      // Update local database
-      await _localDataSource.upsertAnamnesa(remoteAnamnesa);
-
-      print('✅ Anamnesa updated on server and locally');
-      return remoteAnamnesa;
-    } catch (e) {
-      // Fallback: Update locally only
-      print('⚠️ Failed to update on server, updating locally: $e');
-      return await _localDataSource.updateAnamnesa(id, data);
+      debugPrint('[POST] /api/v1/anamnesa registrasi_id=$registrasiId');
+      final resp = await dio.post(
+        '/anamnesa',
+        data: body,
+        options: dio_pkg.Options(
+          receiveTimeout: const Duration(seconds: 20),
+          sendTimeout: const Duration(seconds: 20),
+          validateStatus: (_) => true,
+        ),
+      );
+      debugPrint('[POST] /api/v1/anamnesa -> status=${resp.statusCode}');
+      if (resp.statusCode != null && resp.statusCode! >= 400) {
+        throw Exception('Gagal membuat anamnesa');
+      }
+    } on dio_pkg.DioException catch (e) {
+      debugPrint('❌ DioException create (payload) anamnesa: type=${e.type}, message=${e.message}, response=${e.response?.data}');
+      rethrow;
     }
   }
 
-  // Delete anamnesa - Try server first
+  /// Upsert: if registrasi already has anamnesa, update it; otherwise create.
+  Future<void> upsertAnamnesa({
+    required int registrasiId,
+    required Map<String, dynamic> data,
+  }) async {
+    final regRepo = getIt<RegistrasiRepository>();
+    Map<String, dynamic>? raw;
+    try {
+      raw = await regRepo.getRegistrasiRawById(registrasiId);
+    } catch (_) {
+      raw = null;
+    }
+    final existing = raw != null && raw['anamnesa'] is Map<String, dynamic>
+      ? Map<String, dynamic>.from(raw['anamnesa'] as Map)
+        : null;
+
+    if (existing != null && (existing['id'] != null)) {
+      final int anamnesaId = existing['id'] is String
+          ? int.tryParse(existing['id']) ?? existing['id'] as int
+          : existing['id'] as int;
+      try {
+        debugPrint('[PUT] /api/v1/anamnesa/$anamnesaId registrasi_id=$registrasiId');
+        final resp = await dio.put(
+          '/anamnesa/$anamnesaId',
+          // Send only non-null fields to reduce 422 risks
+          data: ({'registrasi_id': registrasiId, ...data}
+            ..removeWhere((k, v) => v == null)),
+          options: dio_pkg.Options(
+            receiveTimeout: const Duration(seconds: 20),
+            sendTimeout: const Duration(seconds: 20),
+            validateStatus: (_) => true,
+          ),
+        );
+        debugPrint('[PUT] /api/v1/anamnesa/$anamnesaId -> status=${resp.statusCode}');
+        if (resp.statusCode != null && resp.statusCode! >= 400) {
+          // Fallback to POST if update not accepted (e.g., 422)
+          debugPrint('[PUT] failed with ${resp.statusCode}, fallback to POST /anamnesa');
+          try {
+            await createAnamnesaWithPayload(registrasiId: registrasiId, data: data);
+          } catch (e) {
+            // Last resort: send minimal payload only
+            debugPrint('[POST] /api/v1/anamnesa minimal payload fallback');
+            await createAnamnesaWithPayload(
+              registrasiId: registrasiId,
+              data: {
+                'tanggal': DateTime.now().toIso8601String(),
+              },
+            );
+          }
+        }
+        return;
+      } on dio_pkg.DioException catch (e) {
+        debugPrint('❌ DioException update anamnesa: type=${e.type}, message=${e.message}, response=${e.response?.data}');
+        // Fallback to POST on DioException with 422/validation
+        try {
+          await createAnamnesaWithPayload(registrasiId: registrasiId, data: data);
+          return;
+        } catch (e2) {
+          // Last resort: minimal payload
+          debugPrint('[POST] /api/v1/anamnesa minimal payload fallback after DioException');
+          await createAnamnesaWithPayload(
+            registrasiId: registrasiId,
+            data: {
+              'tanggal': DateTime.now().toIso8601String(),
+            },
+          );
+          return;
+        }
+      }
+    }
+
+    // No existing anamnesa → create
+    try {
+      await createAnamnesaWithPayload(registrasiId: registrasiId, data: data);
+    } catch (e) {
+      // minimal payload fallback for create
+      debugPrint('[POST] /api/v1/anamnesa minimal payload fallback (create)');
+      await createAnamnesaWithPayload(
+        registrasiId: registrasiId,
+        data: {
+          'tanggal': DateTime.now().toIso8601String(),
+        },
+      );
+    }
+  }
+
+  Future<void> updateAnamnesa(Anamnesa anamnesa) async {
+    try {
+      final resp = await dio.put(
+        '/anamnesa/${anamnesa.id}',
+        data: anamnesa.toJson(),
+        options: dio_pkg.Options(
+          receiveTimeout: const Duration(seconds: 20),
+          sendTimeout: const Duration(seconds: 20),
+          validateStatus: (_) => true,
+        ),
+      );
+      if (resp.statusCode != null && resp.statusCode! >= 400) {
+        debugPrint('❌ Update anamnesa error: status=${resp.statusCode}, data=${resp.data}');
+        throw Exception('Gagal mengupdate anamnesa');
+      }
+    } on dio_pkg.DioException catch (e) {
+      debugPrint('❌ DioException update anamnesa: type=${e.type}, message=${e.message}, response=${e.response?.data}');
+      rethrow;
+    }
+  }
+
   Future<void> deleteAnamnesa(int id) async {
     try {
-      // Try to delete on server first
-      await _remoteDataSource.deleteAnamnesa(id);
-
-      // Delete from local database
-      await _localDataSource.deleteAnamnesa(id);
-
-      print('✅ Anamnesa deleted from server and locally');
-    } catch (e) {
-      // Fallback: Delete locally only
-      print('⚠️ Failed to delete on server, deleting locally: $e');
-      await _localDataSource.deleteAnamnesa(id);
-    }
-  }
-
-  // Search anamnesa - Try API first
-  Future<List<Anamnesa>> searchAnamnesa(String query) async {
-    try {
-      final response = await _remoteDataSource.searchAnamnesa(query);
-
-      // Update local cache
-      for (var anamnesa in response.data) {
-        await _localDataSource.upsertAnamnesa(anamnesa);
+      final resp = await dio.delete(
+        '/anamnesa/$id',
+        options: dio_pkg.Options(
+          receiveTimeout: const Duration(seconds: 20),
+          sendTimeout: const Duration(seconds: 20),
+          validateStatus: (_) => true,
+        ),
+      );
+      if (resp.statusCode != null && resp.statusCode! >= 400) {
+        debugPrint('❌ Delete anamnesa error: status=${resp.statusCode}, data=${resp.data}');
+        throw Exception('Gagal menghapus anamnesa');
       }
-
-      return response.data;
-    } catch (apiError) {
-      // Fallback to local search
-      print('⚠️ API search failed, using local search: $apiError');
-      return await _localDataSource.searchAnamnesa(query);
-    }
-  }
-
-  // Get anamnesa by date - Try API first
-  Future<List<Anamnesa>> getAnamnesaByDate(String date) async {
-    try {
-      final response = await _remoteDataSource.getAnamnesaByDate(date);
-
-      // Update local cache
-      for (var anamnesa in response.data) {
-        await _localDataSource.upsertAnamnesa(anamnesa);
-      }
-
-      return response.data;
-    } catch (apiError) {
-      // Fallback to local filter
-      print('⚠️ API failed, using local filter: $apiError');
-      return await _localDataSource.getAnamnesaByDate(date);
+    } on dio_pkg.DioException catch (e) {
+      debugPrint('❌ DioException delete anamnesa: type=${e.type}, message=${e.message}, response=${e.response?.data}');
+      rethrow;
     }
   }
 }

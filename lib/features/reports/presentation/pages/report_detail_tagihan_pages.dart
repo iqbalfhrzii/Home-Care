@@ -1,7 +1,14 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
+// Removed unused import for app_injections.dart
+import 'package:homecare_mobile/features/schedules/data/repositories/registrasi_repository.dart';
+import 'package:homecare_mobile/features/reports/presentation/pages/report_view_anamnesa_page.dart';
+import 'package:homecare_mobile/features/reports/presentation/pages/report_view_tindakan_page.dart';
+import 'package:homecare_mobile/features/reports/presentation/pages/report_view_icd_page.dart';
 
 const Color kPrimaryColor = Color(0xFF004B8C);
 const Color kPrimaryLight = Color(0xFF0063B2);
@@ -70,8 +77,13 @@ class TagihanDetail {
 
 class ReportDetailTagihanPage extends StatefulWidget {
   final int tagihanId;
+  final int? registrasiId;
 
-  const ReportDetailTagihanPage({super.key, required this.tagihanId});
+  const ReportDetailTagihanPage({
+    super.key,
+    required this.tagihanId,
+    this.registrasiId,
+  });
 
   @override
   State<ReportDetailTagihanPage> createState() =>
@@ -81,6 +93,7 @@ class ReportDetailTagihanPage extends StatefulWidget {
 class _ReportDetailTagihanPageState extends State<ReportDetailTagihanPage> {
   late TagihanDetail _tagihan;
   bool _isLoading = true;
+  // Raw registrasi no longer used here after moving to dedicated pages
 
   @override
   void initState() {
@@ -181,7 +194,11 @@ class _ReportDetailTagihanPageState extends State<ReportDetailTagihanPage> {
         _isLoading = false;
       });
     });
+
+    // Raw registrasi is not fetched here; view pages handle their own data
   }
+
+  // Raw registrasi fetching handled by dedicated view pages
 
   Color _getStatusColor(String status) {
     switch (status) {
@@ -311,19 +328,274 @@ class _ReportDetailTagihanPageState extends State<ReportDetailTagihanPage> {
     return buffer.toString();
   }
 
-  Future<void> _copyToClipboard() async {
-    final message = _generateWhatsAppMessage();
-    await Clipboard.setData(ClipboardData(text: message));
+  Future<void> _printPdf() async {
+    final doc = pw.Document();
 
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Tagihan berhasil disalin ke clipboard'),
-          backgroundColor: kSuccessColor,
+    // Group items by kategori
+    final groupedItems = <String, List<TagihanDetailItem>>{};
+    for (var item in _tagihan.items) {
+      groupedItems.putIfAbsent(item.kategori, () => []).add(item);
+    }
+
+    final currency = (num v) =>
+        'Rp ${NumberFormat('#,###', 'id_ID').format(v)}';
+
+    doc.addPage(
+      pw.MultiPage(
+        pageTheme: const pw.PageTheme(
+          margin: pw.EdgeInsets.all(24),
+        ),
+        build: (context) => [
+          pw.Container(
+            padding: const pw.EdgeInsets.all(12),
+            decoration: pw.BoxDecoration(
+              color: PdfColors.grey100,
+              borderRadius: pw.BorderRadius.circular(8),
+            ),
+            child: pw.Row(
+              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    pw.Text('Invoice',
+                        style: pw.TextStyle(
+                            fontSize: 10, color: PdfColors.grey700)),
+                    pw.SizedBox(height: 4),
+                    pw.Text(
+                      _tagihan.noInvoice,
+                      style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold),
+                    ),
+                    pw.SizedBox(height: 2),
+                    pw.Text(
+                      DateFormat('d MMMM yyyy', 'id_ID')
+                          .format(_tagihan.tanggalTagihan),
+                      style: const pw.TextStyle(fontSize: 10),
+                    ),
+                  ],
+                ),
+                pw.Container(
+                  padding: const pw.EdgeInsets.symmetric(
+                      horizontal: 8, vertical: 4),
+                  decoration: pw.BoxDecoration(
+                    color: PdfColors.blue,
+                    borderRadius: pw.BorderRadius.circular(6),
+                  ),
+                  child: pw.Text(
+                    _getStatusText(_tagihan.statusPembayaran),
+                    style: pw.TextStyle(
+                      color: PdfColors.white,
+                      fontSize: 9,
+                      fontWeight: pw.FontWeight.bold,
+                    ),
+                  ),
+                )
+              ],
+            ),
+          ),
+          pw.SizedBox(height: 12),
+
+          // Patient + diagnosis
+          pw.Container(
+            padding: const pw.EdgeInsets.all(12),
+            decoration: pw.BoxDecoration(
+              borderRadius: pw.BorderRadius.circular(8),
+              border: pw.Border.all(color: PdfColors.grey300, width: 0.5),
+            ),
+            child: pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                pw.Text('Data Pasien',
+                    style: pw.TextStyle(
+                      fontWeight: pw.FontWeight.bold,
+                    )),
+                pw.SizedBox(height: 8),
+                _pdfInfoRow('Nama', _tagihan.patientName),
+                _pdfInfoRow('No. RM', _tagihan.mrNumber),
+                _pdfInfoRow('Telepon', _tagihan.noTelepon),
+                _pdfInfoRow('Diagnosis', _tagihan.primaryIcd),
+              ],
+            ),
+          ),
+          pw.SizedBox(height: 12),
+
+          // Items grouped by kategori
+          pw.Container(
+            padding: const pw.EdgeInsets.all(12),
+            decoration: pw.BoxDecoration(
+              borderRadius: pw.BorderRadius.circular(8),
+              border: pw.Border.all(color: PdfColors.grey300, width: 0.5),
+            ),
+            child: pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                pw.Text('Rincian Biaya',
+                    style: pw.TextStyle(
+                        fontWeight: pw.FontWeight.bold, fontSize: 14)),
+                pw.SizedBox(height: 8),
+                ...groupedItems.entries.expand((entry) => [
+                      pw.Padding(
+                        padding: const pw.EdgeInsets.only(top: 6, bottom: 4),
+                        child: pw.Text(entry.key,
+                          style: pw.TextStyle(
+                            color: PdfColors.blue,
+                            fontWeight: pw.FontWeight.bold)),
+                      ),
+                      ...entry.value.map((item) => pw.Column(
+                            crossAxisAlignment: pw.CrossAxisAlignment.start,
+                            children: [
+                              pw.Row(
+                                mainAxisAlignment:
+                                    pw.MainAxisAlignment.spaceBetween,
+                                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                                children: [
+                                  pw.Expanded(
+                                    flex: 3,
+                                    child: pw.Column(
+                                      crossAxisAlignment:
+                                          pw.CrossAxisAlignment.start,
+                                      children: [
+                                        pw.Text(item.deskripsi,
+                                          style: pw.TextStyle(
+                                            fontSize: 11,
+                                            fontWeight: pw.FontWeight.bold)),
+                                        pw.SizedBox(height: 2),
+                                        pw.Text(item.kodeLayanan,
+                                            style: const pw.TextStyle(
+                                                fontSize: 9,
+                                                color: PdfColors.grey700)),
+                                      ],
+                                    ),
+                                  ),
+                                  pw.SizedBox(width: 8),
+                                  pw.Flexible(
+                                    flex: 2,
+                                    child: pw.Text(
+                                      currency(item.subtotal),
+                                      textAlign: pw.TextAlign.right,
+                                      style: pw.TextStyle(
+                                          fontSize: 11,
+                                          fontWeight: pw.FontWeight.bold),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              pw.SizedBox(height: 2),
+                              pw.Row(children: [
+                                pw.Text(
+                                  '${item.jumlah}x @ ${currency(item.hargaSatuan)}',
+                                  style: const pw.TextStyle(
+                                      fontSize: 9, color: PdfColors.grey700),
+                                ),
+                                if (item.diskon > 0) ...[
+                                  pw.SizedBox(width: 6),
+                                  pw.Container(
+                                    padding: const pw.EdgeInsets.symmetric(
+                                        horizontal: 4, vertical: 1),
+                                    decoration: pw.BoxDecoration(
+                                      color: PdfColors.grey200,
+                                      borderRadius:
+                                          pw.BorderRadius.circular(3),
+                                    ),
+                                    child: pw.Text(
+                                      'Diskon ${currency(item.diskon)}',
+                                      style: pw.TextStyle(
+                                          fontSize: 8,
+                                          color: PdfColors.red,
+                                          fontWeight: pw.FontWeight.bold),
+                                    ),
+                                  ),
+                                ]
+                              ]),
+                              pw.SizedBox(height: 8),
+                            ],
+                          )),
+                      pw.Divider(height: 14),
+                    ]),
+              ],
+            ),
+          ),
+          pw.SizedBox(height: 12),
+
+          // Summary
+          pw.Container(
+            padding: const pw.EdgeInsets.all(12),
+            decoration: pw.BoxDecoration(
+              color: PdfColor.fromInt(kPrimaryColor.value),
+              borderRadius: pw.BorderRadius.circular(8),
+            ),
+            child: pw.Column(children: [
+              _pdfSummaryRow('Total Biaya', currency(_tagihan.totalBiaya),
+                  isBold: true, color: PdfColors.white),
+              if (_tagihan.deposit > 0) ...[
+                pw.SizedBox(height: 6),
+                _pdfSummaryRow('Deposit', currency(_tagihan.deposit),
+                    color: PdfColors.white),
+                pw.Divider(color: PdfColors.white, height: 16, thickness: 0.3),
+                _pdfSummaryRow('Sisa Pembayaran', currency(_tagihan.sisaBiaya),
+                    isBold: true, color: PdfColors.white),
+              ],
+              pw.SizedBox(height: 6),
+              pw.Text(
+                _tagihan.terbilang,
+                style: pw.TextStyle(
+                  color: PdfColors.white,
+                  fontSize: 9,
+                  fontStyle: pw.FontStyle.italic,
+                ),
+                textAlign: pw.TextAlign.center,
+              )
+            ]),
+          ),
+        ],
+      ),
+    );
+
+    await Printing.layoutPdf(
+      onLayout: (PdfPageFormat format) async => doc.save(),
+      name: 'Invoice-${_tagihan.noInvoice}.pdf',
+    );
+  }
+
+  pw.Widget _pdfInfoRow(String label, String value) => pw.Padding(
+        padding: const pw.EdgeInsets.only(bottom: 4),
+        child: pw.Row(
+          mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+          crossAxisAlignment: pw.CrossAxisAlignment.start,
+          children: [
+            pw.Expanded(
+              flex: 2,
+              child: pw.Text(label,
+                  style: const pw.TextStyle(
+                      fontSize: 10, color: PdfColors.grey700)),
+            ),
+            pw.SizedBox(width: 6),
+            pw.Expanded(
+              flex: 3,
+              child: pw.Text(value,
+                  textAlign: pw.TextAlign.right,
+                  style: pw.TextStyle(
+                      fontSize: 10, fontWeight: pw.FontWeight.bold)),
+            ),
+          ],
         ),
       );
-    }
-  }
+
+  pw.Widget _pdfSummaryRow(String label, String value,
+          {bool isBold = false, PdfColor? color}) =>
+      pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [
+        pw.Text(label,
+            style: pw.TextStyle(
+                color: color ?? PdfColors.grey100,
+                fontSize: 12,
+                fontWeight: isBold ? pw.FontWeight.bold : pw.FontWeight.normal)),
+        pw.Text(value,
+            style: pw.TextStyle(
+                color: color ?? PdfColors.black,
+                fontSize: 12,
+                fontWeight: pw.FontWeight.bold)),
+      ]);
 
   Future<void> _updateStatus(String newStatus) async {
     // TODO: Implement API call to update status
@@ -518,7 +790,7 @@ class _ReportDetailTagihanPageState extends State<ReportDetailTagihanPage> {
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: kPrimaryColor.withOpacity(0.08),
+            color: kPrimaryColor.withValues(alpha: 0.08),
             blurRadius: 20,
             offset: const Offset(0, 4),
           ),
@@ -578,7 +850,7 @@ class _ReportDetailTagihanPageState extends State<ReportDetailTagihanPage> {
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: kSuccessColor.withOpacity(0.08),
+            color: kSuccessColor.withValues(alpha: 0.08),
             blurRadius: 20,
             offset: const Offset(0, 4),
           ),
@@ -642,7 +914,7 @@ class _ReportDetailTagihanPageState extends State<ReportDetailTagihanPage> {
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: kPrimaryColor.withOpacity(0.08),
+            color: kPrimaryColor.withValues(alpha: 0.08),
             blurRadius: 20,
             offset: const Offset(0, 4),
           ),
@@ -764,7 +1036,7 @@ class _ReportDetailTagihanPageState extends State<ReportDetailTagihanPage> {
                     vertical: 2,
                   ),
                   decoration: BoxDecoration(
-                    color: kDangerColor.withOpacity(0.1),
+                    color: kDangerColor.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(4),
                   ),
                   child: Text(
@@ -796,7 +1068,7 @@ class _ReportDetailTagihanPageState extends State<ReportDetailTagihanPage> {
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: kPrimaryColor.withOpacity(0.3),
+            color: kPrimaryColor.withValues(alpha: 0.3),
             blurRadius: 20,
             offset: const Offset(0, 8),
           ),
@@ -912,57 +1184,137 @@ class _ReportDetailTagihanPageState extends State<ReportDetailTagihanPage> {
         color: kWhite,
         boxShadow: [
           BoxShadow(
-            color: kTextGrey.withOpacity(0.1),
+            color: kTextGrey.withValues(alpha: 0.1),
             blurRadius: 10,
             offset: const Offset(0, -4),
           ),
         ],
       ),
       child: SafeArea(
-        child: Row(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Expanded(
-              child: OutlinedButton.icon(
-                onPressed: _copyToClipboard,
-                icon: const Icon(Icons.copy, size: 18),
-                label: const Text('Salin', style: TextStyle(fontSize: 13)),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: kPrimaryColor,
-                  side: const BorderSide(color: kPrimaryColor),
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _printPdf,
+                    icon: const Icon(Icons.picture_as_pdf, size: 18),
+                    label:
+                        const Text('Cetak PDF', style: TextStyle(fontSize: 13)),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: kPrimaryColor,
+                      side: const BorderSide(color: kPrimaryColor),
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
                   ),
                 ),
-              ),
+                const SizedBox(width: 8),
+                Expanded(
+                  flex: 2,
+                  child: ElevatedButton.icon(
+                    onPressed: _shareViaWhatsApp,
+                    icon: const Icon(Icons.share, size: 18),
+                    label: const Text(
+                      'Kirim via WA',
+                      style: TextStyle(fontSize: 13),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF25D366),
+                      foregroundColor: kWhite,
+                      padding: const EdgeInsets.symmetric(
+                        vertical: 12,
+                        horizontal: 8,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(width: 8),
-            Expanded(
-              flex: 2,
-              child: ElevatedButton.icon(
-                onPressed: _shareViaWhatsApp,
-                icon: const Icon(Icons.share, size: 18),
-                label: const Text(
-                  'Kirim via WA',
-                  style: TextStyle(fontSize: 13),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF25D366),
-                  foregroundColor: kWhite,
-                  padding: const EdgeInsets.symmetric(
-                    vertical: 12,
-                    horizontal: 8,
-                  ),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: _showAnamnesa,
+                    child: const Text('Lihat Anamnesa'),
                   ),
                 ),
-              ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: _showTindakan,
+                    child: const Text('Lihat Tindakan'),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: _showIcd,
+                    child: const Text('Lihat ICD'),
+                  ),
+                ),
+              ],
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  // Bottom sheet helper removed; navigation to pages is used
+
+  void _showAnamnesa() {
+    if (widget.registrasiId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('RegistrasiId tidak tersedia')),
+      );
+      return;
+    }
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ReportViewAnamnesaPage(registrasiId: widget.registrasiId!),
+      ),
+    );
+  }
+
+  void _showTindakan() {
+    if (widget.registrasiId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('RegistrasiId tidak tersedia')),
+      );
+      return;
+    }
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ReportViewTindakanPage(registrasiId: widget.registrasiId!),
+      ),
+    );
+  }
+
+  // Parsing helpers moved to tindakan page
+
+  void _showIcd() {
+    if (widget.registrasiId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('RegistrasiId tidak tersedia')),
+      );
+      return;
+    }
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ReportViewIcdPage(registrasiId: widget.registrasiId!),
       ),
     );
   }

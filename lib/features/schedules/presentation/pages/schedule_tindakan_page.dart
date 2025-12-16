@@ -3,11 +3,10 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-// intl import removed - not needed
 import 'package:homecare_mobile/shared/app_injections.dart';
-import 'package:homecare_mobile/shared/local_db/app_database.dart' as db;
-import 'package:drift/drift.dart' as drift;
-import 'package:dio/dio.dart';
+import 'package:homecare_mobile/features/schedules/data/repositories/registrasi_repository.dart';
+import 'package:homecare_mobile/features/schedules/data/repositories/tindakan_catalog_repository.dart';
+// intl import removed - not needed
 
 const Color kPrimaryColor = Color(0xFF004B8C);
 const Color kPrimaryLight = Color(0xFF0063B2);
@@ -30,6 +29,9 @@ class TindakanItem {
   int diskon;
   String petugasNama;
   String keterangan;
+  int? dokterId;
+  int? poliId;
+  String? tanggalLayanan;
 
   TindakanItem({
     required this.id,
@@ -42,6 +44,9 @@ class TindakanItem {
     this.diskon = 0,
     this.petugasNama = '',
     this.keterangan = '',
+    this.dokterId,
+    this.poliId,
+    this.tanggalLayanan,
   }) : hargaSatuan = hargaSatuan ?? harga;
 
   int get subtotal => (hargaSatuan * jumlah) - diskon;
@@ -62,11 +67,8 @@ class ScheduleTindakanPage extends StatefulWidget {
 }
 
 class _ScheduleTindakanPageState extends State<ScheduleTindakanPage> {
-  late final db.AppDatabase _database;
-  late final Dio _dio;
   final TextEditingController _searchController = TextEditingController();
   final List<TindakanItem> _selectedTindakan = [];
-  bool _isLoading = false;
   bool _isSaving = false;
   bool _isLoadingTindakan = false;
 
@@ -76,81 +78,38 @@ class _ScheduleTindakanPageState extends State<ScheduleTindakanPage> {
   @override
   void initState() {
     super.initState();
-    _database = getIt<db.AppDatabase>();
-    _dio = getIt<Dio>();
+    debugPrint('\n========================================');
+    debugPrint(
+      '🎯 [TINDAKAN PAGE] Opened for Registrasi ID: ${widget.registrationId}',
+    );
+    debugPrint('========================================\n');
     _searchController.addListener(_filterTindakan);
     _loadAllTindakan();
-    _loadExistingTindakan();
   }
 
   Future<void> _loadAllTindakan() async {
     setState(() => _isLoadingTindakan = true);
     try {
-      debugPrint('🔍 Fetching tindakan from /tindakan API (with pagination)...');
-
-      // Helper to parse tarif values like "553000.00" => 553000
-      int _parseTarif(dynamic raw) {
-        if (raw == null) return 0;
-        final s = raw.toString();
-        final d = double.tryParse(s);
-        if (d != null) return d.round();
-        // Fallback for non-standard formats
-        final cleaned = s.replaceAll(RegExp(r'[^0-9]'), '');
-        return int.tryParse(cleaned) ?? 0;
-      }
-
-      final List<TindakanItem> items = [];
-      int page = 1;
-      bool hasNext = true;
-      const perPage = 100; // reduce page count
-
-      while (hasNext) {
-        final resp = await _dio.get('/tindakan', queryParameters: {
-          'page': page,
-          'per_page': perPage,
-        });
-
-        if (resp.statusCode != 200) break;
-
-        // Accept both array and Laravel resource shape
-        final raw = resp.data;
-        final List dataList = raw is List
-            ? raw
-            : (raw is Map && raw['data'] is List)
-                ? (raw['data'] as List)
-                : const [];
-
-        for (final item in dataList) {
-          if (item is Map) {
-            final isActive = item['is_active'] == true || item['active'] == true;
-            if (!isActive) continue;
-            items.add(
-              TindakanItem(
-                id: item['id']?.toString() ?? '',
-                kode: (item['kode'] ?? '').toString(),
-                namaTindakan: (item['deskripsi'] ?? '').toString(),
-                kategori: 'Tindakan',
-                harga: _parseTarif(item['tarif']),
-              ),
-            );
-          }
-        }
-
-        // Determine if there's a next page
-        if (raw is Map && raw['links'] is Map) {
-          final next = (raw['links'] as Map)['next'];
-          hasNext = next != null;
-        } else if (raw is Map && raw['meta'] is Map) {
-          final meta = raw['meta'] as Map;
-          final current = (meta['current_page'] as num?)?.toInt() ?? page;
-          final last = (meta['last_page'] as num?)?.toInt() ?? current;
-          hasNext = current < last;
-        } else {
-          // If shape unknown, stop after first page
-          hasNext = false;
-        }
-        page += 1;
-      }
+      debugPrint('📚 Loading Tindakan catalog...');
+      final repo = TindakanCatalogRepository();
+      final list = await repo.getAll();
+      final items = list.map((e) {
+        final id = (e['id'] ?? '').toString();
+        final kode = (e['kode'] ?? '').toString();
+        final nama = (e['deskripsi'] ?? '').toString();
+        final hargaStr = (e['tarif'] ?? '0').toString();
+        final harga =
+            int.tryParse(hargaStr.split('.').first) ??
+            int.tryParse(hargaStr) ??
+            0;
+        return TindakanItem(
+          id: id,
+          kode: kode,
+          namaTindakan: nama,
+          kategori: 'Tindakan',
+          harga: harga,
+        );
+      }).toList();
 
       if (mounted) {
         setState(() {
@@ -158,12 +117,13 @@ class _ScheduleTindakanPageState extends State<ScheduleTindakanPage> {
           _filteredTindakan = _allTindakan;
           _isLoadingTindakan = false;
         });
-      }
+        debugPrint('✅ Tindakan catalog loaded: ${_allTindakan.length} items');
 
-      debugPrint('✅ Loaded ${items.length} tindakan from /tindakan API');
+        // Load existing tindakan after catalog is ready
+        await _loadExistingTindakan();
+      }
     } catch (e) {
-      debugPrint('❌ Error fetching tindakan from API: $e');
-      // Use empty list if API fails
+      debugPrint('❌ Error loading tindakan catalog: $e');
       if (mounted) {
         setState(() {
           _allTindakan = [];
@@ -175,35 +135,124 @@ class _ScheduleTindakanPageState extends State<ScheduleTindakanPage> {
   }
 
   Future<void> _loadExistingTindakan() async {
-    setState(() => _isLoading = true);
+    setState(() => _isLoadingTindakan = true);
     try {
-      final tindakans = await _database.getRegistrasiTindakansByRegistrasiId(
-        widget.registrationId,
+      debugPrint(
+        '🔄 Loading existing tindakan for registrasi ${widget.registrationId}',
       );
+      final repo = getIt<RegistrasiRepository>();
+      final existing = await repo.getExistingTindakan(widget.registrationId);
+
+      debugPrint(
+        '🔍 Tindakan Page - Found ${existing.length} existing tindakan',
+      );
+      debugPrint('🔍 Tindakan Page - Data: $existing');
+      debugPrint('🔍 Tindakan Page - Catalog size: ${_allTindakan.length}');
+
+      if (existing.isEmpty) {
+        debugPrint('✅ No existing tindakan to load');
+        setState(() => _isLoadingTindakan = false);
+        return;
+      }
+
+      final List<TindakanItem> loadedTindakan = [];
+
+      for (final item in existing) {
+        // Parse tindakan data
+        final tindakanId = item['tindakan_id'] is int
+            ? item['tindakan_id'] as int
+            : int.tryParse(item['tindakan_id']?.toString() ?? '0') ?? 0;
+
+        final jumlah = item['jumlah'] is int
+            ? item['jumlah'] as int
+            : int.tryParse(item['jumlah']?.toString() ?? '1') ?? 1;
+
+        final hargaSatuan = item['harga_satuan'] is int
+            ? item['harga_satuan'] as int
+            : int.tryParse(item['harga_satuan']?.toString() ?? '0') ?? 0;
+
+        final diskon = item['diskon'] is int
+            ? item['diskon'] as int
+            : int.tryParse(item['diskon']?.toString() ?? '0') ?? 0;
+
+        final petugasNama = item['petugas_nama']?.toString() ?? 'Perawat A';
+        final keterangan = item['keterangan']?.toString() ?? '';
+
+        final dokterId = item['dokter_id'] is int
+            ? item['dokter_id'] as int
+            : int.tryParse(item['dokter_id']?.toString() ?? '0');
+
+        final poliId = item['poli_id'] is int
+            ? item['poli_id'] as int
+            : int.tryParse(item['poli_id']?.toString() ?? '0');
+
+        final tanggalLayanan = item['tanggal_layanan']?.toString();
+
+        debugPrint('🔍 Looking for Tindakan ID: $tindakanId in catalog');
+
+        // Find tindakan in catalog or use fallback data
+        TindakanItem? tindakanItem;
+        try {
+          final catalogItem = _allTindakan.firstWhere(
+            (e) => int.tryParse(e.id) == tindakanId,
+          );
+          tindakanItem = TindakanItem(
+            id: catalogItem.id,
+            kode: catalogItem.kode,
+            namaTindakan: catalogItem.namaTindakan,
+            kategori: catalogItem.kategori,
+            harga: catalogItem.harga,
+            jumlah: jumlah,
+            hargaSatuan: hargaSatuan,
+            diskon: diskon,
+            petugasNama: petugasNama,
+            keterangan: keterangan,
+            dokterId: dokterId,
+            poliId: poliId,
+            tanggalLayanan: tanggalLayanan,
+          );
+          debugPrint(
+            '✅ Found tindakan in catalog: ${catalogItem.namaTindakan}',
+          );
+        } catch (e) {
+          // If not found in catalog, create from API response data
+          debugPrint(
+            '⚠️ Tindakan ID $tindakanId not found in catalog, using API data',
+          );
+          tindakanItem = TindakanItem(
+            id: tindakanId.toString(),
+            kode: item['kode']?.toString() ?? 'TND-$tindakanId',
+            namaTindakan:
+                item['nama_tindakan']?.toString() ?? 'Tindakan $tindakanId',
+            kategori: item['kategori']?.toString() ?? 'Unknown',
+            harga: hargaSatuan,
+            jumlah: jumlah,
+            hargaSatuan: hargaSatuan,
+            diskon: diskon,
+            petugasNama: petugasNama,
+            keterangan: keterangan,
+            dokterId: dokterId,
+            poliId: poliId,
+            tanggalLayanan: tanggalLayanan,
+          );
+        }
+
+        loadedTindakan.add(tindakanItem);
+      }
 
       setState(() {
         _selectedTindakan.clear();
-        for (var tindakan in tindakans) {
-          // TODO: Join with Tindakans table to get actual data
-          // For now, create placeholder
-          _selectedTindakan.add(
-            TindakanItem(
-              id: tindakan.tindakanId.toString(),
-              kode: 'T${tindakan.tindakanId.toString().padLeft(3, '0')}',
-              namaTindakan: 'Tindakan #${tindakan.tindakanId}',
-              kategori: 'Tindakan',
-              harga: int.tryParse(tindakan.hargaSatuan ?? '0') ?? 0,
-              jumlah: int.tryParse(tindakan.jumlah ?? '1') ?? 1,
-              hargaSatuan: int.tryParse(tindakan.hargaSatuan ?? '0') ?? 0,
-              keterangan: tindakan.keterangan ?? '',
-            ),
-          );
-        }
-        _isLoading = false;
+        _selectedTindakan.addAll(loadedTindakan);
+        _isLoadingTindakan = false;
       });
+
+      debugPrint(
+        '✅ Loaded ${_selectedTindakan.length} existing tindakan into UI',
+      );
     } catch (e) {
-      debugPrint('❌ Error loading tindakan: $e');
-      setState(() => _isLoading = false);
+      debugPrint('❌ Error loading existing tindakan: $e');
+      debugPrint('Stack trace: ${StackTrace.current}');
+      setState(() => _isLoadingTindakan = false);
     }
   }
 
@@ -248,6 +297,8 @@ class _ScheduleTindakanPageState extends State<ScheduleTindakanPage> {
       ),
     );
   }
+
+  // duplicate removed; see implementation near bottom
 
   void _removeTindakan(int index) {
     setState(() {
@@ -376,28 +427,35 @@ class _ScheduleTindakanPageState extends State<ScheduleTindakanPage> {
     setState(() => _isSaving = true);
 
     try {
-      // Delete existing tindakan
-      final existingTindakan = await _database
-          .getRegistrasiTindakansByRegistrasiId(widget.registrationId);
-      for (var tindakan in existingTindakan) {
-        await _database.deleteRegistrasiTindakan(tindakan.id);
-      }
+      final repo = getIt<RegistrasiRepository>();
 
-      // Insert new tindakan
-      for (var tindakan in _selectedTindakan) {
-        await _database.insertRegistrasiTindakan(
-          db.RegistrasiTindakansCompanion(
-            registrasiId: drift.Value(widget.registrationId),
-            tindakanId: drift.Value(int.tryParse(tindakan.id) ?? 0),
-            jumlah: drift.Value(tindakan.jumlah.toString()),
-            hargaSatuan: drift.Value(tindakan.hargaSatuan.toString()),
-            subtotal: drift.Value(tindakan.subtotal.toString()),
-            diskon: drift.Value(tindakan.diskon.toString()),
-            keterangan: drift.Value(tindakan.keterangan),
-            isSynced: const drift.Value(false), // Will be synced automatically
-          ),
-        );
-      }
+      // Build items array
+      final items = _selectedTindakan.map((item) {
+        final tindakanId = int.tryParse(item.id) ?? 0;
+        return {
+          'tindakan_id': tindakanId,
+          'jumlah': item.jumlah,
+          'harga_satuan': item.hargaSatuan,
+          'diskon': item.diskon,
+          'subtotal': item.subtotal,
+          'petugas_nama': item.petugasNama.isNotEmpty
+              ? item.petugasNama
+              : 'Perawat A',
+          'kunjungan_ke': 1,
+          'is_free': false,
+          'dokter_id': item.dokterId?.toString() ?? '5',
+          'poli_id': item.poliId?.toString() ?? '2',
+          'tanggal_layanan':
+              item.tanggalLayanan ??
+              DateTime.now().toIso8601String().split('T')[0],
+        };
+      }).toList();
+
+      // Send all items in one request
+      await repo.attachTindakan(
+        registrasiId: widget.registrationId,
+        items: items,
+      );
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -409,7 +467,6 @@ class _ScheduleTindakanPageState extends State<ScheduleTindakanPage> {
           ),
         );
 
-        // Panggil callback jika ada (dari visit flow)
         if (widget.onCompleted != null) {
           widget.onCompleted!();
         }
@@ -487,21 +544,29 @@ class _ScheduleTindakanPageState extends State<ScheduleTindakanPage> {
                 constraints: const BoxConstraints(),
               ),
               const SizedBox(width: 16),
-              const Expanded(
+              Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
+                    const Text(
                       'Tindakan Medis',
                       style: TextStyle(color: Colors.white70, fontSize: 14),
                     ),
-                    SizedBox(height: 4),
-                    Text(
+                    const SizedBox(height: 4),
+                    const Text(
                       'Pilih Tindakan',
                       style: TextStyle(
                         color: kWhite,
                         fontSize: 22,
                         fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Registrasi #${widget.registrationId}',
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontSize: 12,
                       ),
                     ),
                   ],
@@ -519,7 +584,7 @@ class _ScheduleTindakanPageState extends State<ScheduleTindakanPage> {
                     vertical: 8,
                   ),
                   decoration: BoxDecoration(
-                    color: kWhite.withOpacity(0.2),
+                    color: kWhite.withValues(alpha: 0.2),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Row(
@@ -548,7 +613,7 @@ class _ScheduleTindakanPageState extends State<ScheduleTindakanPage> {
                   vertical: 8,
                 ),
                 decoration: BoxDecoration(
-                  color: kWhite.withOpacity(0.2),
+                  color: kWhite.withValues(alpha: 0.2),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Row(
@@ -581,7 +646,7 @@ class _ScheduleTindakanPageState extends State<ScheduleTindakanPage> {
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: kPrimaryColor.withOpacity(0.08),
+            color: kPrimaryColor.withValues(alpha: 0.08),
             blurRadius: 20,
             offset: const Offset(0, 4),
           ),
@@ -732,7 +797,7 @@ class _ScheduleTindakanPageState extends State<ScheduleTindakanPage> {
               ),
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: kTextGrey.withOpacity(0.2)),
+                borderSide: BorderSide(color: kTextGrey.withValues(alpha: 0.2)),
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
@@ -759,7 +824,7 @@ class _ScheduleTindakanPageState extends State<ScheduleTindakanPage> {
                         Icon(
                           Icons.search_off,
                           size: 64,
-                          color: kTextGrey.withOpacity(0.5),
+                          color: kTextGrey.withValues(alpha: 0.5),
                         ),
                         const SizedBox(height: 16),
                         Text(
@@ -835,8 +900,8 @@ class _ScheduleTindakanPageState extends State<ScheduleTindakanPage> {
                                               vertical: 2,
                                             ),
                                             decoration: BoxDecoration(
-                                              color: kPrimaryColor.withOpacity(
-                                                0.1,
+                                              color: kPrimaryColor.withValues(
+                                                alpha: 0.1,
                                               ),
                                               borderRadius:
                                                   BorderRadius.circular(4),
@@ -889,7 +954,7 @@ class _ScheduleTindakanPageState extends State<ScheduleTindakanPage> {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: kSuccessColor.withOpacity(0.1),
+                color: kSuccessColor.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(color: kSuccessColor),
               ),

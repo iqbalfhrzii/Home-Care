@@ -4,10 +4,11 @@ import 'package:intl/intl.dart';
 import 'package:go_router/go_router.dart';
 import 'dart:async';
 import 'package:homecare_mobile/core/router/app_router.dart';
-import 'package:homecare_mobile/features/patients/domain/models/pasien.dart';
 import 'package:homecare_mobile/features/patients/presentation/bloc/patient_bloc.dart';
 import 'package:homecare_mobile/shared/app_injections.dart';
-import 'package:homecare_mobile/shared/local_db/app_database.dart' as db;
+import 'package:homecare_mobile/features/patients/domain/models/pasien.dart';
+import 'package:homecare_mobile/features/schedules/data/repositories/registrasi_repository.dart';
+import 'package:homecare_mobile/features/patients/data/repositories/pasien_repository.dart';
 
 const Color kPrimaryColor = Color(0xFF004B8C);
 const Color kPrimaryLight = Color(0xFF0063B2);
@@ -63,7 +64,6 @@ class _PatientListView extends StatefulWidget {
 class _PatientListViewState extends State<_PatientListView> {
   final TextEditingController _searchController = TextEditingController();
   Timer? _debounce;
-  final Map<int, bool> _hasRegistrationCache = {};
 
   @override
   void initState() {
@@ -87,20 +87,9 @@ class _PatientListViewState extends State<_PatientListView> {
     });
   }
 
-  Future<bool> _hasRegistration(int? pasienId) async {
-    if (pasienId == null) return false;
-    if (_hasRegistrationCache.containsKey(pasienId)) {
-      return _hasRegistrationCache[pasienId]!;
-    }
-    try {
-      final database = getIt<db.AppDatabase>();
-      final regs = await database.getRegistrasiByPasienId(pasienId);
-      final has = regs.isNotEmpty;
-      _hasRegistrationCache[pasienId] = has;
-      return has;
-    } catch (_) {
-      return false;
-    }
+  bool _hasRegistration(Pasien patient) {
+    // Check if patient has registrations from the merged data
+    return patient.isRegistered;
   }
 
   String _formatDate(String isoDate) {
@@ -158,43 +147,35 @@ class _PatientListViewState extends State<_PatientListView> {
   }
 
   void _onRegisterPatient(Pasien patient) async {
-    int? registrasiId;
+    // Cek apakah pasien ini sudah punya registrasi terbaru, jika ya buka edit
+    try {
+      final regRepo = getIt<RegistrasiRepository>();
+      final latest = await regRepo.getLatestRegistrasiForPatient(patient.id);
+      final isEdit = latest != null;
+      final result = await context.push<String>(
+        '${AppRouter.patients}/register/${patient.id}',
+        extra: {
+          'pasienId': patient.id,
+          'pasienNama': patient.nama,
+          if (isEdit) 'registrasiId': latest.id,
+          'isEdit': isEdit,
+        },
+      );
 
-    // Check if patient has existing registrations
-    final database = getIt<db.AppDatabase>();
-    final registrations = await database.getRegistrasiByPasienId(patient.id);
-    final hasRegistrations = registrations.isNotEmpty;
+      debugPrint('🔍 Registration result: $result');
 
-    if (hasRegistrations) {
-      try {
-        final database = getIt<db.AppDatabase>();
-        final registration = await database.getLatestRegistrasiByPasienId(
-          patient.id,
-        );
-        registrasiId = registration?.id;
-      } catch (e) {
-        debugPrint('❌ Error loading registration: $e');
-      }
-    }
-
-    final result = await context.push<String>(
-      '${AppRouter.patients}/register/${patient.id}',
-      extra: {
-        'pasienId': patient.id,
-        'pasienNama': patient.nama,
-        if (registrasiId != null) 'registrasiId': registrasiId,
-        if (hasRegistrations) 'isEdit': true,
-      },
-    );
-
-    debugPrint('🔍 Registration result: $result');
-
-    if (result != null && mounted) {
+      if (result != null && mounted) {
       debugPrint('✅ Processing registration result: $result');
 
-      // Trigger refresh to fetch latest data from API
+      // Clear repository caches to force fresh fetch
+      try {
+        getIt<RegistrasiRepository>().clearCache();
+        getIt<PasienRepository>().clearCache();
+      } catch (_) {}
+
+      // Trigger reload to fetch latest data from API
       await Future.delayed(const Duration(milliseconds: 150));
-      context.read<PatientBloc>().add(const RefreshPatients());
+      context.read<PatientBloc>().add(const LoadPatients());
       debugPrint('✅ RefreshPatients event triggered');
 
       String message;
@@ -218,11 +199,25 @@ class _PatientListViewState extends State<_PatientListView> {
           backgroundColor = kSuccessColor;
       }
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(message), backgroundColor: backgroundColor),
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(message), backgroundColor: backgroundColor),
+        );
+      } else {
+        debugPrint('❌ Result is null or not mounted');
+      }
+    } catch (e) {
+      debugPrint('❌ Failed to prepare registration: $e');
+      final result = await context.push<String>(
+        '${AppRouter.patients}/register/${patient.id}',
+        extra: {'pasienId': patient.id, 'pasienNama': patient.nama},
       );
-    } else {
-      debugPrint('❌ Result is null or not mounted');
+      if (result != null && mounted) {
+        try {
+          getIt<RegistrasiRepository>().clearCache();
+          getIt<PasienRepository>().clearCache();
+        } catch (_) {}
+        context.read<PatientBloc>().add(const LoadPatients());
+      }
     }
   }
 
@@ -283,7 +278,9 @@ class _PatientListViewState extends State<_PatientListView> {
             return previous.filteredPatients.length !=
                     current.filteredPatients.length ||
                 previous.searchQuery != current.searchQuery ||
-                previous.activeFilter != current.activeFilter;
+                previous.activeFilter != current.activeFilter ||
+                previous.isLoadingRegistrations !=
+                    current.isLoadingRegistrations;
           }
           return previous.runtimeType != current.runtimeType;
         },
@@ -370,7 +367,7 @@ class _PatientListViewState extends State<_PatientListView> {
               Icon(
                 Icons.people_outline,
                 size: 64,
-                color: kTextGrey.withOpacity(0.5),
+                color: kTextGrey.withValues(alpha: 0.5),
               ),
               const SizedBox(height: 16),
               Text(
@@ -384,9 +381,22 @@ class _PatientListViewState extends State<_PatientListView> {
         );
       }
 
-      return isDesktop
+      // Build list/table content
+      Widget listWidget = isDesktop
           ? _buildDesktopTable(state.filteredPatients)
           : _buildMobileList(state.filteredPatients);
+
+      // Show loading overlay if registrations are being fetched
+      if (state.isLoadingRegistrations) {
+        return Stack(children: [listWidget]);
+      }
+
+      return RefreshIndicator(
+        onRefresh: () async {
+          context.read<PatientBloc>().add(const RefreshPatients());
+        },
+        child: listWidget,
+      );
     }
 
     return const SizedBox();
@@ -459,10 +469,12 @@ class _PatientListViewState extends State<_PatientListView> {
       child: Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: isActive ? color.withOpacity(0.15) : color.withOpacity(0.1),
+          color: isActive
+              ? color.withValues(alpha: 0.15)
+              : color.withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
-            color: isActive ? color : color.withOpacity(0.3),
+            color: isActive ? color : color.withValues(alpha: 0.3),
             width: isActive ? 2 : 1,
           ),
         ),
@@ -620,12 +632,12 @@ class _PatientListViewState extends State<_PatientListView> {
             borderRadius: BorderRadius.circular(24),
             boxShadow: [
               BoxShadow(
-                color: kPrimaryColor.withOpacity(0.08),
+                color: kPrimaryColor.withValues(alpha: 0.08),
                 blurRadius: 20,
                 offset: const Offset(0, 8),
               ),
               BoxShadow(
-                color: kSecondaryColor.withOpacity(0.05),
+                color: kSecondaryColor.withValues(alpha: 0.05),
                 blurRadius: 30,
                 offset: const Offset(0, 12),
               ),
@@ -673,7 +685,7 @@ class _PatientListViewState extends State<_PatientListView> {
                             borderRadius: BorderRadius.circular(16),
                             boxShadow: [
                               BoxShadow(
-                                color: kPrimaryColor.withOpacity(0.3),
+                                color: kPrimaryColor.withValues(alpha: 0.3),
                                 blurRadius: 12,
                                 offset: const Offset(0, 4),
                               ),
@@ -706,10 +718,10 @@ class _PatientListViewState extends State<_PatientListView> {
                                   vertical: 4,
                                 ),
                                 decoration: BoxDecoration(
-                                  color: kPrimaryColor.withOpacity(0.1),
+                                  color: kPrimaryColor.withValues(alpha: 0.1),
                                   borderRadius: BorderRadius.circular(8),
                                   border: Border.all(
-                                    color: kPrimaryColor.withOpacity(0.2),
+                                    color: kPrimaryColor.withValues(alpha: 0.2),
                                   ),
                                 ),
                                 child: Text(
@@ -772,31 +784,43 @@ class _PatientListViewState extends State<_PatientListView> {
                     ),
                     const SizedBox(height: 20),
 
-                    Container(
-                      decoration: BoxDecoration(
-                        gradient: const LinearGradient(
-                          colors: [kSecondaryColor, Color(0xFF059669)],
-                        ),
-                        borderRadius: BorderRadius.circular(16),
-                        boxShadow: [
-                          BoxShadow(
-                            color: kSecondaryColor.withOpacity(0.3),
-                            blurRadius: 12,
-                            offset: const Offset(0, 4),
+                    Builder(
+                      builder: (context) {
+                        final has = _hasRegistration(patient);
+                        final label = has
+                            ? 'Edit Registrasi'
+                            : 'Registrasikan Kunjungan';
+                        final icon = has
+                            ? Icons.edit_calendar
+                            : Icons.app_registration;
+
+                        // Warna berbeda berdasarkan status registrasi
+                        final gradientColors = has
+                            ? [
+                                kPrimaryColor,
+                                kPrimaryLight,
+                              ] // Biru untuk Edit Registrasi
+                            : [
+                                kSecondaryColor,
+                                Color(0xFF059669),
+                              ]; // Hijau untuk Registrasi Baru
+                        final shadowColor = has
+                            ? kPrimaryColor
+                            : kSecondaryColor;
+
+                        return Container(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(colors: gradientColors),
+                            borderRadius: BorderRadius.circular(16),
+                            boxShadow: [
+                              BoxShadow(
+                                color: shadowColor.withValues(alpha: 0.3),
+                                blurRadius: 12,
+                                offset: const Offset(0, 4),
+                              ),
+                            ],
                           ),
-                        ],
-                      ),
-                      child: FutureBuilder<bool>(
-                        future: _hasRegistration(patient.id),
-                        builder: (context, snap) {
-                          final has = snap.data ?? false;
-                          final label = has
-                              ? 'Edit Registrasi'
-                              : 'Registrasikan Kunjungan';
-                          final icon = has
-                              ? Icons.edit_calendar
-                              : Icons.app_registration;
-                          return Material(
+                          child: Material(
                             color: Colors.transparent,
                             child: InkWell(
                               borderRadius: BorderRadius.circular(16),
@@ -822,9 +846,9 @@ class _PatientListViewState extends State<_PatientListView> {
                                 ),
                               ),
                             ),
-                          );
-                        },
-                      ),
+                          ),
+                        );
+                      },
                     ),
                     const SizedBox(height: 12),
 
@@ -834,7 +858,7 @@ class _PatientListViewState extends State<_PatientListView> {
                           child: Container(
                             decoration: BoxDecoration(
                               border: Border.all(
-                                color: kPrimaryColor.withOpacity(0.3),
+                                color: kPrimaryColor.withValues(alpha: 0.3),
                               ),
                               borderRadius: BorderRadius.circular(12),
                             ),
@@ -875,7 +899,7 @@ class _PatientListViewState extends State<_PatientListView> {
                           child: Container(
                             decoration: BoxDecoration(
                               border: Border.all(
-                                color: Colors.red.withOpacity(0.3),
+                                color: Colors.red.withValues(alpha: 0.3),
                               ),
                               borderRadius: BorderRadius.circular(12),
                             ),
@@ -977,10 +1001,9 @@ class _PatientListViewState extends State<_PatientListView> {
                 DataCell(
                   Row(
                     children: [
-                      FutureBuilder<bool>(
-                        future: _hasRegistration(patient.id),
-                        builder: (context, snap) {
-                          final has = snap.data ?? false;
+                      Builder(
+                        builder: (context) {
+                          final has = _hasRegistration(patient);
                           final label = has ? 'Edit Registrasi' : 'Registrasi';
                           final icon = has
                               ? Icons.edit_calendar
@@ -1046,7 +1069,7 @@ class _ModernInfoRow extends StatelessWidget {
         Container(
           padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
-            color: iconColor.withOpacity(0.1),
+            color: iconColor.withValues(alpha: 0.1),
             borderRadius: BorderRadius.circular(10),
           ),
           child: Icon(icon, size: 18, color: iconColor),
@@ -1104,8 +1127,8 @@ class _GenderBadge extends StatelessWidget {
         boxShadow: [
           BoxShadow(
             color: isLaki
-                ? const Color(0xFF3B82F6).withOpacity(0.3)
-                : const Color(0xFFEC4899).withOpacity(0.3),
+                ? const Color(0xFF3B82F6).withValues(alpha: 0.3)
+                : const Color(0xFFEC4899).withValues(alpha: 0.3),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
@@ -1153,7 +1176,7 @@ class _RegistrationStatusBadge extends StatelessWidget {
           BoxShadow(
             color:
                 (registered ? const Color(0xFF22C55E) : const Color(0xFFF59E0B))
-                    .withOpacity(0.3),
+                    .withValues(alpha: 0.3),
             blurRadius: 6,
             offset: const Offset(0, 2),
           ),

@@ -3,56 +3,44 @@ import 'package:flutter/foundation.dart';
 import 'package:homecare_mobile/features/schedules/domain/models/poli.dart';
 
 class PoliDataSource {
-  final Dio _dio;
+  PoliDataSource(Dio _);
 
-  PoliDataSource(this._dio);
-
-  // Get all poli
+  // Get all poli (dummy)
   Future<PoliCollection> getAllPoli() async {
-    try {
-      debugPrint('🚀 GET /poli');
-      final response = await _dio.get('/poli');
-      debugPrint('📦 Response status: ${response.statusCode}');
-      debugPrint('📦 Response data type: ${response.data.runtimeType}');
-      debugPrint('📦 Response data: ${response.data}');
-      return PoliCollection.fromJson(response.data as Map<String, dynamic>);
-    } catch (e, stackTrace) {
-      debugPrint('❌ Error in getAllPoli: $e');
-      debugPrint('📍 Stack: $stackTrace');
-      rethrow;
-    }
+    debugPrint('ℹ️ Returning dummy poli list');
+    return PoliCollection(data: _dummyList(), total: 3);
   }
 
-  // Get poli by kode
+  // Get poli by kode (dummy)
   Future<Poli> getPoliByKode(String kode) async {
-    try {
-      debugPrint('🚀 GET /poli/$kode');
-      final response = await _dio.get('/poli/$kode');
-      debugPrint('📦 Response: ${response.data}');
-      return Poli.fromJson(response.data['data'] as Map<String, dynamic>);
-    } catch (e, stackTrace) {
-      debugPrint('❌ Error in getPoliByKode: $e');
-      debugPrint('📍 Stack: $stackTrace');
-      rethrow;
-    }
+    final list = _dummyList();
+    return list.first;
   }
 
-  // Get active poli
+  // Get active poli (dummy)
   Future<PoliCollection> getActivePoli() async {
-    try {
-      debugPrint('🚀 GET /poli?status=aktif');
-      final response = await _dio.get(
-        '/poli',
-        queryParameters: {'status': 'aktif'},
-      );
-      debugPrint('📦 Response status: ${response.statusCode}');
-      debugPrint('📦 Response data type: ${response.data.runtimeType}');
-      debugPrint('📦 Response data: ${response.data}');
-      return PoliCollection.fromJson(response.data as Map<String, dynamic>);
-    } catch (e, stackTrace) {
-      debugPrint('❌ Error in getActivePoli: $e');
-      debugPrint('📍 Stack: $stackTrace');
-      rethrow;
-    }
+    debugPrint('ℹ️ Returning dummy active poli list');
+    return PoliCollection(data: _dummyList(), total: 3);
   }
+
+  List<Poli> _dummyList() => [
+    Poli(
+      kodePoli: 'HC',
+      namaPoli: 'Home Care',
+      deskripsi: 'Kunjungan rumah',
+      status: 'aktif',
+    ),
+    Poli(
+      kodePoli: 'UM',
+      namaPoli: 'Umum',
+      deskripsi: 'Poli umum',
+      status: 'aktif',
+    ),
+    Poli(
+      kodePoli: 'AN',
+      namaPoli: 'Anak',
+      deskripsi: 'Poli anak',
+      status: 'aktif',
+    ),
+  ];
 }

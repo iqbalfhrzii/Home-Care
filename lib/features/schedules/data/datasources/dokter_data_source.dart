@@ -3,56 +3,51 @@ import 'package:flutter/foundation.dart';
 import 'package:homecare_mobile/features/schedules/domain/models/dokter.dart';
 
 class DokterDataSource {
-  final Dio _dio;
+  DokterDataSource(Dio _);
 
-  DokterDataSource(this._dio);
+  // Parser removed in dummy mode
 
-  // Get all dokter
+  // Mapper removed in dummy mode
+
+  // Get all dokter (dummy)
   Future<DokterCollection> getAllDokter() async {
-    try {
-      debugPrint('🚀 GET /dokter');
-      final response = await _dio.get('/dokter');
-      debugPrint('📦 Response status: ${response.statusCode}');
-      debugPrint('📦 Response data type: ${response.data.runtimeType}');
-      debugPrint('📦 Response data: ${response.data}');
-      return DokterCollection.fromJson(response.data as Map<String, dynamic>);
-    } catch (e, stackTrace) {
-      debugPrint('❌ Error in getAllDokter: $e');
-      debugPrint('📍 Stack: $stackTrace');
-      rethrow;
-    }
+    debugPrint('ℹ️ Returning dummy dokter list');
+    return DokterCollection(data: _dummyList(), total: 3);
   }
 
-  // Get dokter by ID
+  // Get dokter by ID (dummy)
   Future<Dokter> getDokterById(String id) async {
-    try {
-      debugPrint('🚀 GET /dokter/$id');
-      final response = await _dio.get('/dokter/$id');
-      debugPrint('📦 Response: ${response.data}');
-      return Dokter.fromJson(response.data['data'] as Map<String, dynamic>);
-    } catch (e, stackTrace) {
-      debugPrint('❌ Error in getDokterById: $e');
-      debugPrint('📍 Stack: $stackTrace');
-      rethrow;
-    }
+    final list = _dummyList();
+    return list.first;
   }
 
-  // Get active dokter
+  // Get active dokter (dummy)
   Future<DokterCollection> getActiveDokter() async {
-    try {
-      debugPrint('🚀 GET /dokter?status=aktif');
-      final response = await _dio.get(
-        '/dokter',
-        queryParameters: {'status': 'aktif'},
-      );
-      debugPrint('📦 Response status: ${response.statusCode}');
-      debugPrint('📦 Response data type: ${response.data.runtimeType}');
-      debugPrint('📦 Response data: ${response.data}');
-      return DokterCollection.fromJson(response.data as Map<String, dynamic>);
-    } catch (e, stackTrace) {
-      debugPrint('❌ Error in getActiveDokter: $e');
-      debugPrint('📍 Stack: $stackTrace');
-      rethrow;
-    }
+    debugPrint('ℹ️ Returning dummy active dokter list');
+    return DokterCollection(data: _dummyList(), total: 3);
   }
+
+  List<Dokter> _dummyList() => [
+    Dokter(
+      id: 1,
+      dokterId: 'APT40',
+      namaDokter: 'dr. Andi',
+      bidangKeahlian: 'Umum',
+      isActive: true,
+    ),
+    Dokter(
+      id: 2,
+      dokterId: 'APT41',
+      namaDokter: 'dr. Budi',
+      bidangKeahlian: 'Gigi',
+      isActive: true,
+    ),
+    Dokter(
+      id: 3,
+      dokterId: 'APT42',
+      namaDokter: 'dr. Chandra',
+      bidangKeahlian: 'Anak',
+      isActive: true,
+    ),
+  ];
 }

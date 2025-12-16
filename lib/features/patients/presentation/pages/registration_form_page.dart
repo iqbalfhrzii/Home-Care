@@ -4,11 +4,10 @@ import 'package:go_router/go_router.dart';
 import 'package:homecare_mobile/shared/app_injections.dart';
 import 'package:homecare_mobile/core/services/notification_service.dart';
 import 'package:homecare_mobile/features/schedules/data/repositories/registrasi_repository.dart';
+// Removed direct Registrasi model use for raw Map POST/PUT
 import 'package:homecare_mobile/features/schedules/domain/models/dokter.dart';
 import 'package:homecare_mobile/features/schedules/domain/models/poli.dart';
-import 'package:homecare_mobile/features/schedules/data/datasources/dokter_data_source.dart';
-import 'package:homecare_mobile/features/schedules/data/datasources/poli_data_source.dart';
-import 'package:dio/dio.dart';
+import 'package:homecare_mobile/core/network/dio.dart';
 
 const Color kPrimaryColor = Color(0xFF004B8C);
 const Color kPrimaryLight = Color(0xFF0063B2);
@@ -50,17 +49,19 @@ class _RegistrationFormPageState extends State<RegistrationFormPage> {
 
   String _jenisKunjungan = 'HOME CARE';
   String _tipePasien = 'UMUM';
-  String? _selectedDokterId;
+  int? _selectedDokterId;
   String? _selectedPoliKode;
-  String _pagiSore = 'PAGI';
   String _asalPasien = 'POLIKLINIK';
   String _status = 'butuh_diisi';
+  String _eselon = 'IV';
   bool _isCash = true;
   bool _isPribadi = true;
   bool _pasienBaru = false;
+  DateTime? _tglJamKunjungan;
 
   List<Dokter> _dokterList = [];
   List<Poli> _poliList = [];
+  int? _resolvedRegistrasiId;
 
   @override
   void initState() {
@@ -72,10 +73,30 @@ class _RegistrationFormPageState extends State<RegistrationFormPage> {
     // Load dokter and poli data first
     await _loadDokterAndPoli();
 
-    // Then load existing registration if in edit mode
+    // Then load existing registration if in edit mode (or infer from pasienId)
     if (widget.isEdit && widget.registrasiId != null) {
       await _loadExistingRegistration();
-    } else {
+    } else if (widget.isEdit && widget.registrasiId == null && widget.pasienId != null) {
+      // Infer latest registrasi by pasienId if id not provided
+      try {
+        final repo = getIt<RegistrasiRepository>();
+        final pid = int.tryParse(widget.pasienId!);
+        if (pid != null) {
+          final latest = await repo.getLatestRegistrasiForPatient(pid);
+          if (latest != null) {
+            setState(() {
+              _resolvedRegistrasiId = latest.id;
+            });
+            await _loadExistingRegistration();
+            return;
+          }
+        }
+      } catch (_) {}
+      // If no existing found, continue as create
+      // fallthrough to generate no_reg
+    }
+
+    if (!widget.isEdit) {
       // Generate nomor registrasi otomatis dengan format: R[YYMMDD][BS][RANDOM5]
       final now = DateTime.now();
       final dateStr = DateFormat('yyMMdd').format(now);
@@ -91,53 +112,87 @@ class _RegistrationFormPageState extends State<RegistrationFormPage> {
     });
 
     try {
-      final dio = getIt<Dio>();
-      final dokterDataSource = DokterDataSource(dio);
-      final poliDataSource = PoliDataSource(dio);
+      // Fallback: gunakan instance global dio
+      final respDokter = await dio.get('/dokter', queryParameters: {'per_page': 1000});
+      final respPoli = await dio.get('/poli', queryParameters: {'per_page': 1000});
 
-      // Load dokter list
-      try {
-        debugPrint('🔍 Fetching dokter data from API...');
-        final dokterCollection = await dokterDataSource.getActiveDokter();
-        debugPrint(
-          '✅ Dokter data received: ${dokterCollection.data.length} items',
+      List<dynamic> dokterItems = [];
+      if (respDokter.data is Map && (respDokter.data as Map)['data'] is List) {
+        dokterItems = (respDokter.data as Map)['data'] as List;
+      } else if (respDokter.data is List) {
+        dokterItems = respDokter.data as List;
+      }
+
+      List<dynamic> poliItems = [];
+      if (respPoli.data is Map && (respPoli.data as Map)['data'] is List) {
+        poliItems = (respPoli.data as Map)['data'] as List;
+      } else if (respPoli.data is List) {
+        poliItems = respPoli.data as List;
+      }
+
+      final fetchedDokter = dokterItems.map((e) {
+        final m = Map<String, dynamic>.from(e);
+        return Dokter(
+          id: (m['id'] ?? 0) is int ? m['id'] as int : int.tryParse('${m['id']}') ?? 0,
+          dokterId: '${m['dokter_id'] ?? m['kode'] ?? ''}',
+          namaDokter: '${m['nama_dokter'] ?? m['nama'] ?? ''}',
+          bidangKeahlian: '${m['bidang_keahlian'] ?? m['spesialis'] ?? ''}',
+          isActive: (m['is_active'] ?? m['status'] == 'aktif') == true,
         );
-        if (mounted) {
-          setState(() {
-            _dokterList = dokterCollection.data;
-            _isLoadingDokter = false;
-          });
-        }
-      } catch (e, stackTrace) {
-        debugPrint('❌ Error loading dokter: $e');
-        debugPrint('📍 Stack trace: $stackTrace');
-        if (mounted) setState(() => _isLoadingDokter = false);
-      }
+      }).toList();
 
-      // Load poli list
-      try {
-        debugPrint('🔍 Fetching poli data from API...');
-        final poliCollection = await poliDataSource.getActivePoli();
-        debugPrint('✅ Poli data received: ${poliCollection.data.length} items');
-        if (mounted) {
-          setState(() {
-            _poliList = poliCollection.data;
-            _isLoadingPoli = false;
-          });
-        }
-      } catch (e, stackTrace) {
-        debugPrint('❌ Error loading poli: $e');
-        debugPrint('📍 Stack trace: $stackTrace');
-        if (mounted) setState(() => _isLoadingPoli = false);
-      }
+      final fetchedPoli = poliItems.map((e) {
+        final m = Map<String, dynamic>.from(e);
+        return Poli(
+          kodePoli: '${m['kode_poli'] ?? m['kode'] ?? ''}',
+          namaPoli: '${m['nama_poli'] ?? m['nama'] ?? ''}',
+          deskripsi: '${m['deskripsi'] ?? ''}',
+          status: '${m['status'] ?? 'aktif'}',
+        );
+      }).toList();
+
+      if (!mounted) return;
+      setState(() {
+        _dokterList = fetchedDokter;
+        _poliList = fetchedPoli;
+        _isLoadingDokter = false;
+        _isLoadingPoli = false;
+      });
     } catch (e) {
-      debugPrint('❌ Error in _loadDokterAndPoli: $e');
-      if (mounted) {
-        setState(() {
-          _isLoadingDokter = false;
-          _isLoadingPoli = false;
-        });
-      }
+      // Fallback ke daftar minimal jika API gagal
+      debugPrint('❌ Gagal memuat dokter/poli dari API: $e');
+      if (!mounted) return;
+      setState(() {
+        _dokterList = _dokterList.isNotEmpty
+            ? _dokterList
+            : [
+                Dokter(
+                  id: 1,
+                  dokterId: 'APT40',
+                  namaDokter: 'dr. Andi',
+                  bidangKeahlian: 'Umum',
+                  isActive: true,
+                ),
+              ];
+        _poliList = _poliList.isNotEmpty
+            ? _poliList
+            : [
+                Poli(
+                  kodePoli: 'HC',
+                  namaPoli: 'Home Care',
+                  deskripsi: 'Kunjungan rumah',
+                  status: 'aktif',
+                ),
+              ];
+        _isLoadingDokter = false;
+        _isLoadingPoli = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Gagal memuat data dokter/poli dari API, gunakan default.'),
+          backgroundColor: Colors.orange,
+        ),
+      );
     }
   }
 
@@ -145,11 +200,13 @@ class _RegistrationFormPageState extends State<RegistrationFormPage> {
     setState(() => _isLoading = true);
     try {
       final repository = getIt<RegistrasiRepository>();
-      final registration = await repository.getRegistrasiById(
-        widget.registrasiId!,
-      );
+      final id = widget.registrasiId ?? _resolvedRegistrasiId;
+      if (id == null) {
+        throw Exception('Registrasi ID tidak ditemukan untuk mode edit');
+      }
+      final registration = await repository.getRegistrasiById(id);
 
-      if (registration != null && mounted) {
+      if (mounted) {
         // Normalize incoming values to match allowed dropdown items to avoid assertion failures
         const jenisKunjunganItems = [
           'HOME CARE',
@@ -158,40 +215,32 @@ class _RegistrationFormPageState extends State<RegistrationFormPage> {
         ];
         const tipePasienItems = ['UMUM', 'BPJS', 'ASURANSI'];
         const asalPasienItems = ['POLIKLINIK', 'LANGSUNG', 'RUJUKAN', 'IGD'];
-        const waktuKunjunganItems = ['PAGI', 'SORE'];
 
         String _norm(String? v) => (v ?? '').trim().toUpperCase();
 
-        final normJenis = _norm(registration.jenisKunjungan);
-        final normTipe = _norm(registration.tipePasien);
-        final normAsal = _norm(registration.asalPasien);
-        final normWaktu = _norm(registration.pagiSore);
+        final normJenis = _norm(registration?.jenisKunjungan);
+        final normTipe = _norm(registration?.tipePasien);
+        final normAsal = _norm(registration?.asalPasien);
 
         if (!jenisKunjunganItems.contains(normJenis)) {
           debugPrint(
-            "ℹ️ jenis_kunjungan '${registration.jenisKunjungan}' tidak ditemukan di opsi. Fallback ke 'HOME CARE'.",
+            "ℹ️ jenis_kunjungan '${registration?.jenisKunjungan}' tidak ditemukan di opsi. Fallback ke 'HOME CARE'.",
           );
         }
-        if (registration.asalPasien != null &&
+        if (registration?.asalPasien != null &&
             !asalPasienItems.contains(normAsal)) {
           debugPrint(
-            "ℹ️ asal_pasien '${registration.asalPasien}' tidak ditemukan di opsi. Fallback ke 'POLIKLINIK'.",
-          );
-        }
-        if (registration.pagiSore != null &&
-            !waktuKunjunganItems.contains(normWaktu)) {
-          debugPrint(
-            "ℹ️ waktu_kunjungan '${registration.pagiSore}' tidak ditemukan di opsi. Fallback ke 'PAGI'.",
+            "ℹ️ asal_pasien '${registration?.asalPasien}' tidak ditemukan di opsi. Fallback ke 'POLIKLINIK'.",
           );
         }
         if (!tipePasienItems.contains(normTipe)) {
           debugPrint(
-            "ℹ️ tipe_pasien '${registration.tipePasien}' tidak ditemukan di opsi. Fallback ke 'UMUM'.",
+            "ℹ️ tipe_pasien '${registration?.tipePasien}' tidak ditemukan di opsi. Fallback ke 'UMUM'.",
           );
         }
 
         setState(() {
-          _noRegController.text = registration.noReg;
+          _noRegController.text = registration?.noReg ?? '';
 
           _jenisKunjungan = jenisKunjunganItems.contains(normJenis)
               ? normJenis
@@ -199,31 +248,37 @@ class _RegistrationFormPageState extends State<RegistrationFormPage> {
           _tipePasien = tipePasienItems.contains(normTipe) ? normTipe : 'UMUM';
 
           // Only set selected values if they exist in the dropdown lists
-          if (registration.dokterId != null &&
-              _dokterList.any((d) => d.dokterId == registration.dokterId)) {
-            _selectedDokterId = registration.dokterId;
+          if (registration?.dokterId != null &&
+              _dokterList.any((d) => d.id == registration?.dokterId)) {
+            _selectedDokterId = registration?.dokterId;
           }
 
-          if (registration.kodePoli != null &&
-              _poliList.any((p) => p.kodePoli == registration.kodePoli)) {
-            _selectedPoliKode = registration.kodePoli;
+          if (registration?.kodePoli != null &&
+              _poliList.any((p) => p.kodePoli == registration?.kodePoli)) {
+            _selectedPoliKode = registration?.kodePoli;
           }
 
-          _pagiSore = waktuKunjunganItems.contains(normWaktu)
-              ? normWaktu
-              : 'PAGI';
           _asalPasien = asalPasienItems.contains(normAsal)
               ? normAsal
               : 'POLIKLINIK';
 
-          _penanggungNamaController.text = registration.penanggungNama ?? '';
+          // Parse tgl_jam_kunjungan if available
+          if (registration?.tglJamKunjungan != null) {
+            try {
+              _tglJamKunjungan = DateTime.parse(registration!.tglJamKunjungan!);
+            } catch (e) {
+              debugPrint('❌ Error parsing tgl_jam_kunjungan: $e');
+            }
+          }
+
+          _penanggungNamaController.text = registration?.penanggungNama ?? '';
           _penanggungNoPegawaiController.text =
-              registration.penanggungNoPegawai ?? '';
+              registration?.penanggungNoPegawai ?? '';
           _penanggungAlamatController.text =
-              registration.penanggungAlamat ?? '';
+              registration?.penanggungAlamat ?? '';
           _penanggungTeleponController.text =
-              registration.penanggungTelepon ?? '';
-          _penanggungIdController.text = registration.penanggungId ?? '';
+              registration?.penanggungTelepon ?? '';
+          _penanggungIdController.text = registration?.penanggungId ?? '';
           _isLoading = false;
         });
       }
@@ -264,17 +319,26 @@ class _RegistrationFormPageState extends State<RegistrationFormPage> {
         }
 
         // Validate required fields
-        if (_selectedDokterId == null || _selectedDokterId!.isEmpty) {
+        if (_selectedDokterId == null) {
           throw Exception('Dokter harus dipilih');
         }
         if (_selectedPoliKode == null || _selectedPoliKode!.isEmpty) {
           throw Exception('Poli harus dipilih');
         }
 
+        // Find selected dokter object to get its kode (string)
+        final selectedDokter = _dokterList.firstWhere(
+          (d) => d.id == _selectedDokterId,
+          orElse: () => throw Exception('Dokter terpilih tidak ditemukan'),
+        );
+
         // Calculate no_urut (increment based on today's registrations)
-        final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
         final repository = getIt<RegistrasiRepository>();
-        final todayRegs = await repository.getRegistrasiByDate(today);
+        final allRegs = await repository.getAllRegistrasi();
+        final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
+        final todayRegs = allRegs
+            .where((r) => r.tglJamReg != null && r.tglJamReg!.startsWith(today))
+            .toList();
         final noUrut = (todayRegs.length + 1);
 
         // Use current datetime for registration
@@ -285,17 +349,19 @@ class _RegistrationFormPageState extends State<RegistrationFormPage> {
           'no_urut': noUrut,
           'pasien_id': pasienIdInt,
           'tgl_jam_reg': currentDateTime.toIso8601String(),
-          'tgl_jam_kunjungan': currentDateTime.toIso8601String(),
+          'tgl_jam_kunjungan': (_tglJamKunjungan ?? currentDateTime)
+              .toIso8601String(),
           'kode_poli': _selectedPoliKode!,
-          'dokter_id': _selectedDokterId!,
+          // Backend expects dokter_id to be the kode/string (e.g., APT40)
+          'dokter_id': selectedDokter.dokterId,
           'jenis_kunjungan': _jenisKunjungan,
           'asal_pasien': _asalPasien,
           'tipe_pasien': _tipePasien,
-          'pasien_baru': _pasienBaru,
-          'pagi_sore': _pagiSore,
-          'is_cash': _isCash,
-          'is_pribadi': _isPribadi,
-          'eselon': null,
+          'pasien_baru': _pasienBaru ? 1 : 0,
+          'pagi_sore': '',
+          'is_cash': _isCash ? 1 : 0,
+          'is_pribadi': _isPribadi ? 1 : 0,
+          'eselon': _eselon,
           'status': _status,
           'penanggung_id': _penanggungIdController.text.isNotEmpty
               ? _penanggungIdController.text
@@ -341,17 +407,18 @@ class _RegistrationFormPageState extends State<RegistrationFormPage> {
           '   is_pribadi: ${registrationData['is_pribadi']} (${registrationData['is_pribadi'].runtimeType})',
         );
 
-        if (widget.isEdit && widget.registrasiId != null) {
+        final updateId = widget.registrasiId ?? _resolvedRegistrasiId;
+        if (widget.isEdit && updateId != null) {
           // UPDATE existing registration
           final updateRepo = getIt<RegistrasiRepository>();
-          await updateRepo.updateRegistrasi(
-            widget.registrasiId!,
+          await updateRepo.updateRegistrasiFromMap(
+            updateId,
             registrationData,
           );
-          debugPrint('✅ Registration updated with ID: ${widget.registrasiId}');
+          debugPrint('✅ Registration updated with ID: $updateId');
         } else {
           // CREATE new registration
-          final newRegistration = await repository.createRegistrasi(
+          final newRegistration = await repository.createRegistrasiFromMap(
             registrationData,
           );
           debugPrint('✅ Registration saved with ID: ${newRegistration.id}');
@@ -426,10 +493,11 @@ class _RegistrationFormPageState extends State<RegistrationFormPage> {
     if (confirmed != true) return;
 
     try {
-      if (widget.registrasiId != null) {
+      final delId = widget.registrasiId ?? _resolvedRegistrasiId;
+      if (delId != null) {
         final repository = getIt<RegistrasiRepository>();
-        await repository.deleteRegistrasi(widget.registrasiId!);
-        debugPrint('✅ Registration deleted with ID: ${widget.registrasiId}');
+        await repository.deleteRegistrasi(delId);
+        debugPrint('✅ Registration deleted with ID: $delId');
       } else {
         debugPrint('✅ Registration cancelled (not saved yet)');
       }
@@ -533,17 +601,7 @@ class _RegistrationFormPageState extends State<RegistrationFormPage> {
                             },
                           ),
                           const SizedBox(height: 16),
-                          _buildDropdownField(
-                            label: 'Waktu Kunjungan',
-                            icon: Icons.wb_sunny,
-                            value: _pagiSore,
-                            items: ['PAGI', 'SORE'],
-                            onChanged: (value) {
-                              setState(() {
-                                _pagiSore = value!;
-                              });
-                            },
-                          ),
+                          _buildDateTimeKunjunganField(),
                         ],
                       ),
                       const SizedBox(height: 20),
@@ -681,7 +739,7 @@ class _RegistrationFormPageState extends State<RegistrationFormPage> {
         borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
-            color: kPrimaryColor.withOpacity(0.08),
+            color: kPrimaryColor.withValues(alpha: 0.08),
             blurRadius: 20,
             offset: const Offset(0, 8),
           ),
@@ -830,7 +888,7 @@ class _RegistrationFormPageState extends State<RegistrationFormPage> {
       );
     }
 
-    return DropdownButtonFormField<String>(
+    return DropdownButtonFormField<int>(
       value: _selectedDokterId,
       decoration: InputDecoration(
         labelText: 'Pilih Dokter *',
@@ -853,10 +911,10 @@ class _RegistrationFormPageState extends State<RegistrationFormPage> {
       hint: const Text('Pilih dokter'),
       isExpanded: true,
       items: _dokterList.toSet().toList().map((dokter) {
-        return DropdownMenuItem(
-          value: dokter.dokterId,
+        return DropdownMenuItem<int>(
+          value: dokter.id,
           child: Text(
-            '${dokter.namaDokter}${dokter.bidangKeahlian != null ? ' - ${dokter.bidangKeahlian}' : ''}',
+            dokter.namaDokter,
             style: const TextStyle(fontSize: 14),
             overflow: TextOverflow.ellipsis,
             maxLines: 1,
@@ -869,7 +927,7 @@ class _RegistrationFormPageState extends State<RegistrationFormPage> {
         });
       },
       validator: (value) {
-        if (value == null || value.isEmpty) {
+        if (value == null) {
           return 'Dokter harus dipilih';
         }
         return null;
@@ -1014,7 +1072,9 @@ class _RegistrationFormPageState extends State<RegistrationFormPage> {
                         label: const Text('Batal'),
                         style: OutlinedButton.styleFrom(
                           foregroundColor: kTextGrey,
-                          side: BorderSide(color: kTextGrey.withOpacity(0.3)),
+                          side: BorderSide(
+                            color: kTextGrey.withValues(alpha: 0.3),
+                          ),
                           minimumSize: const Size(double.infinity, 48),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(12),
@@ -1052,7 +1112,7 @@ class _RegistrationFormPageState extends State<RegistrationFormPage> {
                     label: const Text('Batal'),
                     style: OutlinedButton.styleFrom(
                       foregroundColor: kTextGrey,
-                      side: BorderSide(color: kTextGrey.withOpacity(0.3)),
+                      side: BorderSide(color: kTextGrey.withValues(alpha: 0.3)),
                       minimumSize: const Size(double.infinity, 48),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
@@ -1080,5 +1140,95 @@ class _RegistrationFormPageState extends State<RegistrationFormPage> {
               ],
             ),
     );
+  }
+
+  Widget _buildDateTimeKunjunganField() {
+    final dateController = TextEditingController(
+      text: _tglJamKunjungan != null
+          ? DateFormat('d MMM yyyy, HH:mm', 'id_ID').format(_tglJamKunjungan!)
+          : '',
+    );
+
+    return TextFormField(
+      controller: dateController,
+      readOnly: true,
+      decoration: InputDecoration(
+        labelText: 'Tanggal & Jam Kunjungan',
+        prefixIcon: const Icon(Icons.calendar_month, color: kPrimaryColor),
+        suffixIcon: IconButton(
+          icon: const Icon(Icons.edit_calendar, color: kPrimaryColor),
+          onPressed: () => _selectDateTimeKunjungan(),
+        ),
+        filled: true,
+        fillColor: kScaffoldBg,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide.none,
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide.none,
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: kPrimaryColor, width: 2),
+        ),
+      ),
+      onTap: _selectDateTimeKunjungan,
+    );
+  }
+
+  Future<void> _selectDateTimeKunjungan() async {
+    final DateTime? pickedDate = await showDatePicker(
+      context: context,
+      initialDate: _tglJamKunjungan ?? DateTime.now(),
+      firstDate: DateTime.now().subtract(const Duration(days: 7)),
+      lastDate: DateTime.now().add(const Duration(days: 90)),
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: const ColorScheme.light(
+              primary: kPrimaryColor,
+              onPrimary: kWhite,
+              surface: kWhite,
+              onSurface: kTextDark,
+            ),
+          ),
+          child: child!,
+        );
+      },
+    );
+
+    if (pickedDate != null && mounted) {
+      final TimeOfDay? pickedTime = await showTimePicker(
+        context: context,
+        initialTime: TimeOfDay.fromDateTime(_tglJamKunjungan ?? DateTime.now()),
+        builder: (context, child) {
+          return Theme(
+            data: Theme.of(context).copyWith(
+              colorScheme: const ColorScheme.light(
+                primary: kPrimaryColor,
+                onPrimary: kWhite,
+                surface: kWhite,
+                onSurface: kTextDark,
+              ),
+            ),
+            child: child!,
+          );
+        },
+      );
+
+      if (pickedTime != null && mounted) {
+        setState(() {
+          _tglJamKunjungan = DateTime(
+            pickedDate.year,
+            pickedDate.month,
+            pickedDate.day,
+            pickedTime.hour,
+            pickedTime.minute,
+          );
+        });
+      }
+    }
   }
 }

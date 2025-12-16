@@ -1,21 +1,22 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:dio/dio.dart';
 import 'package:homecare_mobile/shared/app_injections.dart';
-import 'package:homecare_mobile/shared/local_db/app_database.dart' as db;
-import 'package:drift/drift.dart' as drift;
+import 'package:homecare_mobile/features/schedules/data/repositories/anamnesa_repository.dart';
+import 'package:homecare_mobile/features/schedules/data/repositories/registrasi_repository.dart';
 
-const Color kPrimaryColor = Color(0xFF004B8C);
-const Color kPrimaryLight = Color(0xFF0063B2);
-const Color kScaffoldBg = Color(0xFFF5F7FA);
+// --- Palet Warna Baru (Futuristic/Modern Clean) ---
+const Color kPrimaryColor = Color(0xFF004B8C); // Deep Blue
+const Color kPrimaryLight = Color(0xFF0063B2); // Lighter Blue for Gradient
+const Color kSecondaryColor = Color(0xFF8BC43E); // Lime Green (Action Color)
+const Color kScaffoldBg = Color(0xFFF5F7FA); // Cool White Background
 const Color kWhite = Colors.white;
 const Color kTextDark = Color(0xFF1E293B);
 const Color kTextGrey = Color(0xFF94A3B8);
-const Color kSuccessColor = Color(0xFF22C55E);
+const Color kSuccessColor = Color(0xFF22C55E); // Green for success/nurse
 const Color kWarningColor = Color(0xFFF59E0B);
 const Color kDangerColor = Color(0xFFEF4444);
-const Color kCardBg = Color(0xFFFAFAFA);
+const Color kCardBg = Color(0xFFFAFAFA); // Lighter card background for contrast
+const Color kHeaderNurseColor = kSuccessColor;
 
 class ScheduleAnamnesaPage extends StatefulWidget {
   final int registrationId;
@@ -32,26 +33,23 @@ class ScheduleAnamnesaPage extends StatefulWidget {
 }
 
 class _ScheduleAnamnesaPageState extends State<ScheduleAnamnesaPage> {
-  late final db.AppDatabase _database;
-  late final Dio _dio;
   final _formKey = GlobalKey<FormState>();
-  bool _isLoading = false;
+  int _currentPage = 0; // 0: Keperawatan, 1: Medis, 2: Khusus Perawat
+  final PageController _pageController = PageController();
   bool _isSaving = false;
-  int _currentStep = 0; // 0: Keperawatan, 1: Medis, 2: Perawat
+  bool _isLoadingData = false;
 
   // FORMULIR PENGKAJIAN KEPERAWATAN
-  final _tekananDarahController = TextEditingController();
-  final _frekuensiNadiController = TextEditingController();
-  final _suhuController = TextEditingController();
-  final _frekuensiPernapasanController = TextEditingController();
+  final _tekananDarahController = TextEditingController(text: '120/80');
+  final _frekuensiNadiController = TextEditingController(text: '80');
+  final _suhuController = TextEditingController(text: '36.5');
+  final _frekuensiPernapasanController = TextEditingController(text: '20');
   String _riwayatAlergi = 'Tidak';
 
-  final _beratBadanController = TextEditingController();
-  final _tinggiBadanController = TextEditingController();
-  final _imtController = TextEditingController();
+  final _beratBadanController = TextEditingController(text: '60');
+  final _tinggiBadanController = TextEditingController(text: '170');
+  final _imtController = TextEditingController(text: '20.8');
   final _lingkarKepalaController = TextEditingController();
-  final _asupMakanController = TextEditingController();
-  final _nutrisiBbController = TextEditingController();
 
   final _alatBantuController = TextEditingController();
   final _prothesaController = TextEditingController();
@@ -62,7 +60,6 @@ class _ScheduleAnamnesaPageState extends State<ScheduleAnamnesaPage> {
 
   final _keluhanPasienController = TextEditingController();
 
-  final List<String> _masalahKeperawatan = [];
   final Map<String, bool> _masalahKeperawatanOptions = {
     'Bersihan jalan nafas': false,
     'Pola nafas tidak efektif': false,
@@ -86,8 +83,6 @@ class _ScheduleAnamnesaPageState extends State<ScheduleAnamnesaPage> {
   final _rujukanController = TextEditingController();
 
   // DIISI KHUSUS PERAWAT
-  final _intervensiTimeUpGoController = TextEditingController();
-  final List<String> _intervensiTimeUpGoResults = [];
   final Map<String, bool> _intervensiTimeUpGoOptions = {
     'Tidak seimbang/sempoyongan/limbung': false,
     'Jalan dengan menggunakan alat bantu (huk, tripot, kursi, orang bantu/pendamping)':
@@ -96,55 +91,172 @@ class _ScheduleAnamnesaPageState extends State<ScheduleAnamnesaPage> {
         false,
   };
 
-  final _skriningNutrisiMstController = TextEditingController();
-  final List<String> _skriningNutrisiMstResults = [];
   final Map<String, String> _skriningNutrisiMstAnswers = {
-    'penurunan_berat': '',
-    'makan_menurun': '',
+    'penurunan_berat': 'Tidak (0)',
+    'makan_menurun': 'Tidak (0)',
   };
 
-  final _skriningNutrisiStrongkidsController = TextEditingController();
-  final List<String> _skriningNutrisiStrongkidsResults = [];
   final Map<String, String> _skriningNutrisiStrongkidsAnswers = {
-    'penyakit_malnutrisi': '',
-    'tampak_kurus': '',
-    'tindakan_khusus': '',
-    'nyeri': '',
+    'penyakit_malnutrisi': 'Tidak (0)',
+    'tampak_kurus': 'Tidak (0)',
+    'tindakan_khusus': 'Tidak (0)',
+    'nyeri': 'Tidak (0)',
   };
 
-  final _edukasiPasienController = TextEditingController();
   final Map<String, bool> _edukasiPasienOptions = {
     'diagnosa': false,
     'rencana_tindak_lanjut': false,
   };
 
   final _penerimaPulangPasienController = TextEditingController();
-  final _hambatanMobilisasiController = TextEditingController();
   final Map<String, bool> _hambatanMobilisasiOptions = {
     'lanjut_usia': false,
-    'tidak_ada': false,
+    'tidak_ada': true,
   };
   final _urutanPelayananController = TextEditingController();
-
-  // Perencanaan pulang (sesuai schema)
-  bool _rencUsiaLanjut = false;
-  bool _rencHambatanMobil = false;
-  bool _rencLayananMedis = false;
-  bool _rencTergantungOrg = false;
-
-  db.Anamnesa? _existingAnamnesa;
-  int? _remoteAnamnesaId; // existing server anamnesa id for this registrasi
 
   @override
   void initState() {
     super.initState();
-    _database = getIt<db.AppDatabase>();
-    _dio = getIt<Dio>();
-    _loadExistingAnamnesa();
+    // Sinkronkan controller IMT
+    _calculateIMT();
+    _beratBadanController.addListener(_calculateIMT);
+    _tinggiBadanController.addListener(_calculateIMT);
+    _fetchExistingAnamnesa();
+  }
+
+  Future<void> _fetchExistingAnamnesa() async {
+    setState(() => _isLoadingData = true);
+    try {
+      final regRepo = getIt<RegistrasiRepository>();
+      // Assume Registrasi raw includes flat `anamnesa` object with fields
+      final registrasi = await regRepo.getRegistrasiRawById(widget.registrationId);
+      final Map<String, dynamic> root = (registrasi ?? const {});
+      // Prefer explicit nested anamnesa object if present; else treat root as anamnesa
+      final data = (root['anamnesa'] ?? root);
+      if (data != null) {
+        // Vital & keluhan
+        Map<String, dynamic> pk = (data['pengkajian_keperawatan'] ?? const {});
+        Map<String, dynamic> tv = (pk['tanda_vital'] ?? const {});
+        Map<String, dynamic> nutr = (pk['nutrisi'] ?? const {});
+        Map<String, dynamic> fungs = (pk['fungsional'] ?? const {});
+        Map<String, dynamic> kel = (pk['keluhan'] ?? const {});
+        Map<String, dynamic> mk = (pk['masalah_keperawatan'] ?? const {});
+
+        _keluhanPasienController.text = (kel['keluhan'] ?? data['keluhan'] ?? '').toString();
+        _tekananDarahController.text = (tv['tekanan_darah'] ?? data['tekanan_darah'] ?? '').toString();
+        _frekuensiNadiController.text = ((tv['nadi'] ?? data['nadi']) ?? '').toString();
+        _suhuController.text = ((tv['suhu'] ?? data['suhu']) ?? '').toString();
+        _frekuensiPernapasanController.text = ((tv['pernapasan'] ?? data['pernapasan']) ?? '').toString();
+
+        // Nutrisi
+        _beratBadanController.text = (nutr['berat_badan'] ?? data['berat_badan'] ?? '').toString();
+        _tinggiBadanController.text = (nutr['tinggi_badan'] ?? data['tinggi_badan'] ?? '').toString();
+        _imtController.text = ((nutr['imt'] ?? data['imt']) ?? '').toString();
+        _lingkarKepalaController.text = (nutr['lingkar_kepala'] ?? data['lingkar_kepala'] ?? '').toString();
+
+        // Fungsional
+        _alatBantuController.text = (fungs['alat_bantu'] ?? data['alat_bantu'] ?? '').toString();
+        _prothesaController.text = (fungs['prothesa'] ?? data['prothesa'] ?? '').toString();
+        _cacatTubuhController.text = (fungs['cacat_tubuh'] ?? data['cacat_tubuh'] ?? '').toString();
+        _adl = (((fungs['adl'] ?? data['adl'] ?? 0)) == 1) ? 'Mandiri' : 'Dibantu';
+        _resikoJatuh = (((fungs['resiko_jatuh'] ?? data['resiko_jatuh'] ?? 0)) == 1) ? 'Ada' : 'Tidak Ada';
+        _riwayatPenyakitDahuluController.text = (fungs['riwayat'] ?? data['riwayat'] ?? '').toString();
+        _riwayatAlergi = (((tv['riwayat_alergi'] ?? data['riwayat_alergi'] ?? 0)) == 1) ? 'Ya' : 'Tidak';
+
+        // Masalah keperawatan flags
+        void setFlag(String key, String label) {
+          final v = (mk[key] ?? data[key] ?? 0) == 1;
+          _masalahKeperawatanOptions[label] = v;
+        }
+        setFlag('jalan_nafas', 'Bersihan jalan nafas');
+        setFlag('pola_nafas', 'Pola nafas tidak efektif');
+        setFlag('hipertermia', 'Hipertermia');
+        setFlag('nyeri_akut', 'Nyeri akut');
+        setFlag('nyeri_kronik', 'Nyeri kronik');
+        setFlag('mual', 'Mual');
+        setFlag('gangguan_perfusi', 'Gangguan perfusi jaringan serebral');
+        setFlag('gangguan_cairan', 'Gangguan keseimbangan cairan');
+        _masalahKeperawatanLainnyaController.text = (mk['lainnya'] ?? data['lainnya'] ?? '').toString();
+
+        // Medis
+        Map<String, dynamic> pm = (data['pengkajian_medis'] ?? const {});
+        _pemeriksaanFisikController.text = (pm['pemeriksaan_fisik'] ?? data['pemeriksaan_fisik'] ?? '').toString();
+        _diagnosisController.text = (pm['diagnosis'] ?? data['diagnosis'] ?? '').toString();
+        _rencanaTerapiController.text = (pm['rencana_dan_terapi'] ?? data['rencana_dan_terapi'] ?? '').toString();
+        _pemeriksaanPenunjangController.text = (pm['pemeriksaan_penunjang'] ?? data['pemeriksaan_penunjang'] ?? '').toString();
+        _kontrolController.text = (pm['kontrol'] ?? data['kontrol'] ?? '').toString();
+        final jp = (pm['jenis_perawatan'] ?? data['jenis_perawatan'] ?? '').toString();
+        if (jp.isNotEmpty) {
+          // Normalize to title case option if present
+          final normalized = jp[0].toUpperCase() + jp.substring(1);
+          _jenisPerawatan = normalized;
+        }
+
+        // Khusus perawat
+        Map<String, dynamic> kp = (data['khusus_perawat'] ?? const {});
+        Map<String, dynamic> tug = (kp['intervensi_time_up_go'] ?? const {});
+        bool toBoolIntFrom(Map<String, dynamic> m, String key) => (m[key] ?? data[key] ?? 0) == 1;
+        _intervensiTimeUpGoOptions.update(_intervensiTimeUpGoOptions.keys.elementAt(0), (_) => toBoolIntFrom(tug, 'cara_berjalan'));
+        _intervensiTimeUpGoOptions.update(_intervensiTimeUpGoOptions.keys.elementAt(1), (_) => toBoolIntFrom(tug, 'cara_berjalan2'));
+        _intervensiTimeUpGoOptions.update(_intervensiTimeUpGoOptions.keys.elementAt(2), (_) => toBoolIntFrom(tug, 'menopang'));
+
+        final nutrisiBb = ((kp['skrining_mst_dewasa'] ?? const {})['nutrisi_bb'] ?? data['nutrisi_bb'] ?? '').toString();
+        _skriningNutrisiMstAnswers['penurunan_berat'] = nutrisiBb == 'Normal' ? 'Tidak (0)' : 'Tidak yakin (2)';
+        final asupMakan = ((kp['skrining_mst_dewasa'] ?? const {})['asup_makan'] ?? data['asup_makan'] ?? '').toString();
+        _skriningNutrisiMstAnswers['makan_menurun'] = asupMakan == 'Cukup' ? 'Tidak (0)' : 'Ya (1)';
+
+        final sk = (kp['skrining_strongkids'] ?? const {});
+        void setStrongKids(String key, String mapKey) {
+          final isOne = (sk[key] ?? data[key] ?? 0) == 1;
+          _skriningNutrisiStrongkidsAnswers[mapKey] = isOne ? 'Ya (1)' : 'Tidak (0)';
+        }
+        setStrongKids('strong_kids1', 'penyakit_malnutrisi');
+        setStrongKids('strong_kids2', 'tampak_kurus');
+        setStrongKids('strong_kids3', 'tindakan_khusus');
+        setStrongKids('strong_kids4', 'nyeri');
+
+        // Edukasi
+        final edk = (kp['edukasi'] ?? const {});
+        final edukasiFlag = (edk['edukasi'] ?? data['edukasi'] ?? 0) == 1;
+        _edukasiPasienOptions['diagnosa'] = edukasiFlag;
+        _edukasiPasienOptions['rencana_tindak_lanjut'] = edukasiFlag;
+        // We keep `edukasi_ket` informational only; not mapped to specific checkboxes.
+
+        // Hambatan mobilisasi
+        final rencana = (kp['rencana_pulang'] ?? const {});
+        _hambatanMobilisasiOptions['lanjut_usia'] = (rencana['renc_usia_lanjut'] ?? data['renc_usia_lanjut'] ?? 0) == 1;
+        _hambatanMobilisasiOptions['tidak_ada'] = (rencana['renc_hmbtn_mobil'] ?? data['renc_hmbtn_mobil'] ?? 0) == 0;
+
+        // Urutan layanan (no exact backend field provided; keep local only)
+      }
+    } catch (_) {
+      // Silent fail; keep defaults for new entry
+    } finally {
+      if (mounted) setState(() => _isLoadingData = false);
+    }
+  }
+
+  void _calculateIMT() {
+    // BB (kg) / (TB (m) * TB (m))
+    final bb = double.tryParse(_beratBadanController.text) ?? 0;
+    final tbCm = double.tryParse(_tinggiBadanController.text) ?? 0;
+
+    if (bb > 0 && tbCm > 0) {
+      final tbM = tbCm / 100;
+      final imt = bb / (tbM * tbM);
+      // Update IMT controller, 1 digit di belakang koma
+      _imtController.text = imt.toStringAsFixed(1);
+    } else {
+      _imtController.text = '';
+    }
   }
 
   @override
   void dispose() {
+    _pageController.dispose();
+    _beratBadanController.removeListener(_calculateIMT);
+    _tinggiBadanController.removeListener(_calculateIMT);
     _tekananDarahController.dispose();
     _frekuensiNadiController.dispose();
     _suhuController.dispose();
@@ -153,8 +265,6 @@ class _ScheduleAnamnesaPageState extends State<ScheduleAnamnesaPage> {
     _tinggiBadanController.dispose();
     _imtController.dispose();
     _lingkarKepalaController.dispose();
-    _asupMakanController.dispose();
-    _nutrisiBbController.dispose();
     _alatBantuController.dispose();
     _prothesaController.dispose();
     _cacatTubuhController.dispose();
@@ -167,697 +277,321 @@ class _ScheduleAnamnesaPageState extends State<ScheduleAnamnesaPage> {
     _pemeriksaanPenunjangController.dispose();
     _kontrolController.dispose();
     _rujukanController.dispose();
-    _intervensiTimeUpGoController.dispose();
-    _skriningNutrisiMstController.dispose();
-    _skriningNutrisiStrongkidsController.dispose();
-    _edukasiPasienController.dispose();
     _penerimaPulangPasienController.dispose();
-    _hambatanMobilisasiController.dispose();
     _urutanPelayananController.dispose();
     super.dispose();
   }
 
-  Future<void> _loadExistingAnamnesa() async {
-    setState(() => _isLoading = true);
-    try {
-      // Try to load from API first
-      db.Anamnesa? anamnesa;
-      try {
-        // Use server registrasi_id when available
-        final reg = await _database.getRegistrasiById(widget.registrationId);
-        final queryRegId = reg?.serverId ?? widget.registrationId;
-        debugPrint(
-          '🔍 Fetching anamnesa from /anamnesa API for registrasi_id: $queryRegId',
-        );
-        final response = await _dio.get(
-          '/anamnesa',
-          queryParameters: {'registrasi_id': queryRegId},
-        );
-
-        debugPrint('✅ GET /anamnesa - Status: ${response.statusCode}');
-        if (response.statusCode == 200 && response.data != null) {
-          final list = response.data is Map && response.data['data'] is List
-              ? (response.data['data'] as List)
-              : (response.data is List ? (response.data as List) : <dynamic>[]);
-
-          if (list.isNotEmpty && list.first is Map) {
-            final map = list.first as Map<String, dynamic>;
-            _remoteAnamnesaId = map['id'] as int?;
-            debugPrint(
-              '✅ Found existing anamnesa on server, id=$_remoteAnamnesaId',
-            );
-          }
-        }
-      } catch (e) {
-        debugPrint('⚠️ API error, trying local database: $e');
-      }
-
-      // Load from local database (either synced from API or just local)
-      anamnesa = await _database.getAnamnesaByRegistrasiId(
-        widget.registrationId,
+  // Fungsi navigasi halaman
+  void _nextPage() {
+    if (_currentPage < 2) {
+      _pageController.animateToPage(
+        _currentPage + 1,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeIn,
       );
-
-      if (anamnesa != null && mounted) {
-        setState(() {
-          _existingAnamnesa = anamnesa;
-
-          // Parse pengkajianKeperawatan JSON
-          if (anamnesa?.pengkajianKeperawatan != null) {
-            try {
-              final data =
-                  jsonDecode(anamnesa?.pengkajianKeperawatan ?? '{}')
-                      as Map<String, dynamic>;
-              _tekananDarahController.text = data['tekanan_darah'] ?? '';
-              _frekuensiNadiController.text = data['frekuensi_nadi'] ?? '';
-              _suhuController.text = data['suhu'] ?? '';
-              _frekuensiPernapasanController.text =
-                  data['frekuensi_pernapasan'] ?? '';
-              _riwayatAlergi = data['riwayat_alergi'] ?? 'Tidak';
-              _beratBadanController.text = data['berat_badan'] ?? '';
-              _tinggiBadanController.text = data['tinggi_badan'] ?? '';
-              _imtController.text = data['imt'] ?? '';
-              _lingkarKepalaController.text = data['lingkar_kepala'] ?? '';
-              _asupMakanController.text = data['asup_makan'] ?? '';
-              _nutrisiBbController.text = data['nutrisi_bb'] ?? '';
-              _alatBantuController.text = data['alat_bantu'] ?? '';
-              _prothesaController.text = data['prothesa'] ?? '';
-              _cacatTubuhController.text = data['cacat_tubuh'] ?? '';
-              _adl = data['adl'] ?? 'Mandiri';
-              _resikoJatuh = data['resiko_jatuh'] ?? 'Ada';
-              _riwayatPenyakitDahuluController.text =
-                  data['riwayat_penyakit_dahulu'] ?? '';
-              _keluhanPasienController.text = data['keluhan_pasien'] ?? '';
-
-              if (data['masalah_keperawatan'] is List) {
-                _masalahKeperawatan.clear();
-                _masalahKeperawatan.addAll(
-                  (data['masalah_keperawatan'] as List).cast<String>(),
-                );
-                for (var item in _masalahKeperawatan) {
-                  if (_masalahKeperawatanOptions.containsKey(item)) {
-                    _masalahKeperawatanOptions[item] = true;
-                  }
-                }
-              }
-              _masalahKeperawatanLainnyaController.text =
-                  data['masalah_keperawatan_lainnya'] ?? '';
-            } catch (e) {
-              debugPrint('❌ Error parsing pengkajianKeperawatan: $e');
-            }
-          }
-
-          // Parse pengkajianMedis JSON
-          if (anamnesa?.pengkajianMedis != null) {
-            try {
-              final data =
-                  jsonDecode(anamnesa?.pengkajianMedis ?? '{}')
-                      as Map<String, dynamic>;
-              _pemeriksaanFisikController.text =
-                  data['pemeriksaan_fisik'] ?? '';
-              _diagnosisController.text = data['diagnosis'] ?? '';
-              _rencanaTerapiController.text = data['rencana_terapi'] ?? '';
-              _pemeriksaanPenunjangController.text =
-                  data['pemeriksaan_penunjang'] ?? '';
-              _kontrolController.text = data['kontrol'] ?? '';
-              _jenisPerawatan = data['jenis_perawatan'] ?? 'Preventif';
-              _rujukanController.text = data['rujukan'] ?? '';
-            } catch (e) {
-              debugPrint('❌ Error parsing pengkajianMedis: $e');
-            }
-          }
-
-          // Parse khususPerawat JSON
-          if (anamnesa?.khususPerawat != null) {
-            try {
-              final data =
-                  jsonDecode(anamnesa?.khususPerawat ?? '{}')
-                      as Map<String, dynamic>;
-
-              if (data['intervensi_time_up_go'] is List) {
-                _intervensiTimeUpGoResults.clear();
-                _intervensiTimeUpGoResults.addAll(
-                  (data['intervensi_time_up_go'] as List).cast<String>(),
-                );
-                for (var item in _intervensiTimeUpGoResults) {
-                  if (_intervensiTimeUpGoOptions.containsKey(item)) {
-                    _intervensiTimeUpGoOptions[item] = true;
-                  }
-                }
-              }
-
-              if (data['skrining_nutrisi_mst'] is Map) {
-                final mst =
-                    data['skrining_nutrisi_mst'] as Map<String, dynamic>;
-                _skriningNutrisiMstAnswers['penurunan_berat'] =
-                    mst['penurunan_berat'] ?? '';
-                _skriningNutrisiMstAnswers['makan_menurun'] =
-                    mst['makan_menurun'] ?? '';
-              }
-
-              if (data['skrining_nutrisi_strongkids'] is Map) {
-                final strongkids =
-                    data['skrining_nutrisi_strongkids'] as Map<String, dynamic>;
-                _skriningNutrisiStrongkidsAnswers['penyakit_malnutrisi'] =
-                    strongkids['penyakit_malnutrisi'] ?? '';
-                _skriningNutrisiStrongkidsAnswers['tampak_kurus'] =
-                    strongkids['tampak_kurus'] ?? '';
-                _skriningNutrisiStrongkidsAnswers['tindakan_khusus'] =
-                    strongkids['tindakan_khusus'] ?? '';
-                _skriningNutrisiStrongkidsAnswers['nyeri'] =
-                    strongkids['nyeri'] ?? '';
-              }
-
-              if (data['edukasi_pasien'] is List) {
-                final edukasi = (data['edukasi_pasien'] as List).cast<String>();
-                _edukasiPasienOptions['diagnosa'] = edukasi.contains(
-                  'diagnosa',
-                );
-                _edukasiPasienOptions['rencana_tindak_lanjut'] = edukasi
-                    .contains('rencana_tindak_lanjut');
-              }
-
-              _penerimaPulangPasienController.text =
-                  data['penerima_pulang_pasien'] ?? '';
-
-              if (data['hambatan_mobilisasi'] is List) {
-                final hambatan = (data['hambatan_mobilisasi'] as List)
-                    .cast<String>();
-                _hambatanMobilisasiOptions['lanjut_usia'] = hambatan.contains(
-                  'lanjut_usia',
-                );
-                _hambatanMobilisasiOptions['tidak_ada'] = hambatan.contains(
-                  'tidak_ada',
-                );
-              }
-
-              _urutanPelayananController.text = data['urutan_pelayanan'] ?? '';
-              _rencUsiaLanjut = (data['renc_usia_lanjut'] == true);
-              _rencHambatanMobil = (data['renc_hmbtn_mobil'] == true);
-              _rencLayananMedis = (data['renc_layanan_medis'] == true);
-              _rencTergantungOrg = (data['renc_tergnt_org'] == true);
-            } catch (e) {
-              debugPrint('❌ Error parsing khususPerawat: $e');
-            }
-          }
-        });
-      }
-    } catch (e) {
-      debugPrint('❌ Error loading anamnesa: $e');
-    } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
+      setState(() => _currentPage++);
     }
   }
 
-  int _computeMstScore() {
-    int score = 0;
-    final penurunanBerat = _skriningNutrisiMstAnswers['penurunan_berat'] ?? '';
-    if (penurunanBerat.contains('(1)')) score += 1;
-    if (penurunanBerat.contains('(2)')) score += 2;
-    if (penurunanBerat.contains('(3)')) score += 3;
-    if (penurunanBerat.contains('(4)')) score += 4;
-    final makanMenurun = _skriningNutrisiMstAnswers['makan_menurun'] ?? '';
-    if (makanMenurun.contains('(1)')) score += 1;
-    return score;
-  }
-
-  int _computeStrongkidsScore() {
-    int score = 0;
-    for (var answer in _skriningNutrisiStrongkidsAnswers.values) {
-      if (answer.contains('(1)')) score += 1;
-      if (answer.contains('(2)')) score += 2;
+  void _previousPage() {
+    if (_currentPage > 0) {
+      _pageController.animateToPage(
+        _currentPage - 1,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeIn,
+      );
+      setState(() => _currentPage--);
     }
-    return score;
   }
 
   Future<void> _saveAnamnesa() async {
-    if (!_formKey.currentState!.validate()) {
+    // Pastikan validasi dilakukan di halaman terakhir sebelum simpan
+    if (!_formKey.currentState!.validate() || !_validateRequiredFields()) {
       return;
     }
 
     setState(() => _isSaving = true);
-
     try {
-      // Build pengkajianKeperawatan JSON in nested structure expected by API
-      final masalahMap = {
-        'jalan_nafas':
-            _masalahKeperawatanOptions['Bersihan jalan nafas'] == true,
-        'pola_nafas':
-            _masalahKeperawatanOptions['Pola nafas tidak efektif'] == true,
-        'hipertermia': _masalahKeperawatanOptions['Hipertermia'] == true,
-        'nyeri_kronik': _masalahKeperawatanOptions['Nyeri kronik'] == true,
-        'nyeri_akut': _masalahKeperawatanOptions['Nyeri akut'] == true,
-        'mual': _masalahKeperawatanOptions['Mual'] == true,
-        'gangguan_perfusi':
-            _masalahKeperawatanOptions['Gangguan perfusi jaringan serebral'] ==
-            true,
-        'gangguan_cairan':
-            _masalahKeperawatanOptions['Gangguan keseimbangan cairan'] == true,
+      final repo = getIt<AnamnesaRepository>();
+      // Build flat payload per backend schema (confirmed working)
+      final bool riwayatAlergiBool = _riwayatAlergi.toLowerCase() == 'ya';
+      final bool adlBool = _adl.toLowerCase() == 'mandiri';
+      final bool resikoJatuhBool = _resikoJatuh.toLowerCase().contains('ada');
+
+      num? parseNum(String s) => s.isEmpty ? null : num.tryParse(s);
+      int asFlag(bool v) => v ? 1 : 0;
+
+      final Map<String, dynamic> payload = {
+        // ids
+        'registrasi_id': widget.registrationId,
+        // flat fields
+        'keluhan': _keluhanPasienController.text,
+        'tekanan_darah': _tekananDarahController.text,
+        'nadi': parseNum(_frekuensiNadiController.text) ?? 0,
+        'suhu': parseNum(_suhuController.text) ?? 0,
+        'pernapasan': parseNum(_frekuensiPernapasanController.text) ?? 0,
+
+        'berat_badan': _beratBadanController.text,
+        'tinggi_badan': _tinggiBadanController.text,
+        'imt': parseNum(_imtController.text) ?? 0,
+        'lingkar_kepala': _lingkarKepalaController.text,
+
+        'alat_bantu': _alatBantuController.text,
+        'prothesa': _prothesaController.text,
+        'cacat_tubuh': _cacatTubuhController.text,
+
+        'adl': adlBool ? 1 : 0,
+        'resiko_jatuh': resikoJatuhBool ? 1 : 0,
+
+        'riwayat': _riwayatPenyakitDahuluController.text,
+        'riwayat_alergi': riwayatAlergiBool ? 1 : 0,
+
+        'jalan_nafas': asFlag(_masalahKeperawatanOptions['Bersihan jalan nafas'] == true),
+        'pola_nafas': asFlag(_masalahKeperawatanOptions['Pola nafas tidak efektif'] == true),
+        'hipertermia': asFlag(_masalahKeperawatanOptions['Hipertermia'] == true),
+        'nyeri_kronik': asFlag(_masalahKeperawatanOptions['Nyeri kronik'] == true),
+        'nyeri_akut': asFlag(_masalahKeperawatanOptions['Nyeri akut'] == true),
+        'mual': asFlag(_masalahKeperawatanOptions['Mual'] == true),
+        'gangguan_perfusi': asFlag(_masalahKeperawatanOptions['Gangguan perfusi jaringan serebral'] == true),
+        'gangguan_cairan': asFlag(_masalahKeperawatanOptions['Gangguan keseimbangan cairan'] == true),
         'lainnya': _masalahKeperawatanLainnyaController.text,
-      };
 
-      final pengkajianKeperawatanMap = {
-        'tanda_vital': {
-          'tekanan_darah': _tekananDarahController.text,
-          'nadi': int.tryParse(_frekuensiNadiController.text),
-          'suhu': double.tryParse(_suhuController.text),
-          'pernapasan': int.tryParse(_frekuensiPernapasanController.text),
-          'riwayat_alergi': _riwayatAlergi == 'Ya',
-        },
-        'nutrisi': {
-          'berat_badan': double.tryParse(_beratBadanController.text),
-          'tinggi_badan': double.tryParse(_tinggiBadanController.text),
-          'imt': double.tryParse(_imtController.text),
-          'lingkar_kepala': double.tryParse(_lingkarKepalaController.text),
-        },
-        'fungsional': {
-          'alat_bantu': _alatBantuController.text,
-          'prothesa': _prothesaController.text,
-          'cacat_tubuh': _cacatTubuhController.text,
-          'adl': _adl == 'Mandiri',
-          'resiko_jatuh': _resikoJatuh == 'Ada',
-          'riwayat': _riwayatPenyakitDahuluController.text,
-        },
-        'keluhan': {'keluhan': _keluhanPasienController.text},
-        'masalah_keperawatan': masalahMap,
-      };
-
-      final pengkajianKeperawatan = jsonEncode(pengkajianKeperawatanMap);
-
-      // Build pengkajianMedis JSON
-      final pengkajianMedis = jsonEncode({
         'pemeriksaan_fisik': _pemeriksaanFisikController.text,
         'diagnosis': _diagnosisController.text,
-        'rencana_terapi': _rencanaTerapiController.text,
+        'rencana_dan_terapi': _rencanaTerapiController.text,
         'pemeriksaan_penunjang': _pemeriksaanPenunjangController.text,
+
+        'cara_berjalan': asFlag(_intervensiTimeUpGoOptions.values.elementAt(0)),
+        'cara_berjalan2': asFlag(_intervensiTimeUpGoOptions.values.elementAt(1)),
+        'menopang': asFlag(_intervensiTimeUpGoOptions.values.elementAt(2)),
+        'risiko': 'tidak_berisiko',
+
+        'nutrisi_bb': _skriningNutrisiMstAnswers['penurunan_berat'] == 'Tidak (0)' ? 'Normal' : 'Perlu evaluasi',
+        'asup_makan': _skriningNutrisiMstAnswers['makan_menurun'] == 'Tidak (0)' ? 'Cukup' : 'Kurang',
+        'strong_kids1': (_skriningNutrisiStrongkidsAnswers['penyakit_malnutrisi'] ?? '').contains('(1)') ? 1 : 0,
+        'strong_kids2': (_skriningNutrisiStrongkidsAnswers['tampak_kurus'] ?? '').contains('(1)') ? 1 : 0,
+        'strong_kids3': (_skriningNutrisiStrongkidsAnswers['tindakan_khusus'] ?? '').contains('(1)') ? 1 : 0,
+        'strong_kids4': (_skriningNutrisiStrongkidsAnswers['nyeri'] ?? '').contains('(1)') ? 1 : 0,
+
         'kontrol': _kontrolController.text,
-        'jenis_perawatan': _jenisPerawatan,
-        'rujukan': _rujukanController.text,
-      });
+        'jenis_perawatan': _jenisPerawatan.toLowerCase(),
 
-      // Build khususPerawat JSON (for local storage only)
-      final selectedIntervensiTimeUpGo = _intervensiTimeUpGoOptions.entries
-          .where((e) => e.value)
-          .map((e) => e.key)
-          .toList();
+        'edukasi': _edukasiPasienOptions.values.any((v) => v == true) ? 1 : 0,
+        'edukasi_ket': _edukasiPasienOptions.entries.where((e) => e.value).map((e) => e.key).join(', '),
 
-      final selectedEdukasiPasien = _edukasiPasienOptions.entries
-          .where((e) => e.value)
-          .map((e) => e.key)
-          .toList();
+        'renc_usia_lanjut': _hambatanMobilisasiOptions['lanjut_usia'] == true ? 1 : 0,
+        'renc_hmbtn_mobil': _hambatanMobilisasiOptions['tidak_ada'] == true ? 0 : 1,
+        'renc_layanan_medis': 0,
+        'renc_tergnt_org': 0,
 
-      final selectedHambatanMobilisasi = _hambatanMobilisasiOptions.entries
-          .where((e) => e.value)
-          .map((e) => e.key)
-          .toList();
+        'tanggal': DateTime.now().toIso8601String().split('T').first,
+      };
 
-      final khususPerawat = jsonEncode({
-        'intervensi_time_up_go': selectedIntervensiTimeUpGo,
-        'skrining_nutrisi_mst': _skriningNutrisiMstAnswers,
-        'skrining_nutrisi_strongkids': _skriningNutrisiStrongkidsAnswers,
-        'edukasi_pasien': selectedEdukasiPasien,
-        'penerima_pulang_pasien': _penerimaPulangPasienController.text,
-        'hambatan_mobilisasi': selectedHambatanMobilisasi,
-        'urutan_pelayanan': _urutanPelayananController.text,
-        'renc_usia_lanjut': _rencUsiaLanjut,
-        'renc_hmbtn_mobil': _rencHambatanMobil,
-        'renc_layanan_medis': _rencLayananMedis,
-        'renc_tergnt_org': _rencTergantungOrg,
-      });
-
-      final companion = db.AnamnesasCompanion(
-        registrasiId: drift.Value(widget.registrationId),
-        pengkajianKeperawatan: drift.Value(pengkajianKeperawatan),
-        pengkajianMedis: drift.Value(pengkajianMedis),
-        khususPerawat: drift.Value(khususPerawat),
-        tanggal: drift.Value(DateTime.now().toIso8601String()),
-        updatedAt: drift.Value(DateTime.now()),
-        isSynced: const drift.Value(false), // Will be synced automatically
+      await repo.upsertAnamnesa(
+        registrasiId: widget.registrationId,
+        data: payload,
       );
 
-      int anamnesaId;
-      if (_existingAnamnesa != null) {
-        await _database.updateAnamnesa(_existingAnamnesa!.id, companion);
-        anamnesaId = _existingAnamnesa!.id;
-      } else {
-        anamnesaId = await _database.insertAnamnesa(companion);
-      }
-
-      debugPrint('✅ Anamnesa saved to local database');
-
-      // Now POST/PUT to API using flat schema (per backend contract)
-      try {
-        final reg = await _database.getRegistrasiById(widget.registrationId);
-        final registrasiServerId = reg?.serverId;
-
-        if (registrasiServerId == null) {
-          debugPrint(
-            '⚠️ Registrasi belum tersinkron. Lewati POST anamnesa, akan disinkronkan nanti.',
-          );
-        } else {
-          // Build flat payload matching server schema exactly
-          final edukasiSelected = _edukasiPasienOptions.values.any((v) => v);
-          final caraBerjalan =
-              _intervensiTimeUpGoOptions['Tidak seimbang/sempoyongan/limbung'] ==
-              true;
-          final caraBerjalan2 =
-              _intervensiTimeUpGoOptions['Jalan dengan menggunakan alat bantu (huk, tripot, kursi, orang bantu/pendamping)'] ==
-              true;
-          final menopang =
-              _intervensiTimeUpGoOptions['Mengangkat saat akan duduk, tampak menopang/pegang kursi atau meja/benda lain sebagai penyangga saat akan duduk'] ==
-              true;
-
-          final strong1 =
-              (_skriningNutrisiStrongkidsAnswers['penyakit_malnutrisi'] ?? '')
-                  .startsWith('Ya');
-          final strong2 =
-              (_skriningNutrisiStrongkidsAnswers['tampak_kurus'] ?? '')
-                  .startsWith('Ya');
-          final strong3 =
-              (_skriningNutrisiStrongkidsAnswers['tindakan_khusus'] ?? '')
-                  .startsWith('Ya');
-          final strong4 = (_skriningNutrisiStrongkidsAnswers['nyeri'] ?? '')
-              .startsWith('Ya');
-
-          final apiData = <String, dynamic>{
-            'registrasi_id': registrasiServerId,
-            // Keep date-only to avoid known 422s in this API
-            'tanggal': DateTime.now().toIso8601String().substring(0, 10),
-
-            // Keluhan / Riwayat
-            'keluhan': _keluhanPasienController.text,
-            'riwayat': _riwayatPenyakitDahuluController.text,
-            'riwayat_alergi': _riwayatAlergi == 'Ya',
-
-            // Pemeriksaan Medis
-            'pemeriksaan_fisik': _pemeriksaanFisikController.text,
-            'pemeriksaan_penunjang': _pemeriksaanPenunjangController.text,
-            'diagnosis': _diagnosisController.text,
-            'rencana_dan_terapi': _rencanaTerapiController.text,
-            'kontrol': _kontrolController.text,
-
-            // Edukasi
-            'edukasi': edukasiSelected,
-            'edukasi_ket': _edukasiPasienController.text,
-
-            // Tanda vital / nutrisi / fungsional
-            'tekanan_darah': _tekananDarahController.text,
-            'nadi': _frekuensiNadiController.text,
-            'suhu': double.tryParse(_suhuController.text),
-            'pernapasan': _frekuensiPernapasanController.text,
-            'berat_badan': double.tryParse(_beratBadanController.text),
-            'tinggi_badan': double.tryParse(_tinggiBadanController.text),
-            'imt': double.tryParse(_imtController.text),
-            'lingkar_kepala': double.tryParse(_lingkarKepalaController.text),
-            'adl': _adl == 'Mandiri',
-            'resiko_jatuh': _resikoJatuh == 'Ada',
-
-            // Masalah keperawatan (checkboxes)
-            'jalan_nafas':
-                _masalahKeperawatanOptions['Bersihan jalan nafas'] == true,
-            'pola_nafas':
-                _masalahKeperawatanOptions['Pola nafas tidak efektif'] == true,
-            'hipertermia': _masalahKeperawatanOptions['Hipertermia'] == true,
-            'nyeri_kronik': _masalahKeperawatanOptions['Nyeri kronik'] == true,
-            'nyeri_akut': _masalahKeperawatanOptions['Nyeri akut'] == true,
-            'mual': _masalahKeperawatanOptions['Mual'] == true,
-            'gangguan_perfusi':
-                _masalahKeperawatanOptions['Gangguan perfusi jaringan serebral'] ==
-                true,
-            'gangguan_cairan':
-                _masalahKeperawatanOptions['Gangguan keseimbangan cairan'] ==
-                true,
-            'lainnya': _masalahKeperawatanLainnyaController.text,
-
-            // Intervensi time up & go
-            'cara_berjalan': caraBerjalan,
-            'cara_berjalan2': caraBerjalan2,
-            'menopang': menopang,
-
-            // STRONGkids flags
-            'strong_kids1': strong1,
-            'strong_kids2': strong2,
-            'strong_kids3': strong3,
-            'strong_kids4': strong4,
-
-            // Rencana pulang checklist
-            'renc_usia_lanjut': _rencUsiaLanjut,
-            'renc_hmbtn_mobil': _rencHambatanMobil,
-            'renc_layanan_medis': _rencLayananMedis,
-            'renc_tergnt_org': _rencTergantungOrg,
-
-            // Risiko summary + jenis perawatan
-            'risiko':
-                'MST:${_computeMstScore()};STRONGKIDS:${_computeStrongkidsScore()}',
-            'jenis_perawatan': _jenisPerawatan,
-
-            // Lain-lain
-            'alat_bantu': _alatBantuController.text,
-            'asup_makan': _asupMakanController.text,
-            'cacat_tubuh': _cacatTubuhController.text,
-            'prothesa': _prothesaController.text,
-            'nutrisi_bb': _nutrisiBbController.text,
-          };
-
-          // Conditionally add dokter_id if parseable to int
-          final parsedDokterId = int.tryParse(reg?.dokterId ?? '');
-          if (parsedDokterId != null) {
-            apiData['dokter_id'] = parsedDokterId;
-          }
-
-          // Conditionally add poli_id only if numeric-like
-          final kodePoli = reg?.kodePoli;
-          if (kodePoli != null && RegExp(r'^\d+$').hasMatch(kodePoli)) {
-            final parsedPoli = int.tryParse(kodePoli);
-            if (parsedPoli != null) apiData['poli_id'] = parsedPoli;
-          }
-
-          // Prefer updating existing record on server to avoid duplicates
-          int? targetId = _existingAnamnesa?.serverId ?? _remoteAnamnesaId;
-
-          // If we still don't know, query once before deciding
-          if (targetId == null) {
-            try {
-              final check = await _dio.get(
-                '/anamnesa',
-                queryParameters: {'registrasi_id': registrasiServerId},
-              );
-              final list = check.data is Map && check.data['data'] is List
-                  ? (check.data['data'] as List)
-                  : (check.data is List ? (check.data as List) : <dynamic>[]);
-              if (list.isNotEmpty && list.first is Map) {
-                targetId = (list.first as Map<String, dynamic>)['id'] as int?;
-                _remoteAnamnesaId = targetId;
-              }
-            } catch (e) {
-              debugPrint('ℹ️ Unable to check existing anamnesa: $e');
-            }
-          }
-
-          Response response;
-          if (targetId != null) {
-            debugPrint('📤 Updating anamnesa PUT /anamnesa/$targetId ...');
-            response = await _dio.put('/anamnesa/$targetId', data: apiData);
-          } else {
-            debugPrint('📤 Creating anamnesa POST /anamnesa ...');
-            response = await _dio.post('/anamnesa', data: apiData);
-          }
-
-          debugPrint('✅ Anamnesa API status: ${response.statusCode}');
-          if (response.statusCode == 200 || response.statusCode == 201) {
-            // Try capture remote id
-            final body = response.data;
-            int? remoteId;
-            if (body is Map &&
-                body['data'] is Map &&
-                (body['data']['id'] is int)) {
-              remoteId = body['data']['id'] as int;
-            } else if (body is Map && body['id'] is int) {
-              remoteId = body['id'] as int;
-            }
-
-            await _database.updateAnamnesa(
-              anamnesaId,
-              db.AnamnesasCompanion(
-                isSynced: const drift.Value(true),
-                serverId: drift.Value(remoteId),
-                dokterId: drift.Value(int.tryParse(reg?.dokterId ?? '')),
-                poliId: drift.Value(reg?.kodePoli),
-                tanggal: drift.Value(DateTime.now().toIso8601String()),
-              ),
-            );
-            debugPrint('✅ Anamnesa synced to API successfully');
-          }
-        }
-      } on DioException catch (e) {
-        final status = e.response?.statusCode;
-        if (status == 401) {
-          debugPrint('🔒 Unauthenticated while saving anamnesa. Prompting re-login.');
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Sesi berakhir. Silakan login kembali.'),
-                backgroundColor: kDangerColor,
-              ),
-            );
-          }
-        } else {
-          debugPrint('⚠️ Failed to sync anamnesa to API (will retry later): ${e.message}');
-        }
-        // Keep isSynced = false, background service will retry
-      } catch (e) {
-        debugPrint('⚠️ Failed to sync anamnesa to API (will retry later): $e');
-        // Keep isSynced = false, background service will retry
-      }
-
-      debugPrint('✅ Anamnesa saved successfully');
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Anamnesa berhasil disimpan'),
-            backgroundColor: kSuccessColor,
-          ),
-        );
-
-        if (widget.onCompleted != null) {
-          widget.onCompleted!();
-        }
-
-        Navigator.pop(context, true);
-      }
+      if (!mounted) return;
+      setState(() => _isSaving = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Anamnesa berhasil disimpan!'),
+          backgroundColor: kSuccessColor,
+        ),
+      );
+      widget.onCompleted?.call();
+      Navigator.pop(context, true);
     } catch (e) {
-      debugPrint('❌ Error saving anamnesa: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e'), backgroundColor: kDangerColor),
-        );
-      }
-    } finally {
-      if (mounted) {
-        setState(() => _isSaving = false);
-      }
+      if (!mounted) return;
+      setState(() => _isSaving = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Gagal menyimpan anamnesa: $e'),
+          backgroundColor: kDangerColor,
+        ),
+      );
     }
+  }
+
+  bool _validateRequiredFields() {
+    // Minimal payload requirements to avoid backend 422/500
+    final List<String> missing = [];
+    if (_keluhanPasienController.text.trim().isEmpty) {
+      missing.add('Keluhan Pasien');
+    }
+    if (_pemeriksaanFisikController.text.trim().isEmpty) {
+      missing.add('Pemeriksaan Fisik');
+    }
+    if (_diagnosisController.text.trim().isEmpty) {
+      missing.add('Diagnosis');
+    }
+    // Ensure vital signs present (nadi/suhu/pernapasan and tekanan_darah)
+    if (_tekananDarahController.text.trim().isEmpty) {
+      missing.add('Tekanan Darah');
+    }
+    if (_frekuensiNadiController.text.trim().isEmpty) {
+      missing.add('Frekuensi Nadi');
+    }
+    if (_suhuController.text.trim().isEmpty) {
+      missing.add('Suhu');
+    }
+    if (_frekuensiPernapasanController.text.trim().isEmpty) {
+      missing.add('Frekuensi Pernapasan');
+    }
+    // Jenis perawatan
+    if (_jenisPerawatan.trim().isEmpty) {
+      missing.add('Jenis Perawatan');
+    }
+
+    if (missing.isNotEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Harus diisi: ${missing.join(', ')}'),
+          backgroundColor: kWarningColor,
+        ),
+      );
+      return false;
+    }
+    return true;
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoading) {
-      return Scaffold(
-        backgroundColor: kScaffoldBg,
-        appBar: AppBar(
-          title: const Text('Anamnesa Pasien'),
-          backgroundColor: kPrimaryColor,
-          foregroundColor: kWhite,
-        ),
-        body: const Center(
-          child: CircularProgressIndicator(color: kPrimaryColor),
-        ),
-      );
+    String appBarTitle = '';
+    Color appBarColor = kPrimaryColor;
+    Color headerBgColor = kPrimaryColor;
+
+    switch (_currentPage) {
+      case 0:
+        appBarTitle = '1/3 Pengkajian Keperawatan';
+        appBarColor = kPrimaryColor;
+        headerBgColor = kPrimaryColor;
+        break;
+      case 1:
+        appBarTitle = '2/3 Pengkajian Medis';
+        appBarColor = kPrimaryColor;
+        headerBgColor = kPrimaryColor;
+        break;
+      case 2:
+        appBarTitle = '3/3 Khusus Perawat';
+        appBarColor = kHeaderNurseColor;
+        headerBgColor = kHeaderNurseColor;
+        break;
     }
 
     return Scaffold(
       backgroundColor: kScaffoldBg,
-      body: CustomScrollView(
-        slivers: [
-          _buildSliverAppBar(),
-          SliverToBoxAdapter(
+      body: Column(
+        children: [
+          _buildHeaderAppBar(appBarTitle, appBarColor, headerBgColor),
+          Expanded(
             child: Form(
               key: _formKey,
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  children: [
-                    _buildStepIndicator(),
-                    const SizedBox(height: 16),
-                    if (_currentStep == 0) _buildPengkajianKeperawatanSection(),
-                    if (_currentStep == 1) _buildPengkajianMedisSection(),
-                    if (_currentStep == 2) _buildKhususPerawatSection(),
-                    const SizedBox(height: 100),
-                  ],
-                ),
+              child: _isLoadingData
+                  ? const Center(child: CircularProgressIndicator())
+                  : PageView(
+                controller: _pageController,
+                physics: const NeverScrollableScrollPhysics(), // Disable swipe
+                onPageChanged: (index) {
+                  setState(() => _currentPage = index);
+                },
+                children: [
+                  _buildPengkajianKeperawatanContent(),
+                  _buildPengkajianMedisContent(),
+                  _buildKhususPerawatContent(),
+                ],
               ),
             ),
           ),
         ],
       ),
-      bottomNavigationBar: _buildBottomButton(),
+      bottomNavigationBar: _buildBottomButton(appBarColor),
     );
   }
 
-  Widget _buildSliverAppBar() {
-    return SliverAppBar(
-      expandedHeight: 120,
-      pinned: true,
-      backgroundColor: kPrimaryColor,
-      foregroundColor: kWhite,
-      flexibleSpace: FlexibleSpaceBar(
-        title: const Text('Anamnesa Pasien', style: TextStyle(fontSize: 16)),
-        background: Container(
-          decoration: const BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [kPrimaryColor, kPrimaryLight],
-            ),
+  // --- HEADER WIDGETS ---
+
+  Widget _buildHeaderAppBar(String title, Color color, Color bgColor) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(20, 50, 20, 20),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: const BorderRadius.only(
+          bottomLeft: Radius.circular(24),
+          bottomRight: Radius.circular(24),
+        ),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [bgColor, bgColor.withOpacity(0.7)],
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: bgColor.withOpacity(0.3),
+            blurRadius: 10,
+            offset: const Offset(0, 5),
           ),
+        ],
+      ),
+      child: SafeArea(
+        bottom: false,
+        child: Row(
+          children: [
+            IconButton(
+              icon: const Icon(Icons.arrow_back_ios, color: kWhite, size: 20),
+              onPressed: () => Navigator.pop(context),
+            ),
+            Expanded(
+              child: Text(
+                title,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: kWhite,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+            const SizedBox(width: 40), // Placeholder for back button width
+          ],
         ),
       ),
     );
   }
 
-  Widget _buildStepIndicator() {
-    final titles = const ['Keperawatan', 'Medis', 'Khusus Perawat'];
-    return Row(
-      children: List.generate(3, (index) {
-        final active = _currentStep == index;
-        return Expanded(
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 250),
-            margin: EdgeInsets.only(right: index < 2 ? 8 : 0),
-            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
-            decoration: BoxDecoration(
-              color: active ? kPrimaryColor : kCardBg,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: active ? kPrimaryColor : kTextGrey.withOpacity(0.2),
-              ),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                CircleAvatar(
-                  radius: 10,
-                  backgroundColor: active ? kWhite : kPrimaryColor,
-                  child: Text(
-                    '${index + 1}',
-                    style: TextStyle(
-                      color: active ? kPrimaryColor : kWhite,
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  titles[index],
-                  style: TextStyle(
-                    color: active ? kWhite : kTextDark,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
+  // --- CONTENT PAGES ---
+
+  Widget _buildContentWrapper({
+    required Widget child,
+    required String title,
+    required IconData icon,
+    required Color color,
+  }) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        children: [
+          _buildSectionCard(
+            title: title,
+            icon: icon,
+            color: color,
+            child: Padding(
+              padding: const EdgeInsets.only(top: 10),
+              child: child,
             ),
           ),
-        );
-      }),
+          const SizedBox(height: 20),
+        ],
+      ),
     );
   }
 
-  // SECTION 1: PENGKAJIAN KEPERAWATAN
-  Widget _buildPengkajianKeperawatanSection() {
-    return _buildSectionCard(
+  // SECTION 1: PENGKAJIAN KEPERAWATAN CONTENT
+  Widget _buildPengkajianKeperawatanContent() {
+    return _buildContentWrapper(
       title: 'Formulir Pengkajian Keperawatan',
       icon: Icons.medical_services,
       color: kPrimaryColor,
@@ -920,16 +654,17 @@ class _ScheduleAnamnesaPageState extends State<ScheduleAnamnesaPage> {
           const SizedBox(height: 12),
           _buildTextField(
             controller: _imtController,
-            label: 'IMT',
+            label: 'IMT (Otomatis)',
             hint: '20.8',
             isNumber: true,
             isDecimal: true,
+            enabled: false, // IMT should be auto-calculated
           ),
           const SizedBox(height: 12),
           _buildTextField(
             controller: _lingkarKepalaController,
             label: 'Khusus Pediatri: Lingkaran Kepala (cm)',
-            hint: '',
+            hint: 'Contoh: 35',
           ),
           const SizedBox(height: 20),
 
@@ -991,11 +726,9 @@ class _ScheduleAnamnesaPageState extends State<ScheduleAnamnesaPage> {
           // Masalah Keperawatan
           _buildSubsection('Masalah Keperawatan', Icons.healing),
           ..._masalahKeperawatanOptions.entries.map((e) {
-            return CheckboxListTile(
-              title: Text(e.key, style: const TextStyle(fontSize: 13)),
+            return _buildCheckboxRow(
+              label: e.key,
               value: e.value,
-              dense: true,
-              contentPadding: EdgeInsets.zero,
               onChanged: (val) {
                 setState(() => _masalahKeperawatanOptions[e.key] = val!);
               },
@@ -1007,7 +740,7 @@ class _ScheduleAnamnesaPageState extends State<ScheduleAnamnesaPage> {
               child: _buildTextField(
                 controller: _masalahKeperawatanLainnyaController,
                 label: 'Sebutkan masalah keperawatan lainnya',
-                hint: '',
+                hint: 'Masalah lainnya...',
               ),
             ),
         ],
@@ -1015,9 +748,9 @@ class _ScheduleAnamnesaPageState extends State<ScheduleAnamnesaPage> {
     );
   }
 
-  // SECTION 2: PENGKAJIAN MEDIS
-  Widget _buildPengkajianMedisSection() {
-    return _buildSectionCard(
+  // SECTION 2: PENGKAJIAN MEDIS CONTENT
+  Widget _buildPengkajianMedisContent() {
+    return _buildContentWrapper(
       title: 'Formulir Pengkajian Medis',
       icon: Icons.medical_information,
       color: kPrimaryColor,
@@ -1030,6 +763,7 @@ class _ScheduleAnamnesaPageState extends State<ScheduleAnamnesaPage> {
             label: 'Pemeriksaan Fisik',
             hint: 'Masukkan hasil pemeriksaan fisik...',
             multiline: true,
+            required: true,
           ),
           const SizedBox(height: 20),
           _buildSubsection('Diagnosis', Icons.assignment),
@@ -1038,6 +772,7 @@ class _ScheduleAnamnesaPageState extends State<ScheduleAnamnesaPage> {
             label: 'Diagnosis',
             hint: 'Masukkan diagnosis...',
             multiline: true,
+            required: true,
           ),
           const SizedBox(height: 20),
           _buildSubsection('Rencana dan Terapi', Icons.medical_services),
@@ -1084,30 +819,30 @@ class _ScheduleAnamnesaPageState extends State<ScheduleAnamnesaPage> {
     );
   }
 
-  // SECTION 3: KHUSUS PERAWAT
-  Widget _buildKhususPerawatSection() {
-    return _buildSectionCard(
+  // SECTION 3: KHUSUS PERAWAT CONTENT
+  Widget _buildKhususPerawatContent() {
+    return _buildContentWrapper(
       title: 'Diisi Khusus Perawat',
       icon: Icons.local_hospital,
-      color: kSuccessColor,
+      color: kHeaderNurseColor,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Time Up & Go
           _buildSubsection(
-            'Intervensi Time Up & Go - Pasien Rawat Jalan yang Beresiko Jatuh',
+            'Intervensi Time Up & Go',
             Icons.accessibility_new,
+            color: kHeaderNurseColor,
           ),
-          Text(
-            'Cara Benar : jalan lurus (tidak ada istilah)',
+          const Text(
+            'Pasien Rawat Jalan yang Beresiko Jatuh',
             style: TextStyle(fontSize: 12, color: kTextGrey),
           ),
           const SizedBox(height: 8),
           ..._intervensiTimeUpGoOptions.entries.map((e) {
-            return CheckboxListTile(
-              title: Text(e.key, style: const TextStyle(fontSize: 12)),
+            return _buildCheckboxRow(
+              label: e.key,
               value: e.value,
-              dense: true,
-              contentPadding: EdgeInsets.zero,
               onChanged: (val) {
                 setState(() => _intervensiTimeUpGoOptions[e.key] = val!);
               },
@@ -1117,8 +852,9 @@ class _ScheduleAnamnesaPageState extends State<ScheduleAnamnesaPage> {
 
           // Skrining Nutrisi - MST
           _buildSubsection(
-            'Skrining Nutrisi - MST untuk Pasien Dewasa',
+            'Skrining Nutrisi - MST (Dewasa)',
             Icons.restaurant_menu,
+            color: kHeaderNurseColor,
           ),
           _buildMstQuestion(
             '1. Apakah ada penurunan berat badan yang tidak diinginkan dalam 6 bulan terakhir?',
@@ -1144,8 +880,9 @@ class _ScheduleAnamnesaPageState extends State<ScheduleAnamnesaPage> {
 
           // Skrining Nutrisi - STRONGkids
           _buildSubsection(
-            'Skrining Nutrisi - STRONGkids untuk Pasien Anak',
+            'Skrining Nutrisi - STRONGkids (Anak)',
             Icons.child_care,
+            color: kHeaderNurseColor,
           ),
           _buildStrongkidsQuestion(
             '1. Apakah ada penyakit beresiko malnutrisi (seperti kelainan jantung, bawaan, metabolisme, cacat mental, keganasan)?',
@@ -1175,8 +912,12 @@ class _ScheduleAnamnesaPageState extends State<ScheduleAnamnesaPage> {
           const SizedBox(height: 20),
 
           // Edukasi Pasien
-          _buildSubsection('Edukasi Pasien', Icons.school),
-          Text(
+          _buildSubsection(
+            'Edukasi Pasien',
+            Icons.school,
+            color: kHeaderNurseColor,
+          ),
+          const Text(
             'Ya (diberikan di formulir M2)',
             style: TextStyle(
               fontSize: 12,
@@ -1184,123 +925,64 @@ class _ScheduleAnamnesaPageState extends State<ScheduleAnamnesaPage> {
               fontStyle: FontStyle.italic,
             ),
           ),
-          CheckboxListTile(
-            title: const Text('Diagnosis', style: TextStyle(fontSize: 13)),
-            value: _edukasiPasienOptions['diagnosa'],
-            dense: true,
-            contentPadding: EdgeInsets.zero,
+          _buildCheckboxRow(
+            label: 'Diagnosis',
+            value: _edukasiPasienOptions['diagnosa']!,
             onChanged: (val) {
               setState(() => _edukasiPasienOptions['diagnosa'] = val!);
             },
           ),
-          CheckboxListTile(
-            title: const Text(
-              'Rencana tindak lanjut terapi',
-              style: TextStyle(fontSize: 13),
-            ),
-            value: _edukasiPasienOptions['rencana_tindak_lanjut'],
-            dense: true,
-            contentPadding: EdgeInsets.zero,
+          _buildCheckboxRow(
+            label: 'Rencana tindak lanjut terapi',
+            value: _edukasiPasienOptions['rencana_tindak_lanjut']!,
             onChanged: (val) {
               setState(
                 () => _edukasiPasienOptions['rencana_tindak_lanjut'] = val!,
               );
             },
           ),
-          const SizedBox(height: 8),
-          _buildTextField(
-            controller: _edukasiPasienController,
-            label: 'Alasan tidak dilakukan edukasi',
-            hint: 'Masukkan alasan...',
-            multiline: true,
-          ),
           const SizedBox(height: 20),
 
           // Penerimaan Pulang Pasien
-          _buildSubsection('Perencanaan/Penerimaan Pulang Pasien', Icons.home),
+          _buildSubsection(
+            'Penerimaan Pulang Pasien',
+            Icons.home,
+            color: kHeaderNurseColor,
+          ),
           _buildTextField(
             controller: _penerimaPulangPasienController,
             label:
                 'Jika salah satu sewa terpenuhi, tergolong dalam home care dengan formula penerimaan pulang pasien',
-            hint: '',
+            hint: 'Masukkan keterangan pulang pasien...',
             multiline: true,
           ),
           const SizedBox(height: 20),
 
           // Hambatan Mobilisasi
-          _buildSubsection('Hambatan Mobilisasi', Icons.accessible),
-          CheckboxListTile(
-            title: const Text(
-              'Ya (lanjut usia (>60 tahun) dan alat)',
-              style: TextStyle(fontSize: 13),
-            ),
-            value: _hambatanMobilisasiOptions['lanjut_usia'],
-            dense: true,
-            contentPadding: EdgeInsets.zero,
+          _buildSubsection(
+            'Hambatan Mobilisasi',
+            Icons.accessible,
+            color: kHeaderNurseColor,
+          ),
+          _buildCheckboxRow(
+            label: 'Ya (lanjut usia (>60 tahun) dan alat)',
+            value: _hambatanMobilisasiOptions['lanjut_usia']!,
             onChanged: (val) {
               setState(() => _hambatanMobilisasiOptions['lanjut_usia'] = val!);
             },
           ),
-          CheckboxListTile(
-            title: const Text('Tidak', style: TextStyle(fontSize: 13)),
-            value: _hambatanMobilisasiOptions['tidak_ada'],
-            dense: true,
-            contentPadding: EdgeInsets.zero,
+          _buildCheckboxRow(
+            label: 'Tidak',
+            value: _hambatanMobilisasiOptions['tidak_ada']!,
             onChanged: (val) {
               setState(() => _hambatanMobilisasiOptions['tidak_ada'] = val!);
             },
           ),
           const SizedBox(height: 12),
-          // Rencana pulang sesuai schema
-          _buildSubsection('Rencana Pulang (Checklist)', Icons.check_circle),
-          CheckboxListTile(
-            title: const Text(
-              'Usia lanjut (≥65 tahun atau lebih)',
-              style: TextStyle(fontSize: 13),
-            ),
-            value: _rencUsiaLanjut,
-            dense: true,
-            contentPadding: EdgeInsets.zero,
-            onChanged: (val) => setState(() => _rencUsiaLanjut = val ?? false),
-          ),
-          CheckboxListTile(
-            title: const Text(
-              'Hambatan mobilisasi',
-              style: TextStyle(fontSize: 13),
-            ),
-            value: _rencHambatanMobil,
-            dense: true,
-            contentPadding: EdgeInsets.zero,
-            onChanged: (val) =>
-                setState(() => _rencHambatanMobil = val ?? false),
-          ),
-          CheckboxListTile(
-            title: const Text(
-              'Membutuhkan layanan medis/perawatan berkelanjutan',
-              style: TextStyle(fontSize: 13),
-            ),
-            value: _rencLayananMedis,
-            dense: true,
-            contentPadding: EdgeInsets.zero,
-            onChanged: (val) =>
-                setState(() => _rencLayananMedis = val ?? false),
-          ),
-          CheckboxListTile(
-            title: const Text(
-              'Tergantung orang lain untuk aktivitas harian',
-              style: TextStyle(fontSize: 13),
-            ),
-            value: _rencTergantungOrg,
-            dense: true,
-            contentPadding: EdgeInsets.zero,
-            onChanged: (val) =>
-                setState(() => _rencTergantungOrg = val ?? false),
-          ),
-          const SizedBox(height: 12),
-          Text(
+          const Text(
             'Tergantung dengan orang lain untuk aktivitas harian seperti mandi, berpakaian, ketoilet, berpindah tempat, dan juga konsulensi pelayanan medis dan perawatan berkelanjutan',
             style: TextStyle(
-              fontSize: 12,
+              fontSize: 11,
               color: kTextGrey,
               fontStyle: FontStyle.italic,
             ),
@@ -1319,15 +1001,21 @@ class _ScheduleAnamnesaPageState extends State<ScheduleAnamnesaPage> {
     );
   }
 
+  // --- REUSABLE WIDGETS ---
+
   Widget _buildMstQuestion(String question, String key, List<String> options) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           question,
-          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+          style: const TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w500,
+            color: kTextDark,
+          ),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 4),
         ...options.map((option) {
           return RadioListTile<String>(
             title: Text(option, style: const TextStyle(fontSize: 12)),
@@ -1345,28 +1033,40 @@ class _ScheduleAnamnesaPageState extends State<ScheduleAnamnesaPage> {
   }
 
   Widget _buildMstScoreDisplay() {
-    final score = _computeMstScore();
+    int score = 0;
+    final penurunanBerat = _skriningNutrisiMstAnswers['penurunan_berat'] ?? '';
+    if (penurunanBerat.contains('(1)')) score += 1;
+    if (penurunanBerat.contains('(2)')) score += 2;
+    if (penurunanBerat.contains('(3)')) score += 3;
+    if (penurunanBerat.contains('(4)')) score += 4;
+
+    final makanMenurun = _skriningNutrisiMstAnswers['makan_menurun'] ?? '';
+    if (makanMenurun.contains('(1)')) score += 1;
 
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: kWarningColor.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: kWarningColor),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: kWarningColor.withOpacity(0.4)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
             'Total Skor: $score',
-            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+            style: const TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 14,
+              color: kWarningColor,
+            ),
           ),
           const SizedBox(height: 4),
           Text(
             score >= 2
-                ? 'Skor ≥ 2: berisiko malnutrisi dan gizi'
-                : 'Skor 0-1: berisiko rendah',
-            style: TextStyle(fontSize: 12, color: kTextGrey),
+                ? 'Skor ≥ 2: Berisiko Malnutrisi dan Gizi'
+                : 'Skor 0-1: Risiko Rendah',
+            style: TextStyle(fontSize: 12, color: kTextDark),
           ),
         ],
       ),
@@ -1383,9 +1083,13 @@ class _ScheduleAnamnesaPageState extends State<ScheduleAnamnesaPage> {
       children: [
         Text(
           question,
-          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+          style: const TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w500,
+            color: kTextDark,
+          ),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 4),
         ...options.map((option) {
           return RadioListTile<String>(
             title: Text(option, style: const TextStyle(fontSize: 12)),
@@ -1403,51 +1107,67 @@ class _ScheduleAnamnesaPageState extends State<ScheduleAnamnesaPage> {
   }
 
   Widget _buildStrongkidsScoreDisplay() {
-    final score = _computeStrongkidsScore();
+    int score = 0;
+    for (var answer in _skriningNutrisiStrongkidsAnswers.values) {
+      if (answer.contains('(1)')) score += 1;
+      if (answer.contains('(2)')) score += 2;
+    }
 
-    String riskLevel = '';
+    String riskLevelText;
+    Color riskColor;
     if (score >= 4) {
-      riskLevel = 'Skor ≥ 4: resiko tinggi';
+      riskLevelText = 'Skor ≥ 4: Risiko Tinggi';
+      riskColor = kDangerColor;
     } else if (score >= 1) {
-      riskLevel = 'Skor 1-3: risiko sedang';
+      riskLevelText = 'Skor 1-3: Risiko Sedang';
+      riskColor = kWarningColor;
     } else {
-      riskLevel = 'Skor 0: risiko rendah';
+      riskLevelText = 'Skor 0: Risiko Rendah';
+      riskColor = kSuccessColor;
     }
 
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: kSuccessColor.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: kSuccessColor),
+        color: riskColor.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: riskColor.withOpacity(0.4)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
             'Total Skor: $score',
-            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              fontSize: 14,
+              color: riskColor,
+            ),
           ),
           const SizedBox(height: 4),
-          Text(riskLevel, style: TextStyle(fontSize: 12, color: kTextGrey)),
+          Text(riskLevelText, style: TextStyle(fontSize: 12, color: kTextDark)),
         ],
       ),
     );
   }
 
-  Widget _buildSubsection(String title, IconData icon) {
+  Widget _buildSubsection(
+    String title,
+    IconData icon, {
+    Color color = kPrimaryColor,
+  }) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.only(bottom: 12, top: 8),
       child: Row(
         children: [
-          Icon(icon, size: 18, color: kPrimaryColor),
+          Icon(icon, size: 18, color: color),
           const SizedBox(width: 8),
           Text(
             title,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.bold,
-              color: kPrimaryColor,
+              color: color,
             ),
           ),
         ],
@@ -1467,25 +1187,23 @@ class _ScheduleAnamnesaPageState extends State<ScheduleAnamnesaPage> {
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: color.withOpacity(0.08),
-            blurRadius: 20,
+            color: kTextGrey.withOpacity(0.1),
+            blurRadius: 10,
             offset: const Offset(0, 4),
           ),
         ],
       ),
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
               Container(
-                padding: const EdgeInsets.all(10),
+                padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [color, color.withOpacity(0.7)],
-                  ),
-                  borderRadius: BorderRadius.circular(12),
+                  color: color,
+                  borderRadius: BorderRadius.circular(10),
                 ),
                 child: Icon(icon, color: kWhite, size: 20),
               ),
@@ -1494,7 +1212,7 @@ class _ScheduleAnamnesaPageState extends State<ScheduleAnamnesaPage> {
                 child: Text(
                   title,
                   style: const TextStyle(
-                    fontSize: 15,
+                    fontSize: 16,
                     fontWeight: FontWeight.bold,
                     color: kTextDark,
                   ),
@@ -1502,7 +1220,7 @@ class _ScheduleAnamnesaPageState extends State<ScheduleAnamnesaPage> {
               ),
             ],
           ),
-          const SizedBox(height: 20),
+          const Divider(height: 20, thickness: 0.5, color: Color(0xFFE5E7EB)),
           child,
         ],
       ),
@@ -1518,6 +1236,7 @@ class _ScheduleAnamnesaPageState extends State<ScheduleAnamnesaPage> {
     bool isNumber = false,
     bool isDecimal = false,
     bool required = false,
+    bool enabled = true,
   }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1545,6 +1264,7 @@ class _ScheduleAnamnesaPageState extends State<ScheduleAnamnesaPage> {
         const SizedBox(height: 8),
         TextFormField(
           controller: controller,
+          enabled: enabled,
           keyboardType: isNumber
               ? (isDecimal
                     ? const TextInputType.numberWithOptions(decimal: true)
@@ -1560,33 +1280,34 @@ class _ScheduleAnamnesaPageState extends State<ScheduleAnamnesaPage> {
                     : [FilteringTextInputFormatter.digitsOnly])
               : null,
           maxLines: multiline ? maxLines : 1,
+          style: TextStyle(color: enabled ? kTextDark : kTextGrey),
           decoration: InputDecoration(
             hintText: hint,
             hintStyle: TextStyle(
               color: kTextGrey.withOpacity(0.5),
-              fontSize: 12,
+              fontSize: 13,
             ),
             filled: true,
-            fillColor: kCardBg,
+            fillColor: enabled ? kCardBg : kTextGrey.withOpacity(0.1),
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 14,
+              vertical: 12,
+            ),
             border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: BorderRadius.circular(10),
               borderSide: BorderSide.none,
             ),
             enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: BorderRadius.circular(10),
               borderSide: BorderSide(color: kTextGrey.withOpacity(0.2)),
             ),
             focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: BorderRadius.circular(10),
               borderSide: const BorderSide(color: kPrimaryColor, width: 2),
             ),
             errorBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: BorderRadius.circular(10),
               borderSide: const BorderSide(color: kDangerColor),
-            ),
-            contentPadding: const EdgeInsets.symmetric(
-              horizontal: 12,
-              vertical: 10,
             ),
           ),
           validator: required
@@ -1620,9 +1341,11 @@ class _ScheduleAnamnesaPageState extends State<ScheduleAnamnesaPage> {
           ),
         ),
         const SizedBox(height: 4),
-        Row(
+        Wrap(
+          spacing: 10,
           children: options.map((option) {
-            return Expanded(
+            return SizedBox(
+              width: 140, // Atur lebar tetap untuk konsistensi
               child: RadioListTile<String>(
                 title: Text(option, style: const TextStyle(fontSize: 12)),
                 value: option,
@@ -1638,47 +1361,65 @@ class _ScheduleAnamnesaPageState extends State<ScheduleAnamnesaPage> {
     );
   }
 
-  Widget _buildBottomButton() {
+  Widget _buildCheckboxRow({
+    required String label,
+    required bool value,
+    required ValueChanged<bool?> onChanged,
+  }) {
+    return CheckboxListTile(
+      title: Text(
+        label,
+        style: const TextStyle(fontSize: 13, color: kTextDark),
+      ),
+      value: value,
+      dense: true,
+      contentPadding: EdgeInsets.zero,
+      controlAffinity: ListTileControlAffinity.leading,
+      visualDensity: VisualDensity.compact,
+      activeColor: kPrimaryColor,
+      onChanged: onChanged,
+    );
+  }
+
+  Widget _buildBottomButton(Color primaryColor) {
     return Container(
-      color: kWhite,
       padding: const EdgeInsets.all(
-        16,
+        16.0,
       ).copyWith(bottom: MediaQuery.of(context).padding.bottom + 16),
+      decoration: BoxDecoration(
+        color: kWhite,
+        boxShadow: [
+          BoxShadow(
+            color: kTextGrey.withOpacity(0.2),
+            blurRadius: 10,
+            offset: const Offset(0, -5),
+          ),
+        ],
+      ),
       child: Row(
         children: [
-          if (_currentStep > 0)
+          if (_currentPage > 0)
             Expanded(
               child: OutlinedButton.icon(
-                onPressed: _isSaving
-                    ? null
-                    : () => setState(
-                        () => _currentStep = (_currentStep - 1).clamp(0, 2),
-                      ),
-                icon: const Icon(Icons.chevron_left),
-                label: const Text('Sebelumnya'),
+                onPressed: _isSaving ? null : _previousPage,
+                icon: const Icon(Icons.arrow_back, size: 20),
+                label: const Text('Kembali'),
                 style: OutlinedButton.styleFrom(
-                  minimumSize: const Size(double.infinity, 52),
-                  side: BorderSide(color: kPrimaryColor.withOpacity(0.4)),
+                  minimumSize: const Size(0, 52),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  side: BorderSide(color: primaryColor, width: 1.5),
+                  foregroundColor: primaryColor,
                 ),
               ),
             ),
-          if (_currentStep > 0) const SizedBox(width: 12),
+          if (_currentPage > 0) const SizedBox(width: 16),
           Expanded(
             child: ElevatedButton.icon(
               onPressed: _isSaving
                   ? null
-                  : () async {
-                      if (_currentStep < 2) {
-                        // validate current step minimal required
-                        if (_currentStep == 0 &&
-                            !_formKey.currentState!.validate()) {
-                          return;
-                        }
-                        setState(() => _currentStep += 1);
-                      } else {
-                        await _saveAnamnesa();
-                      }
-                    },
+                  : (_currentPage < 2 ? _nextPage : _saveAnamnesa),
               icon: _isSaving
                   ? const SizedBox(
                       width: 20,
@@ -1688,14 +1429,14 @@ class _ScheduleAnamnesaPageState extends State<ScheduleAnamnesaPage> {
                         color: kWhite,
                       ),
                     )
-                  : Icon(_currentStep < 2 ? Icons.navigate_next : Icons.save),
+                  : Icon(_currentPage < 2 ? Icons.arrow_forward : Icons.save),
               label: Text(
-                _isSaving
-                    ? 'Menyimpan...'
-                    : (_currentStep < 2 ? 'Selanjutnya' : 'Simpan'),
+                _currentPage < 2
+                    ? 'Lanjut (${_currentPage + 1}/3)'
+                    : (_isSaving ? 'Menyimpan...' : 'Simpan'),
               ),
               style: ElevatedButton.styleFrom(
-                backgroundColor: kPrimaryColor,
+                backgroundColor: primaryColor,
                 foregroundColor: kWhite,
                 minimumSize: const Size(double.infinity, 52),
                 shape: RoundedRectangleBorder(

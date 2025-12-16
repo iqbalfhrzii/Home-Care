@@ -66,6 +66,13 @@ class Pasien {
 
   factory Pasien.fromJson(Map<String, dynamic> json) => _$PasienFromJson(json);
   Map<String, dynamic> toJson() => _$PasienToJson(this);
+
+  // --- Safe getters / normalization ---
+  String get safeNama => nama.isNotEmpty ? nama : '-';
+  String get safeMrn => mrn.isNotEmpty ? mrn : '-';
+  String get safeTelepon => telepon.isNotEmpty ? telepon : '-';
+  String get safeAlamat => alamat.isNotEmpty ? alamat : '-';
+  DateTime? get parsedTanggalLahir => DateTime.tryParse(tanggalLahir);
 }
 
 @JsonSerializable()

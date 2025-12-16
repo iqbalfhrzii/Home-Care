@@ -14,7 +14,7 @@ Future<void> initAuthInjections() async {
       () => AuthRemoteDataSourceImpl(sl()),
     )
     ..registerFactory<AuthLocalDataSource>(
-      () => AuthLocalDataSourceImpl(sl(), sl()),
+      () => AuthLocalDataSourceImpl(sl()),
     )
     ..registerLazySingleton<AuthRepository>(
       () => AuthRepositoryImpl(sl(), sl()),

@@ -224,7 +224,7 @@ class _ReportListPageState extends State<ReportListPage> {
           ),
           enabledBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: kTextGrey.withOpacity(0.2)),
+            borderSide: BorderSide(color: kTextGrey.withValues(alpha: 0.2)),
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
@@ -290,7 +290,7 @@ class _ReportListPageState extends State<ReportListPage> {
               Icon(
                 Icons.receipt_long_outlined,
                 size: 64,
-                color: kTextGrey.withOpacity(0.5),
+                color: kTextGrey.withValues(alpha: 0.5),
               ),
               const SizedBox(height: 16),
               Text(
@@ -314,8 +314,10 @@ class _ReportListPageState extends State<ReportListPage> {
               Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (_) =>
-                      ReportDetailTagihanPage(tagihanId: tagihan.id),
+                  builder: (_) => ReportDetailTagihanPage(
+                    tagihanId: tagihan.id,
+                    registrasiId: tagihan.registrasiId,
+                  ),
                 ),
               );
             },
@@ -348,7 +350,7 @@ class _SummaryCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
-            color: color.withOpacity(0.1),
+            color: color.withValues(alpha: 0.1),
             blurRadius: 12,
             offset: const Offset(0, 4),
           ),
@@ -399,7 +401,7 @@ class _FilterChip extends StatelessWidget {
           color: isSelected ? chipColor : kWhite,
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
-            color: isSelected ? chipColor : kTextGrey.withOpacity(0.3),
+            color: isSelected ? chipColor : kTextGrey.withValues(alpha: 0.3),
           ),
         ),
         child: Text(
@@ -476,7 +478,7 @@ class _TagihanCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: statusColor.withOpacity(0.1),
+            color: statusColor.withValues(alpha: 0.1),
             blurRadius: 12,
             offset: const Offset(0, 4),
           ),
@@ -524,7 +526,7 @@ class _TagihanCard extends StatelessWidget {
                         vertical: 6,
                       ),
                       decoration: BoxDecoration(
-                        color: statusColor.withOpacity(0.1),
+                        color: statusColor.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(20),
                       ),
                       child: Text(

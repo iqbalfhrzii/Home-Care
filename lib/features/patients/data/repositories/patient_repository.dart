@@ -1,16 +1,22 @@
+// Offline dummy stub: legacy repository no longer used. Kept for compatibility.
 import '../../domain/models/patient.dart';
-import '../datasources/patient_remote_datasource.dart';
 
 class PatientRepository {
-  final PatientRemoteDataSource remoteDataSource;
-
-  PatientRepository(this.remoteDataSource);
+  PatientRepository();
 
   Future<List<Patient>> fetchAllPatients() async {
-    return await remoteDataSource.getAllPatients();
+    return [];
   }
 
   Future<Patient> fetchPatientDetail(int id) async {
-    return await remoteDataSource.getPatientDetail(id);
+    // Return a simple dummy Patient
+    return Patient(
+      id: id,
+      noRM: 'RM${id.toString().padLeft(4, '0')}',
+      namaPasien: 'Pasien #$id',
+      tanggalLahir: DateTime(1990, 1, 1).toIso8601String(),
+      alamat: 'Alamat dummy',
+      statusRujukan: 'Tidak',
+    );
   }
 }

@@ -1,11 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:homecare_mobile/core/router/app_router.dart';
+import 'package:homecare_mobile/shared/app_injections.dart';
+import 'package:homecare_mobile/features/patients/data/repositories/pasien_repository.dart';
+import 'package:homecare_mobile/features/patients/domain/models/pasien.dart'
+    as db;
+import 'package:homecare_mobile/features/schedules/data/repositories/registrasi_repository.dart';
+import 'package:homecare_mobile/features/schedules/domain/models/registrasi.dart'
+    as db;
 import 'package:intl/intl.dart';
 import 'package:homecare_mobile/features/auth/presentation/widgets/logout_confirmation_dialog.dart';
-import 'package:homecare_mobile/shared/app_injections.dart';
-import 'package:homecare_mobile/shared/local_db/app_database.dart' as db;
-import 'package:homecare_mobile/shared/widgets/sync_status_widget.dart';
 
 // --- Palet Warna Baru ---
 const Color kPrimaryColor = Color(0xFF004B8C); // Deep Blue
@@ -68,6 +72,13 @@ class NotificationInfo {
 //   });
 // }
 
+// Simple local join object (top-level)
+class _UpcomingVisit {
+  final db.Registrasi registration;
+  final db.Pasien patient;
+  const _UpcomingVisit({required this.registration, required this.patient});
+}
+
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
 
@@ -78,9 +89,8 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   late DateTime _selectedDate;
   List<DateTime> _weekDays = [];
-  late final db.AppDatabase _database;
-  // DISABLED - Kunjungan table removed in schema v7, using empty list for now
-  final List<dynamic> _upcomingVisits = [];
+  // Built from Registrasi + Pasien (dummy repositories)
+  final List<_UpcomingVisit> _upcomingVisits = [];
   bool _isLoadingVisits = true;
 
   // Stats data
@@ -95,7 +105,6 @@ class _HomePageState extends State<HomePage> {
   @override
   void initState() {
     super.initState();
-    _database = getIt<db.AppDatabase>();
     _selectedDate = DateTime.now();
     _weekDays = _generateWeekDays(DateTime.now());
     _loadUpcomingVisits();
@@ -107,16 +116,25 @@ class _HomePageState extends State<HomePage> {
     setState(() => _isLoadingStats = true);
 
     try {
-      // Get total patients
-      final patients = await _database.getAllPasiens();
+      final pasienRepo = getIt<PasienRepository>();
+      final regRepo = getIt<RegistrasiRepository>();
+      final patients = await pasienRepo.getAllPasien();
+      final regs = await regRepo.getAllRegistrasi();
 
-      // DISABLED - Kunjungan table removed in schema v7
-      // final visits = await _database.getAllKunjungans();
+      // De-duplicate patients using IDs from both `/pasien` and `/registrasi`
+      final uniquePatientIds = <int>{};
+      for (final p in patients) {
+        uniquePatientIds.add(p.id);
+      }
+      for (final r in regs) {
+        final pid = r.pasienId;
+        if (pid != null) uniquePatientIds.add(pid);
+      }
 
       if (mounted) {
         setState(() {
-          _totalPatients = patients.length;
-          _totalVisits = 0; // TODO: Count from Registrasis
+          _totalPatients = uniquePatientIds.length;
+          _totalVisits = regs.length; // visits from registrasi count
           _isLoadingStats = false;
         });
       }
@@ -131,8 +149,9 @@ class _HomePageState extends State<HomePage> {
   Future<void> _loadNotifications() async {
     setState(() => _isLoadingNotifications = true);
 
-    // DISABLED - Kunjungan table removed in schema v7
     try {
+      // Placeholder: No notifications endpoint specified yet.
+      // Once available, fetch via repository and map to NotificationInfo.
       if (mounted) {
         setState(() {
           _notifications = [];
@@ -150,12 +169,70 @@ class _HomePageState extends State<HomePage> {
   Future<void> _loadUpcomingVisits() async {
     setState(() => _isLoadingVisits = true);
 
-    // DISABLED - Kunjungan table removed in schema v7
-    // Needs refactoring to use Registrasi directly
     try {
-      // TODO: Implement using Registrasis table only
+      final pasienRepo = getIt<PasienRepository>();
+      final regRepo = getIt<RegistrasiRepository>();
+      final patients = await pasienRepo.getAllPasien();
+      final regs = await regRepo.getAllRegistrasi();
+
+      final filtered = regs.where((r) {
+        final ts = r.tglJamReg;
+        if (ts == null) return false;
+        final dt = DateTime.tryParse(ts);
+        if (dt == null) return false;
+        return dt.year == _selectedDate.year &&
+            dt.month == _selectedDate.month &&
+            dt.day == _selectedDate.day;
+      }).toList();
+
+      final visits = <_UpcomingVisit>[];
+      for (final reg in filtered) {
+        // Prefer embedded patient from registrasi response if present
+        db.Pasien? patient;
+        try {
+          // Many APIs embed `pasien` under registrasi; if your domain model maps it,
+          // prefer that to avoid lookup mismatches.
+          final embedded = (reg as dynamic).pasien;
+          if (embedded != null && embedded is db.Pasien) {
+            patient = embedded;
+          }
+        } catch (_) {
+          // ignore cast errors; fall back to lookup below
+        }
+
+        if (patient == null) {
+          final pid = reg.pasienId;
+          patient = patients.firstWhere(
+            (p) => p.id == pid,
+            orElse: () => patients.isNotEmpty
+                ? patients.first
+                : db.Pasien(
+                    id: 0,
+                    mrn: 'MRN-NA',
+                    nama: 'Tidak diketahui',
+                    alamat: '-',
+                    tanggalLahir: '',
+                    jenisKelamin: '',
+                    telepon: '',
+                    createdAt: '',
+                    updatedAt: '',
+                    registrasi: const [],
+                  ),
+          );
+        }
+        visits.add(_UpcomingVisit(registration: reg, patient: patient));
+      }
+
+      visits.sort((a, b) {
+        final da = DateTime.tryParse(a.registration.tglJamReg ?? '');
+        final dbt = DateTime.tryParse(b.registration.tglJamReg ?? '');
+        return (da ?? DateTime(1970)).compareTo(dbt ?? DateTime(1970));
+      });
       if (mounted) {
         setState(() {
+          _upcomingVisits
+            ..clear()
+            ..addAll(visits);
           _isLoadingVisits = false;
         });
       }
@@ -167,26 +244,7 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  DateTime _parseTime(String timeString) {
-    // Parse format "HH:mm" ke DateTime untuk sorting
-    try {
-      final parts = timeString.split(':');
-      if (parts.length == 2) {
-        final hour = int.parse(parts[0]);
-        final minute = int.parse(parts[1].split(' ')[0]); // Handle "10:30 WITA"
-        return DateTime(
-          _selectedDate.year,
-          _selectedDate.month,
-          _selectedDate.day,
-          hour,
-          minute,
-        );
-      }
-    } catch (e) {
-      debugPrint('Error parsing time: $e');
-    }
-    return DateTime.now();
-  }
+  // Removed unused helper to satisfy analyzer
 
   // --- LOGIKA KALENDER ---
   List<DateTime> _generateWeekDays(DateTime today) {
@@ -259,8 +317,7 @@ class _HomePageState extends State<HomePage> {
           children: [
             _buildFuturisticHeader(),
             const SizedBox(height: 24),
-            // Sync Status Widget
-            const SyncStatusWidget(),
+            // TODO: Add sync status widget
             const SizedBox(height: 8),
             _buildDateSelector(),
             const SizedBox(height: 24),
@@ -343,7 +400,7 @@ class _HomePageState extends State<HomePage> {
                   children: [
                     Container(
                       decoration: BoxDecoration(
-                        color: kWhite.withOpacity(0.1),
+                        color: kWhite.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: IconButton(
@@ -360,7 +417,7 @@ class _HomePageState extends State<HomePage> {
                     const SizedBox(width: 8),
                     Container(
                       decoration: BoxDecoration(
-                        color: kWhite.withOpacity(0.1),
+                        color: kWhite.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: IconButton(
@@ -381,7 +438,7 @@ class _HomePageState extends State<HomePage> {
               height: 100,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: kWhite.withOpacity(0.05),
+                color: kWhite.withValues(alpha: 0.05),
               ),
             ),
           ),
@@ -422,7 +479,7 @@ class _HomePageState extends State<HomePage> {
                     const SizedBox(width: 8),
                     Icon(
                       Icons.calendar_month_outlined,
-                      color: kPrimaryColor.withOpacity(0.7),
+                      color: kPrimaryColor.withValues(alpha: 0.7),
                       size: 18,
                     ),
                   ],
@@ -476,14 +533,14 @@ class _HomePageState extends State<HomePage> {
                     boxShadow: isSelected
                         ? [
                             BoxShadow(
-                              color: kPrimaryColor.withOpacity(0.4),
+                              color: kPrimaryColor.withValues(alpha: 0.4),
                               blurRadius: 12,
                               offset: const Offset(0, 6),
                             ),
                           ]
                         : [
                             BoxShadow(
-                              color: Colors.grey.withOpacity(0.1),
+                              color: Colors.grey.withValues(alpha: 0.1),
                               blurRadius: 6,
                               offset: const Offset(0, 2),
                             ),
@@ -499,7 +556,7 @@ class _HomePageState extends State<HomePage> {
                         dayOfWeek,
                         style: TextStyle(
                           color: isSelected
-                              ? kWhite.withOpacity(0.8)
+                              ? kWhite.withValues(alpha: 0.8)
                               : kTextGrey,
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
@@ -564,7 +621,7 @@ class _HomePageState extends State<HomePage> {
           borderRadius: BorderRadius.circular(24),
           boxShadow: [
             BoxShadow(
-              color: kPrimaryColor.withOpacity(0.4),
+              color: kPrimaryColor.withValues(alpha: 0.4),
               blurRadius: 20,
               offset: const Offset(0, 10),
             ),
@@ -575,7 +632,7 @@ class _HomePageState extends State<HomePage> {
             Icon(
               Icons.calendar_today_outlined,
               size: 64,
-              color: kWhite.withOpacity(0.3),
+              color: kWhite.withValues(alpha: 0.3),
             ),
             const SizedBox(height: 16),
             Text(
@@ -589,7 +646,10 @@ class _HomePageState extends State<HomePage> {
             const SizedBox(height: 8),
             Text(
               'Tidak ada jadwal kunjungan pada tanggal ini',
-              style: TextStyle(color: kWhite.withOpacity(0.7), fontSize: 14),
+              style: TextStyle(
+                color: kWhite.withValues(alpha: 0.7),
+                fontSize: 14,
+              ),
               textAlign: TextAlign.center,
             ),
           ],
@@ -682,7 +742,7 @@ class _HomePageState extends State<HomePage> {
               borderRadius: BorderRadius.circular(24),
               boxShadow: [
                 BoxShadow(
-                  color: kPrimaryColor.withOpacity(isFirst ? 0.4 : 0.2),
+                  color: kPrimaryColor.withValues(alpha: isFirst ? 0.4 : 0.2),
                   blurRadius: 20,
                   offset: const Offset(0, 10),
                 ),
@@ -728,7 +788,7 @@ class _HomePageState extends State<HomePage> {
                 Text(
                   visit.patient.mrn,
                   style: TextStyle(
-                    color: kWhite.withOpacity(0.7),
+                    color: kWhite.withValues(alpha: 0.7),
                     fontSize: 13,
                   ),
                 ),
@@ -736,7 +796,7 @@ class _HomePageState extends State<HomePage> {
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: Colors.black.withOpacity(0.1),
+                    color: Colors.black.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Row(
@@ -793,7 +853,7 @@ class _HomePageState extends State<HomePage> {
                       backgroundColor: kSecondaryColor,
                       foregroundColor: kWhite,
                       elevation: 8,
-                      shadowColor: kSecondaryColor.withOpacity(0.5),
+                      shadowColor: kSecondaryColor.withValues(alpha: 0.5),
                       padding: const EdgeInsets.symmetric(vertical: 14),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(16),
@@ -818,7 +878,7 @@ class _HomePageState extends State<HomePage> {
             child: Icon(
               Icons.medical_services_outlined,
               size: 100,
-              color: kWhite.withOpacity(0.05),
+              color: kWhite.withValues(alpha: 0.05),
             ),
           ),
         ],
@@ -851,7 +911,7 @@ class _HomePageState extends State<HomePage> {
         gradient: const LinearGradient(
           colors: [Color(0xFF3B82F6), Color(0xFF2563EB)],
         ),
-        shadow: const Color(0xFF3B82F6).withOpacity(0.3),
+        shadow: const Color(0xFF3B82F6).withValues(alpha: 0.3),
       ),
       StatInfo(
         id: 2,
@@ -863,7 +923,7 @@ class _HomePageState extends State<HomePage> {
         gradient: const LinearGradient(
           colors: [Color(0xFF22C55E), Color(0xFF16A34A)],
         ),
-        shadow: const Color(0xFF22C55E).withOpacity(0.3),
+        shadow: const Color(0xFF22C55E).withValues(alpha: 0.3),
       ),
       StatInfo(
         id: 3,
@@ -875,7 +935,7 @@ class _HomePageState extends State<HomePage> {
         gradient: const LinearGradient(
           colors: [Color(0xFFF97316), Color(0xFFEA580C)],
         ),
-        shadow: const Color(0xFFF97316).withOpacity(0.3),
+        shadow: const Color(0xFFF97316).withValues(alpha: 0.3),
       ),
       StatInfo(
         id: 4,
@@ -887,7 +947,7 @@ class _HomePageState extends State<HomePage> {
         gradient: const LinearGradient(
           colors: [Color(0xFFA855F7), Color(0xFF9333EA)],
         ),
-        shadow: const Color(0xFFA855F7).withOpacity(0.3),
+        shadow: const Color(0xFFA855F7).withValues(alpha: 0.3),
       ),
     ];
 
@@ -968,7 +1028,7 @@ class _HomePageState extends State<HomePage> {
                     Icon(
                       Icons.notifications_outlined,
                       size: 48,
-                      color: kTextGrey.withOpacity(0.5),
+                      color: kTextGrey.withValues(alpha: 0.5),
                     ),
                     const SizedBox(height: 8),
                     Text(
@@ -1098,7 +1158,7 @@ class _StatCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: Colors.grey.withOpacity(0.08),
+            color: Colors.grey.withValues(alpha: 0.08),
             blurRadius: 15,
             offset: const Offset(0, 5),
           ),
@@ -1154,8 +1214,8 @@ class _StatCard extends StatelessWidget {
                   ),
                   decoration: BoxDecoration(
                     color: isPositive
-                        ? kSecondaryColor.withOpacity(0.1)
-                        : Colors.red.withOpacity(0.1),
+                        ? kSecondaryColor.withValues(alpha: 0.1)
+                        : Colors.red.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(6),
                   ),
                   child: Text(
@@ -1192,7 +1252,7 @@ class _NotificationCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: Colors.grey.withOpacity(0.08),
+            color: Colors.grey.withValues(alpha: 0.08),
             blurRadius: 15,
             offset: const Offset(0, 5),
           ),
@@ -1295,7 +1355,7 @@ class _QuickActionButton extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: kPrimaryColor.withOpacity(0.1),
+              color: kPrimaryColor.withValues(alpha: 0.1),
               shape: BoxShape.circle,
             ),
             child: Icon(icon, size: 28, color: kPrimaryColor),

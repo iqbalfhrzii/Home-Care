@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
-import 'package:homecare_mobile/features/patients/domain/models/pasien.dart';
 import 'package:homecare_mobile/features/patients/presentation/bloc/patient_bloc.dart';
 import 'package:homecare_mobile/shared/app_injections.dart';
+import 'package:homecare_mobile/features/patients/domain/models/pasien.dart';
 
 const Color kPrimaryColor = Color(0xFF004B8C);
 const Color kPrimaryLight = Color(0xFF0063B2);
@@ -43,15 +43,11 @@ class _PatientEditFormState extends State<_PatientEditForm> {
   final _formKey = GlobalKey<FormState>();
 
   late final TextEditingController _namaController;
-  late final TextEditingController _nikController;
-  late final TextEditingController _noBpjsController;
-  late final TextEditingController _tempatLahirController;
   late final TextEditingController _tanggalLahirController;
   late final TextEditingController _alamatController;
   late final TextEditingController _noTelpController;
 
   late String _jenisKelamin;
-  late String? _golonganDarah;
   late DateTime _selectedDate;
   bool _isLoading = false;
 
@@ -73,9 +69,6 @@ class _PatientEditFormState extends State<_PatientEditForm> {
   @override
   void dispose() {
     _namaController.dispose();
-    _nikController.dispose();
-    _noBpjsController.dispose();
-    _tempatLahirController.dispose();
     _tanggalLahirController.dispose();
     _alamatController.dispose();
     _noTelpController.dispose();
@@ -177,57 +170,9 @@ class _PatientEditFormState extends State<_PatientEditForm> {
                         },
                       ),
                       const SizedBox(height: 16),
-                      _buildTextField(
-                        controller: _nikController,
-                        label: 'NIK (opsional)',
-                        icon: Icons.credit_card,
-                        keyboardType: TextInputType.number,
-                        maxLength: 16,
-                        validator: (value) {
-                          if (value != null &&
-                              value.isNotEmpty &&
-                              value.length != 16) {
-                            return 'NIK harus 16 digit';
-                          }
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: 16),
-                      _buildTextField(
-                        controller: _noBpjsController,
-                        label: 'No. BPJS (opsional)',
-                        icon: Icons.local_hospital,
-                        keyboardType: TextInputType.number,
-                        maxLength: 13,
-                        validator: (value) {
-                          if (value != null &&
-                              value.isNotEmpty &&
-                              value.length != 13) {
-                            return 'No. BPJS harus 13 digit';
-                          }
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: 24),
-                      _buildSectionTitle('Informasi Kelahiran'),
-                      const SizedBox(height: 12),
-                      _buildTextField(
-                        controller: _tempatLahirController,
-                        label: 'Tempat Lahir',
-                        icon: Icons.location_city,
-                        validator: (value) {
-                          if (value == null || value.trim().isEmpty) {
-                            return 'Tempat lahir harus diisi';
-                          }
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: 16),
                       _buildDateField(),
                       const SizedBox(height: 16),
                       _buildGenderField(),
-                      const SizedBox(height: 16),
-                      _buildGolonganDarahField(),
                       const SizedBox(height: 24),
                       _buildSectionTitle('Kontak & Alamat'),
                       const SizedBox(height: 12),
@@ -334,16 +279,16 @@ class _PatientEditFormState extends State<_PatientEditForm> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: kPrimaryColor.withOpacity(0.05),
+        color: kPrimaryColor.withValues(alpha: 0.05),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: kPrimaryColor.withOpacity(0.2)),
+        border: Border.all(color: kPrimaryColor.withValues(alpha: 0.2)),
       ),
       child: Row(
         children: [
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: kPrimaryColor.withOpacity(0.1),
+              color: kPrimaryColor.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(8),
             ),
             child: const Icon(Icons.badge, color: kPrimaryColor, size: 24),
@@ -420,11 +365,11 @@ class _PatientEditFormState extends State<_PatientEditForm> {
         fillColor: kWhite,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: kTextGrey.withOpacity(0.3)),
+          borderSide: BorderSide(color: kTextGrey.withValues(alpha: 0.3)),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: kTextGrey.withOpacity(0.3)),
+          borderSide: BorderSide(color: kTextGrey.withValues(alpha: 0.3)),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
@@ -455,11 +400,11 @@ class _PatientEditFormState extends State<_PatientEditForm> {
         fillColor: kWhite,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: kTextGrey.withOpacity(0.3)),
+          borderSide: BorderSide(color: kTextGrey.withValues(alpha: 0.3)),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: kTextGrey.withOpacity(0.3)),
+          borderSide: BorderSide(color: kTextGrey.withValues(alpha: 0.3)),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
@@ -505,10 +450,10 @@ class _PatientEditFormState extends State<_PatientEditForm> {
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
         decoration: BoxDecoration(
-          color: isSelected ? color.withOpacity(0.1) : kWhite,
+          color: isSelected ? color.withValues(alpha: 0.1) : kWhite,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
-            color: isSelected ? color : kTextGrey.withOpacity(0.3),
+            color: isSelected ? color : kTextGrey.withValues(alpha: 0.3),
             width: isSelected ? 2 : 1,
           ),
         ),
@@ -527,48 +472,6 @@ class _PatientEditFormState extends State<_PatientEditForm> {
           ],
         ),
       ),
-    );
-  }
-
-  Widget _buildGolonganDarahField() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          'Golongan Darah (opsional)',
-          style: TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w600,
-            color: kTextDark,
-          ),
-        ),
-        const SizedBox(height: 8),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-          decoration: BoxDecoration(
-            color: kWhite,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: kTextGrey.withOpacity(0.3)),
-          ),
-          child: DropdownButtonHideUnderline(
-            child: DropdownButton<String>(
-              isExpanded: true,
-              value: _golonganDarah,
-              hint: const Text('Pilih golongan darah'),
-              icon: const Icon(Icons.arrow_drop_down, color: kPrimaryColor),
-              items: ['A', 'B', 'AB', 'O'].map((String value) {
-                return DropdownMenuItem<String>(
-                  value: value,
-                  child: Text(value),
-                );
-              }).toList(),
-              onChanged: (String? newValue) {
-                setState(() => _golonganDarah = newValue);
-              },
-            ),
-          ),
-        ),
-      ],
     );
   }
 

@@ -63,9 +63,9 @@ class AppRouter {
           GoRoute(
             path: schedules,
             name: 'scheduleList',
-            pageBuilder: (context, state) => const NoTransitionPage(
-              key: ValueKey('schedules'),
-              child: ScheduleListPage(),
+            pageBuilder: (context, state) => NoTransitionPage(
+              key: state.pageKey,
+              child: const ScheduleListPage(),
             ),
             routes: [
               GoRoute(
@@ -80,8 +80,8 @@ class AppRouter {
                     path: 'anamnesa',
                     name: 'scheduleAnamnesa',
                     builder: (context, state) {
-                      final id = int.parse(state.pathParameters['id']!);
-                      return ScheduleAnamnesaPage(registrationId: id);
+                      final id = state.pathParameters['id']!;
+                      return ScheduleAnamnesaPage(registrationId: int.parse(id));
                     },
                   ),
                   GoRoute(

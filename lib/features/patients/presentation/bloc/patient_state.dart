@@ -17,12 +17,14 @@ class PatientListLoaded extends PatientState {
   final List<Pasien> filteredPatients;
   final String searchQuery;
   final String? activeFilter; // null, 'registered', 'unregistered'
+  final bool isLoadingRegistrations; // true ketika sedang fetch registrations
 
   const PatientListLoaded({
     required this.patients,
     required this.filteredPatients,
     this.searchQuery = '',
     this.activeFilter,
+    this.isLoadingRegistrations = false,
   });
 
   PatientListLoaded copyWith({
@@ -31,12 +33,14 @@ class PatientListLoaded extends PatientState {
     String? searchQuery,
     String? activeFilter,
     bool clearFilter = false,
+    bool? isLoadingRegistrations,
   }) {
     return PatientListLoaded(
       patients: patients ?? this.patients,
       filteredPatients: filteredPatients ?? this.filteredPatients,
       searchQuery: searchQuery ?? this.searchQuery,
       activeFilter: clearFilter ? null : (activeFilter ?? this.activeFilter),
+      isLoadingRegistrations: isLoadingRegistrations ?? this.isLoadingRegistrations,
     );
   }
 

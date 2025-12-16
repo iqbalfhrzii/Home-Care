@@ -5,8 +5,13 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:go_router/go_router.dart';
 import 'package:homecare_mobile/shared/app_injections.dart';
-import 'package:homecare_mobile/shared/local_db/app_database.dart' as db;
-// Drift import not needed after refactor
+import 'package:homecare_mobile/features/schedules/data/repositories/registrasi_repository.dart';
+import 'package:homecare_mobile/features/schedules/data/repositories/tagihan_repository.dart';
+import 'package:homecare_mobile/features/schedules/domain/models/registrasi.dart'
+    as db;
+import 'package:homecare_mobile/features/patients/data/repositories/pasien_repository.dart';
+import 'package:homecare_mobile/features/patients/domain/models/pasien.dart'
+    as db;
 
 // --- Palet Warna ---
 const Color kPrimaryColor = Color(0xFF004B8C);
@@ -31,7 +36,6 @@ class ScheduleDetailPage extends StatefulWidget {
 }
 
 class _ScheduleDetailPageState extends State<ScheduleDetailPage> {
-  late final db.AppDatabase _database;
   db.Registrasi? _registration;
   db.Pasien? _patient;
 
@@ -40,70 +44,62 @@ class _ScheduleDetailPageState extends State<ScheduleDetailPage> {
   bool _tindakanDone = false;
   bool _icdDone = false;
   int _progressStep = 0;
+  Map<String, dynamic>? _rawRegistrasi;
 
   bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
-    _database = getIt<db.AppDatabase>();
     _loadData();
   }
 
   Future<void> _loadData() async {
     setState(() => _isLoading = true);
     try {
-      final registration = await _database.getRegistrasiById(
-        widget.registrationId,
-      );
-      if (registration == null) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Registrasi tidak ditemukan')),
-          );
-          Navigator.of(context).pop();
-        }
-        return;
-      }
-
-      final patient = await _database.getPasienById(registration.pasienId);
-
-      // Check progress from related tables instead of Kunjungan
-      final anamnesa = await _database.getAnamnesaByRegistrasiId(
-        registration.id,
-      );
-      final icds = await _database.getRegistrasiIcdsByRegistrasiId(
-        registration.id,
-      );
-      final tindakans = await _database.getRegistrasiTindakansByRegistrasiId(
-        registration.id,
+      final regRepo = getIt<RegistrasiRepository>();
+      final pasienRepo = getIt<PasienRepository>();
+      final reg = await regRepo.getRegistrasiById(widget.registrationId);
+      final raw = await regRepo.getRegistrasiRawById(widget.registrationId);
+      final patients = await pasienRepo.getAllPasien();
+      final patient = patients.firstWhere(
+        (p) => p.id == (reg?.pasienId ?? 0),
+        orElse: () => patients.isNotEmpty
+            ? patients.first
+            : db.Pasien(
+                id: 0,
+                mrn: 'MRN-NA',
+                nama: 'Tidak diketahui',
+                alamat: '-',
+                tanggalLahir: '',
+                jenisKelamin: '',
+                telepon: '',
+                createdAt: '',
+                updatedAt: '',
+                registrasi: const [],
+              ),
       );
 
-      // Calculate progress
-      final anamnesaDone = anamnesa != null;
-      final icdDone = icds.isNotEmpty;
-      final tindakanDone = tindakans.isNotEmpty;
+      // Derive progress flags from raw registrasi includes
+      final hasAnamnesa = raw != null && raw['anamnesa'] != null;
+      final icdList = raw != null && raw['icd'] is List ? (raw['icd'] as List) : const [];
+      final tindakanList = raw != null && raw['tindakan'] is List ? (raw['tindakan'] as List) : const [];
+      _anamnesaDone = hasAnamnesa;
+      _icdDone = icdList.isNotEmpty;
+      _tindakanDone = tindakanList.isNotEmpty;
+      _progressStep = (_anamnesaDone ? 1 : 0) + (_tindakanDone ? 1 : 0) + (_icdDone ? 1 : 0);
+      // consider completed when all steps done (used for filters elsewhere)
 
-      int progressStep = 0;
-      if (anamnesaDone) progressStep++;
-      if (tindakanDone) progressStep++;
-      if (icdDone) progressStep++;
-
-      debugPrint(
-        '✅ Loaded registration data: anamnesaDone=$anamnesaDone, tindakanDone=$tindakanDone, icdDone=$icdDone, progressStep=$progressStep',
-      );
-
+      _registration = reg;
+      _rawRegistrasi = raw;
+      _patient = patient;
       if (mounted) {
         setState(() {
-          _registration = registration;
-          _patient = patient;
-          _anamnesaDone = anamnesaDone;
-          _tindakanDone = tindakanDone;
-          _icdDone = icdDone;
-          _progressStep = progressStep;
           _isLoading = false;
         });
       }
+
+      // Keep user on Schedules; use list filters to show selesai
     } catch (e) {
       debugPrint('❌ Error loading schedule detail: $e');
       if (mounted) {
@@ -114,6 +110,48 @@ class _ScheduleDetailPageState extends State<ScheduleDetailPage> {
 
   String _formatDate(DateTime date) {
     return DateFormat('EEEE, d MMMM yyyy', 'id_ID').format(date);
+  }
+
+  Future<void> _resetAnamnesa() async {
+    try {
+      final repo = getIt<RegistrasiRepository>();
+      await repo.deleteAnamnesaByRegistrasiId(widget.registrationId);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Anamnesa direset')),
+      );
+      _loadData();
+    } catch (e) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Gagal reset anamnesa: $e')));
+    }
+  }
+
+  Future<void> _resetTindakan() async {
+    try {
+      final repo = getIt<RegistrasiRepository>();
+      await repo.detachAllTindakan(widget.registrationId);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Tindakan direset')),
+      );
+      _loadData();
+    } catch (e) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Gagal reset tindakan: $e')));
+    }
+  }
+
+  Future<void> _resetIcd() async {
+    try {
+      final repo = getIt<RegistrasiRepository>();
+      await repo.detachAllIcd(widget.registrationId);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('ICD direset')),
+      );
+      _loadData();
+    } catch (e) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Gagal reset ICD: $e')));
+    }
   }
 
   @override
@@ -199,7 +237,7 @@ class _ScheduleDetailPageState extends State<ScheduleDetailPage> {
                 width: 80,
                 height: 80,
                 decoration: BoxDecoration(
-                  color: kWhite.withOpacity(0.2),
+                  color: kWhite.withValues(alpha: 0.2),
                   shape: BoxShape.circle,
                 ),
                 child: Stack(
@@ -210,7 +248,7 @@ class _ScheduleDetailPageState extends State<ScheduleDetailPage> {
                       height: 70,
                       child: CircularProgressIndicator(
                         value: progress / 3,
-                        backgroundColor: kWhite.withOpacity(0.2),
+                        backgroundColor: kWhite.withValues(alpha: 0.2),
                         valueColor: const AlwaysStoppedAnimation<Color>(kWhite),
                         strokeWidth: 6,
                       ),
@@ -240,7 +278,7 @@ class _ScheduleDetailPageState extends State<ScheduleDetailPage> {
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: kPrimaryColor.withOpacity(0.08),
+            color: kPrimaryColor.withValues(alpha: 0.08),
             blurRadius: 20,
             offset: const Offset(0, 8),
           ),
@@ -278,7 +316,7 @@ class _ScheduleDetailPageState extends State<ScheduleDetailPage> {
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: kInfoColor.withOpacity(0.08),
+            color: kInfoColor.withValues(alpha: 0.08),
             blurRadius: 20,
             offset: const Offset(0, 8),
           ),
@@ -300,7 +338,7 @@ class _ScheduleDetailPageState extends State<ScheduleDetailPage> {
           _buildInfoRow(
             Icons.calendar_today,
             'Tanggal',
-            _formatDate(DateTime.parse(_registration!.tglJamReg)),
+            _formatDate(DateTime.parse(_registration!.tglJamReg!)),
           ),
           const SizedBox(height: 12),
           _buildInfoRow(
@@ -308,19 +346,19 @@ class _ScheduleDetailPageState extends State<ScheduleDetailPage> {
             'Jam',
             DateFormat(
               'HH:mm',
-            ).format(DateTime.parse(_registration!.tglJamReg)),
+            ).format(DateTime.parse(_registration!.tglJamReg!)),
           ),
           const SizedBox(height: 12),
           _buildInfoRow(
             Icons.medical_services,
             'Jenis',
-            _registration!.jenisKunjungan,
+            _registration!.jenisKunjungan ?? '-',
           ),
           const SizedBox(height: 12),
           _buildInfoRow(
             Icons.category,
             'Tipe Pasien',
-            _registration!.tipePasien,
+            _registration!.tipePasien ?? '-',
           ),
         ],
       ),
@@ -338,7 +376,7 @@ class _ScheduleDetailPageState extends State<ScheduleDetailPage> {
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: kSuccessColor.withOpacity(0.08),
+            color: kSuccessColor.withValues(alpha: 0.08),
             blurRadius: 20,
             offset: const Offset(0, 8),
           ),
@@ -395,8 +433,8 @@ class _ScheduleDetailPageState extends State<ScheduleDetailPage> {
           height: 48,
           decoration: BoxDecoration(
             color: isDone
-                ? kSuccessColor.withOpacity(0.1)
-                : kTextGrey.withOpacity(0.1),
+                ? kSuccessColor.withValues(alpha: 0.1)
+                : kTextGrey.withValues(alpha: 0.1),
             borderRadius: BorderRadius.circular(12),
           ),
           child: Icon(
@@ -473,6 +511,15 @@ class _ScheduleDetailPageState extends State<ScheduleDetailPage> {
                 .then((_) => _loadData());
           },
         ),
+        const SizedBox(height: 12),
+        _buildActionButton(
+          'Simpan Tagihan',
+          'Buat invoice dari tindakan + ICD',
+          Icons.receipt_long,
+          kSecondaryColor,
+          _tindakanDone && _icdDone, // done indicator when both exist
+          _createTagihan,
+        ),
       ],
     );
   }
@@ -489,13 +536,13 @@ class _ScheduleDetailPageState extends State<ScheduleDetailPage> {
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: isDone
-              ? [kSuccessColor, kSuccessColor.withOpacity(0.8)]
-              : [color, color.withOpacity(0.8)],
+              ? [kSuccessColor, kSuccessColor.withValues(alpha: 0.8)]
+              : [color, color.withValues(alpha: 0.8)],
         ),
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: (isDone ? kSuccessColor : color).withOpacity(0.3),
+            color: (isDone ? kSuccessColor : color).withValues(alpha: 0.3),
             blurRadius: 12,
             offset: const Offset(0, 4),
           ),
@@ -513,7 +560,7 @@ class _ScheduleDetailPageState extends State<ScheduleDetailPage> {
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: kWhite.withOpacity(0.2),
+                    color: kWhite.withValues(alpha: 0.2),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Icon(
@@ -539,10 +586,38 @@ class _ScheduleDetailPageState extends State<ScheduleDetailPage> {
                       Text(
                         subtitle,
                         style: TextStyle(
-                          color: kWhite.withOpacity(0.9),
+                          color: kWhite.withValues(alpha: 0.9),
                           fontSize: 13,
                         ),
                       ),
+      const SizedBox(height: 12),
+      Row(
+        children: [
+          Expanded(
+            child: OutlinedButton.icon(
+              onPressed: _resetAnamnesa,
+              icon: const Icon(Icons.refresh),
+              label: const Text('Reset Anamnesa'),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: OutlinedButton.icon(
+              onPressed: _resetTindakan,
+              icon: const Icon(Icons.refresh),
+              label: const Text('Reset Tindakan'),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: OutlinedButton.icon(
+              onPressed: _resetIcd,
+              icon: const Icon(Icons.refresh),
+              label: const Text('Reset ICD'),
+            ),
+          ),
+        ],
+      ),
                     ],
                   ),
                 ),
@@ -559,13 +634,82 @@ class _ScheduleDetailPageState extends State<ScheduleDetailPage> {
     );
   }
 
+  Future<void> _createTagihan() async {
+    try {
+      final raw = _rawRegistrasi ?? await getIt<RegistrasiRepository>()
+          .getRegistrasiRawById(widget.registrationId);
+      if (raw == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Data registrasi tidak ditemukan')),
+        );
+        return;
+      }
+
+      // Extract ICD (primary) and tindakan selections from raw
+      final icdList = raw['icd'] is List ? (raw['icd'] as List) : const [];
+      if (icdList.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Pilih ICD terlebih dahulu')),
+        );
+        return;
+      }
+      final String primaryIcd = (icdList.first['kode'] ?? icdList.first.toString()).toString();
+
+      final tindakanList = raw['tindakan'] is List ? (raw['tindakan'] as List) : const [];
+      if (tindakanList.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Tambah tindakan terlebih dahulu')),
+        );
+        return;
+      }
+
+      final nowIso = DateTime.now().toIso8601String();
+      final items = tindakanList.map<Map<String, dynamic>>((t) {
+        final num qty = (t['jumlah'] ?? 1) is num ? t['jumlah'] as num : 1;
+        final num harga = (t['tarif'] ?? 0) is num ? t['tarif'] as num : num.tryParse('${t['tarif']}') ?? 0;
+        final num diskon = (t['diskon'] ?? 0) is num ? t['diskon'] as num : num.tryParse('${t['diskon']}') ?? 0;
+        final subtotal = qty * harga - diskon;
+        return {
+          'kategori_layanan_id': t['kategori_layanan_id'] ?? 0,
+          'tanggal_layanan': nowIso,
+          'deskripsi': (t['deskripsi'] ?? t['kode'] ?? 'Tindakan'),
+          'jumlah': qty,
+          'harga_satuan': harga,
+          'diskon': diskon,
+          'subtotal': subtotal,
+        };
+      }).toList();
+
+      final repo = getIt<TagihanRepository>();
+      final res = await repo.createTagihan(
+        registrasiId: widget.registrationId,
+        primaryIcd: primaryIcd,
+        items: items,
+      );
+
+      if (res.statusCode == 200 || res.statusCode == 201) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Tagihan berhasil dibuat')),
+        );
+        _loadData();
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Gagal membuat tagihan: ${res.statusCode}')),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Gagal membuat tagihan: $e')));
+    }
+  }
+
   Widget _buildInfoRow(IconData icon, String label, String value) {
     return Row(
       children: [
         Container(
           padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
-            color: kPrimaryColor.withOpacity(0.1),
+            color: kPrimaryColor.withValues(alpha: 0.1),
             borderRadius: BorderRadius.circular(8),
           ),
           child: Icon(icon, size: 18, color: kPrimaryColor),

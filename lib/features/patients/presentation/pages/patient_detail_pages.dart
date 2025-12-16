@@ -3,10 +3,10 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:intl/intl.dart';
 import 'package:go_router/go_router.dart';
 import 'package:homecare_mobile/core/router/app_router.dart';
-import 'package:homecare_mobile/features/patients/domain/models/pasien.dart';
 import 'package:homecare_mobile/features/patients/presentation/bloc/patient_bloc.dart';
 import 'package:homecare_mobile/shared/app_injections.dart';
-import 'package:homecare_mobile/shared/local_db/app_database.dart' as db;
+import 'package:homecare_mobile/features/patients/domain/models/pasien.dart';
+import 'package:homecare_mobile/features/patients/data/repositories/pasien_repository.dart';
 
 const Color kPrimaryColor = Color(0xFF004B8C);
 const Color kPrimaryLight = Color(0xFF0063B2);
@@ -50,8 +50,38 @@ class _PatientDetailView extends StatefulWidget {
   State<_PatientDetailView> createState() => _PatientDetailViewState();
 }
 
+class _RegistrationInfo {
+  final int id;
+  final String noReg;
+  final String tglJamReg;
+  final String jenisKunjungan;
+  final String tipePasien;
+  final String? kodePoli;
+  final String? dokterId;
+  final String? penanggungNama;
+  final String? penanggungTelepon;
+  final String? penanggungAlamat;
+  final String? penanggungNoPegawai;
+  final String? eselon;
+
+  _RegistrationInfo({
+    required this.id,
+    required this.noReg,
+    required this.tglJamReg,
+    required this.jenisKunjungan,
+    required this.tipePasien,
+    this.kodePoli,
+    this.dokterId,
+    this.penanggungNama,
+    this.penanggungTelepon,
+    this.penanggungAlamat,
+    this.penanggungNoPegawai,
+    this.eselon,
+  });
+}
+
 class _PatientDetailViewState extends State<_PatientDetailView> {
-  db.Registrasi? _latestRegistration;
+  dynamic _latestRegistration;
   bool _loadingRegistration = false;
   Pasien? _currentPatient;
 
@@ -68,14 +98,26 @@ class _PatientDetailViewState extends State<_PatientDetailView> {
 
     setState(() => _loadingRegistration = true);
     try {
-      final database = getIt<db.AppDatabase>();
-      final pasienIdInt = patient.id;
-      final registration = await database.getLatestRegistrasiByPasienId(
-        pasienIdInt,
+      // Dummy latest registration for display (no API)
+      await Future.delayed(const Duration(milliseconds: 300));
+      final now = DateTime.now();
+      final reg = _RegistrationInfo(
+        id: 1000 + patient.id,
+        noReg: 'REG-${patient.id.toString().padLeft(4, '0')}',
+        tglJamReg: now.toIso8601String(),
+        jenisKunjungan: 'Kunjungan Rumah',
+        tipePasien: 'Umum',
+        kodePoli: 'POLI-UMUM',
+        dokterId: 'DR-001',
+        penanggungNama: patient.nama,
+        penanggungTelepon: patient.telepon,
+        penanggungAlamat: patient.alamat,
+        penanggungNoPegawai: null,
+        eselon: null,
       );
       if (mounted) {
         setState(() {
-          _latestRegistration = registration;
+          _latestRegistration = reg;
           _loadingRegistration = false;
         });
       }
@@ -89,23 +131,15 @@ class _PatientDetailViewState extends State<_PatientDetailView> {
 
   Future<void> _reloadPatientData(String patientId) async {
     try {
-      final database = getIt<db.AppDatabase>();
+      final repository = getIt<PasienRepository>();
+      repository.clearCache(); // Force refresh from API
+      final patients = await repository.getAllPasien();
       final pasienIdInt = int.tryParse(patientId);
       if (pasienIdInt != null) {
-        final patient = await database.getPasienById(pasienIdInt);
-        if (patient != null && mounted) {
+        final patient = patients.firstWhere((p) => p.id == pasienIdInt);
+        if (mounted) {
           setState(() {
-            _currentPatient = Pasien(
-              id: patient.id,
-              mrn: patient.mrn,
-              nama: patient.nama,
-              tanggalLahir: patient.tanggalLahir.toIso8601String(),
-              jenisKelamin: patient.jenisKelamin,
-              alamat: patient.alamat,
-              telepon: patient.telepon,
-              createdAt: patient.createdAt.toIso8601String(),
-              updatedAt: patient.updatedAt.toIso8601String(),
-            );
+            _currentPatient = patient;
           });
         }
       }
@@ -238,10 +272,12 @@ class _PatientDetailViewState extends State<_PatientDetailView> {
           );
         }
 
-        return WillPopScope(
-          onWillPop: () async {
-            Navigator.of(context).pop(true);
-            return false;
+        return PopScope(
+          canPop: true,
+          onPopInvoked: (didPop) {
+            if (!didPop) {
+              Navigator.of(context).pop(true);
+            }
           },
           child: Scaffold(
             backgroundColor: kScaffoldBg,
@@ -309,10 +345,10 @@ class _PatientDetailViewState extends State<_PatientDetailView> {
                   width: 65,
                   height: 65,
                   decoration: BoxDecoration(
-                    color: kWhite.withOpacity(0.2),
+                    color: kWhite.withValues(alpha: 0.2),
                     borderRadius: BorderRadius.circular(16),
                     border: Border.all(
-                      color: kWhite.withOpacity(0.3),
+                      color: kWhite.withValues(alpha: 0.3),
                       width: 2,
                     ),
                   ),
@@ -325,9 +361,9 @@ class _PatientDetailViewState extends State<_PatientDetailView> {
                     vertical: 5,
                   ),
                   decoration: BoxDecoration(
-                    color: kWhite.withOpacity(0.2),
+                    color: kWhite.withValues(alpha: 0.2),
                     borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: kWhite.withOpacity(0.3)),
+                    border: Border.all(color: kWhite.withValues(alpha: 0.3)),
                   ),
                   child: Text(
                     patient.mrn,
@@ -354,7 +390,7 @@ class _PatientDetailViewState extends State<_PatientDetailView> {
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: kPrimaryColor.withOpacity(0.08),
+            color: kPrimaryColor.withValues(alpha: 0.08),
             blurRadius: 20,
             offset: const Offset(0, 8),
           ),
@@ -432,7 +468,7 @@ class _PatientDetailViewState extends State<_PatientDetailView> {
           Container(
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
-              color: iconColor.withOpacity(0.1),
+              color: iconColor.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(12),
             ),
             child: Icon(icon, size: 20, color: iconColor),
@@ -475,7 +511,7 @@ class _PatientDetailViewState extends State<_PatientDetailView> {
           borderRadius: BorderRadius.circular(20),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.04),
+              color: Colors.black.withValues(alpha: 0.04),
               blurRadius: 12,
               offset: const Offset(0, 4),
             ),
@@ -503,7 +539,7 @@ class _PatientDetailViewState extends State<_PatientDetailView> {
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF22C55E).withOpacity(0.3),
+            color: const Color(0xFF22C55E).withValues(alpha: 0.3),
             blurRadius: 12,
             offset: const Offset(0, 4),
           ),
@@ -518,7 +554,7 @@ class _PatientDetailViewState extends State<_PatientDetailView> {
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.2),
+                  color: Colors.white.withValues(alpha: 0.2),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: const Icon(Icons.check_circle, color: kWhite, size: 24),
@@ -578,7 +614,10 @@ class _PatientDetailViewState extends State<_PatientDetailView> {
             width: 140,
             child: Text(
               label,
-              style: TextStyle(color: kWhite.withOpacity(0.9), fontSize: 13),
+              style: TextStyle(
+                color: kWhite.withValues(alpha: 0.9),
+                fontSize: 13,
+              ),
             ),
           ),
           const Text(': ', style: TextStyle(color: kWhite, fontSize: 13)),
@@ -608,7 +647,7 @@ class _PatientDetailViewState extends State<_PatientDetailView> {
             gradient: LinearGradient(
               colors: hasRegistrationData
                   ? [const Color(0xFF3B82F6), const Color(0xFF2563EB)]
-                  : [kSecondaryColor, kSecondaryColor.withOpacity(0.8)],
+                  : [kSecondaryColor, kSecondaryColor.withValues(alpha: 0.8)],
             ),
             borderRadius: BorderRadius.circular(16),
             boxShadow: [
@@ -617,7 +656,7 @@ class _PatientDetailViewState extends State<_PatientDetailView> {
                     (hasRegistrationData
                             ? const Color(0xFF3B82F6)
                             : kSecondaryColor)
-                        .withOpacity(0.3),
+                        .withValues(alpha: 0.3),
                 blurRadius: 12,
                 offset: const Offset(0, 4),
               ),
@@ -642,8 +681,8 @@ class _PatientDetailViewState extends State<_PatientDetailView> {
                 );
 
                 debugPrint('🔍 Registration result from detail: $result');
-
-                if (result != null && mounted) {
+                if (!context.mounted) return;
+                if (result != null) {
                   debugPrint('✅ Processing result: $result');
 
                   await _reloadPatientData(patient.id.toString());
@@ -675,14 +714,13 @@ class _PatientDetailViewState extends State<_PatientDetailView> {
                       backgroundColor = kSuccessColor;
                   }
 
-                  if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(message),
-                        backgroundColor: backgroundColor,
-                      ),
-                    );
-                  }
+                  if (!context.mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(message),
+                      backgroundColor: backgroundColor,
+                    ),
+                  );
                 } else {
                   debugPrint('❌ Result is null or widget not mounted');
                 }
@@ -723,7 +761,9 @@ class _PatientDetailViewState extends State<_PatientDetailView> {
             Expanded(
               child: Container(
                 decoration: BoxDecoration(
-                  border: Border.all(color: kPrimaryColor.withOpacity(0.3)),
+                  border: Border.all(
+                    color: kPrimaryColor.withValues(alpha: 0.3),
+                  ),
                   borderRadius: BorderRadius.circular(14),
                 ),
                 child: Material(
@@ -777,7 +817,7 @@ class _PatientDetailViewState extends State<_PatientDetailView> {
             Expanded(
               child: Container(
                 decoration: BoxDecoration(
-                  border: Border.all(color: kButtonRed.withOpacity(0.3)),
+                  border: Border.all(color: kButtonRed.withValues(alpha: 0.3)),
                   borderRadius: BorderRadius.circular(14),
                 ),
                 child: Material(

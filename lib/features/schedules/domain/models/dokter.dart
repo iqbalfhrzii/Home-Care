@@ -4,6 +4,8 @@ part 'dokter.g.dart';
 
 @JsonSerializable()
 class Dokter {
+  @JsonKey(name: 'id')
+  final int id;
   @JsonKey(name: 'dokter_id')
   final String dokterId;
   @JsonKey(name: 'nama_dokter')
@@ -14,6 +16,7 @@ class Dokter {
   final bool? isActive;
 
   Dokter({
+    required this.id,
     required this.dokterId,
     required this.namaDokter,
     this.bidangKeahlian,
@@ -28,10 +31,10 @@ class Dokter {
       identical(this, other) ||
       other is Dokter &&
           runtimeType == other.runtimeType &&
-          dokterId == other.dokterId;
+          id == other.id;
 
   @override
-  int get hashCode => dokterId.hashCode;
+  int get hashCode => id.hashCode;
 }
 
 @JsonSerializable()

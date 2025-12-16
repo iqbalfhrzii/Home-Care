@@ -59,15 +59,18 @@ class _MainPageState extends State<MainPage> {
         decoration: BoxDecoration(
           color: kWhiteColor,
           boxShadow: [
-            BoxShadow(blurRadius: 20, color: Colors.black.withOpacity(.1)),
+            BoxShadow(
+              blurRadius: 20,
+              color: Colors.black.withValues(alpha: .1),
+            ),
           ],
         ),
         child: SafeArea(
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 15.0, vertical: 8),
             child: GNav(
-              rippleColor: kUnselectedColor.withOpacity(0.2),
-              hoverColor: kUnselectedColor.withOpacity(0.1),
+              rippleColor: kUnselectedColor.withValues(alpha: 0.2),
+              hoverColor: kUnselectedColor.withValues(alpha: 0.1),
               gap: 8, // Spasi antara ikon dan teks
               activeColor:
                   kWhiteColor, // Warna ikon & teks aktif (di dalam pill)

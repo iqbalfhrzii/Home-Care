@@ -1,6 +1,6 @@
 import 'package:json_annotation/json_annotation.dart';
 
-part 'diagnosa.g.dart';
+part 'icd.g.dart';
 
 @JsonSerializable(fieldRename: FieldRename.snake)
 class Diagnosa {

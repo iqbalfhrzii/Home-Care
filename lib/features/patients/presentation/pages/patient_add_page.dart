@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
-import 'package:homecare_mobile/features/patients/domain/models/pasien.dart';
 import 'package:homecare_mobile/features/patients/presentation/bloc/patient_bloc.dart';
 import 'package:homecare_mobile/shared/app_injections.dart';
 
@@ -42,24 +41,17 @@ class _PatientAddFormState extends State<_PatientAddForm> {
 
   // Controllers
   final _namaController = TextEditingController();
-  final _nikController = TextEditingController();
-  final _noBpjsController = TextEditingController();
-  final _tempatLahirController = TextEditingController();
   final _tanggalLahirController = TextEditingController();
   final _alamatController = TextEditingController();
   final _noTelpController = TextEditingController();
 
   String _jenisKelamin = 'L';
-  String? _golonganDarah;
   DateTime? _selectedDate;
   bool _isLoading = false;
 
   @override
   void dispose() {
     _namaController.dispose();
-    _nikController.dispose();
-    _noBpjsController.dispose();
-    _tempatLahirController.dispose();
     _tanggalLahirController.dispose();
     _alamatController.dispose();
     _noTelpController.dispose();
@@ -109,18 +101,17 @@ class _PatientAddFormState extends State<_PatientAddForm> {
         );
         return;
       }
-
       setState(() => _isLoading = true);
-
-      context.read<PatientBloc>().add(
-        CreatePatient(
-          nama: _namaController.text.trim(),
-          tanggalLahir: _selectedDate!.toIso8601String(),
-          jenisKelamin: _jenisKelamin,
-          alamat: _alamatController.text.trim(),
-          telepon: _noTelpController.text.trim(),
-        ),
-      );
+      // Kirim ke BLoC untuk membuat pasien via API
+      final bloc = context.read<PatientBloc>();
+      final tanggalIso = DateFormat('yyyy-MM-dd').format(_selectedDate!);
+      bloc.add(CreatePatient(
+        nama: _namaController.text.trim(),
+        tanggalLahir: tanggalIso,
+        jenisKelamin: _jenisKelamin,
+        alamat: _alamatController.text.trim(),
+        telepon: _noTelpController.text.trim(),
+      ));
     }
   }
 
@@ -130,11 +121,7 @@ class _PatientAddFormState extends State<_PatientAddForm> {
       backgroundColor: kScaffoldBg,
       body: BlocListener<PatientBloc, PatientState>(
         listener: (context, state) {
-          if (state is PatientOperationSuccess &&
-              state.type == PatientOperationType.create) {
-            // Show success dialog with option to register
-            _showSuccessDialog();
-          } else if (state is PatientError) {
+          if (state is PatientError) {
             setState(() => _isLoading = false);
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
@@ -142,6 +129,15 @@ class _PatientAddFormState extends State<_PatientAddForm> {
                 backgroundColor: kDangerColor,
               ),
             );
+          } else if (state is PatientOperationSuccess && state.type == PatientOperationType.create) {
+            setState(() => _isLoading = false);
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Pasien berhasil ditambahkan'),
+                backgroundColor: kSuccessColor,
+              ),
+            );
+            context.pop(true);
           }
         },
         child: Column(
@@ -155,7 +151,7 @@ class _PatientAddFormState extends State<_PatientAddForm> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _buildSectionTitle('Informasi Dasar'),
+                      _buildSectionTitle('Data Pasien'),
                       const SizedBox(height: 12),
                       _buildTextField(
                         controller: _namaController,
@@ -169,57 +165,9 @@ class _PatientAddFormState extends State<_PatientAddForm> {
                         },
                       ),
                       const SizedBox(height: 16),
-                      _buildTextField(
-                        controller: _nikController,
-                        label: 'NIK (opsional)',
-                        icon: Icons.credit_card,
-                        keyboardType: TextInputType.number,
-                        maxLength: 16,
-                        validator: (value) {
-                          if (value != null &&
-                              value.isNotEmpty &&
-                              value.length != 16) {
-                            return 'NIK harus 16 digit';
-                          }
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: 16),
-                      _buildTextField(
-                        controller: _noBpjsController,
-                        label: 'No. BPJS (opsional)',
-                        icon: Icons.local_hospital,
-                        keyboardType: TextInputType.number,
-                        maxLength: 13,
-                        validator: (value) {
-                          if (value != null &&
-                              value.isNotEmpty &&
-                              value.length != 13) {
-                            return 'No. BPJS harus 13 digit';
-                          }
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: 24),
-                      _buildSectionTitle('Informasi Kelahiran'),
-                      const SizedBox(height: 12),
-                      _buildTextField(
-                        controller: _tempatLahirController,
-                        label: 'Tempat Lahir',
-                        icon: Icons.location_city,
-                        validator: (value) {
-                          if (value == null || value.trim().isEmpty) {
-                            return 'Tempat lahir harus diisi';
-                          }
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: 16),
                       _buildDateField(),
                       const SizedBox(height: 16),
                       _buildGenderField(),
-                      const SizedBox(height: 16),
-                      _buildGolonganDarahField(),
                       const SizedBox(height: 24),
                       _buildSectionTitle('Kontak & Alamat'),
                       const SizedBox(height: 12),
@@ -378,11 +326,11 @@ class _PatientAddFormState extends State<_PatientAddForm> {
         fillColor: kWhite,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: kTextGrey.withOpacity(0.3)),
+          borderSide: BorderSide(color: kTextGrey.withValues(alpha: 0.3)),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: kTextGrey.withOpacity(0.3)),
+          borderSide: BorderSide(color: kTextGrey.withValues(alpha: 0.3)),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
@@ -419,11 +367,11 @@ class _PatientAddFormState extends State<_PatientAddForm> {
         fillColor: kWhite,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: kTextGrey.withOpacity(0.3)),
+          borderSide: BorderSide(color: kTextGrey.withValues(alpha: 0.3)),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: kTextGrey.withOpacity(0.3)),
+          borderSide: BorderSide(color: kTextGrey.withValues(alpha: 0.3)),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
@@ -469,10 +417,10 @@ class _PatientAddFormState extends State<_PatientAddForm> {
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
         decoration: BoxDecoration(
-          color: isSelected ? color.withOpacity(0.1) : kWhite,
+          color: isSelected ? color.withValues(alpha: 0.1) : kWhite,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
-            color: isSelected ? color : kTextGrey.withOpacity(0.3),
+            color: isSelected ? color : kTextGrey.withValues(alpha: 0.3),
             width: isSelected ? 2 : 1,
           ),
         ),
@@ -491,48 +439,6 @@ class _PatientAddFormState extends State<_PatientAddForm> {
           ],
         ),
       ),
-    );
-  }
-
-  Widget _buildGolonganDarahField() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          'Golongan Darah (opsional)',
-          style: TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w600,
-            color: kTextDark,
-          ),
-        ),
-        const SizedBox(height: 8),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-          decoration: BoxDecoration(
-            color: kWhite,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: kTextGrey.withOpacity(0.3)),
-          ),
-          child: DropdownButtonHideUnderline(
-            child: DropdownButton<String>(
-              isExpanded: true,
-              value: _golonganDarah,
-              hint: const Text('Pilih golongan darah'),
-              icon: const Icon(Icons.arrow_drop_down, color: kPrimaryColor),
-              items: ['A', 'B', 'AB', 'O'].map((String value) {
-                return DropdownMenuItem<String>(
-                  value: value,
-                  child: Text(value),
-                );
-              }).toList(),
-              onChanged: (String? newValue) {
-                setState(() => _golonganDarah = newValue);
-              },
-            ),
-          ),
-        ),
-      ],
     );
   }
 
@@ -568,76 +474,5 @@ class _PatientAddFormState extends State<_PatientAddForm> {
     );
   }
 
-  Future<void> _showSuccessDialog() async {
-    if (!mounted) return;
-
-    final shouldRegister = await showDialog<bool>(
-      context: context,
-      barrierDismissible: false,
-      builder: (BuildContext dialogContext) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-          title: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: kSuccessColor.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Icon(
-                  Icons.check_circle,
-                  color: kSuccessColor,
-                  size: 28,
-                ),
-              ),
-              const SizedBox(width: 12),
-              const Text('Pasien Berhasil Ditambahkan'),
-            ],
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text('Data pasien telah disimpan.'),
-              const SizedBox(height: 8),
-              const Text('Apakah Anda ingin mendaftarkan pasien ini sekarang?'),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(false),
-              child: const Text('Nanti Saja'),
-            ),
-            ElevatedButton(
-              onPressed: () => Navigator.of(dialogContext).pop(true),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: kPrimaryColor,
-                foregroundColor: kWhite,
-              ),
-              child: const Text('Daftar Sekarang'),
-            ),
-          ],
-        );
-      },
-    );
-
-    if (!mounted) return;
-
-    if (shouldRegister == true) {
-      // Navigate to registration form with patient data from form
-      context.pop(); // Close add patient page
-      context.push(
-        '/registration-form',
-        extra: {
-          'pasienId': '0', // Will be filled by latest created patient
-          'pasienNama': _namaController.text,
-        },
-      );
-    } else {
-      context.pop(true); // Return to patient list
-    }
-  }
+  // Success dialog for create is disabled in dummy mode.
 }
