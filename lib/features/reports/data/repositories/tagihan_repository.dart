@@ -284,6 +284,29 @@ class TagihanRepository {
     }
   }
 
+  Future<bool> updateStatusPembayaran(int id, String status) async {
+    try {
+      final resp = await _dio.put(
+        '/tagihan/$id',
+        data: {'status_pembayaran': status},
+        options: Options(validateStatus: (_) => true),
+      );
+      if (resp.statusCode != null && resp.statusCode! >= 400) {
+        print(
+          '❌ Update status failed: status=${resp.statusCode}, body=${resp.data}',
+        );
+        return false;
+      }
+      return true;
+    } on DioException catch (e) {
+      print('❌ DioException updating status: ${e.message}');
+      return false;
+    } catch (e) {
+      print('❌ Error updating status: $e');
+      return false;
+    }
+  }
+
   Future<bool> deleteTagihan(int id) async {
     try {
       final resp = await _dio.delete(

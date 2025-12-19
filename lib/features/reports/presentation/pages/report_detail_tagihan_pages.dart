@@ -42,6 +42,7 @@ class _ReportDetailTagihanPageState extends State<ReportDetailTagihanPage> {
   model.Tagihan? _tagihan;
   bool _isLoading = true;
   String? _errorMessage;
+  bool _statusUpdated = false;
 
   int _parseCurrencyStringToInt(String? str) {
     if (str == null || str.isEmpty) return 0;
@@ -577,16 +578,39 @@ class _ReportDetailTagihanPageState extends State<ReportDetailTagihanPage> {
   );
 
   Future<void> _updateStatus(String newStatus) async {
-    // TODO: Implement API call to update status
-    setState(() {
-      _tagihan = _tagihan?.copyWith(statusPembayaran: newStatus);
-    });
-
-    if (mounted) {
+    try {
+      final repo = getIt<TagihanRepository>();
+      final success = await repo.updateStatusPembayaran(_tagihan!.id, newStatus);
+      
+      if (!mounted) return;
+      
+      if (success) {
+        // Reload data to get updated status
+        await _loadTagihanDetail();
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Status diubah menjadi ${_getStatusText(newStatus)}'),
+            backgroundColor: kSuccessColor,
+          ),
+        );
+        
+        // Mark as updated so list page can refresh
+        _statusUpdated = true;
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Gagal mengubah status'),
+            backgroundColor: kDangerColor,
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Status diubah menjadi ${_getStatusText(newStatus)}'),
-          backgroundColor: kSuccessColor,
+          content: Text('Error: $e'),
+          backgroundColor: kDangerColor,
         ),
       );
     }
@@ -656,7 +680,7 @@ class _ReportDetailTagihanPageState extends State<ReportDetailTagihanPage> {
               ),
               const SizedBox(height: 16),
               ElevatedButton(
-                onPressed: () => Navigator.pop(context),
+                onPressed: () => Navigator.pop(context, _statusUpdated),
                 child: const Text('Kembali'),
               ),
             ],
@@ -665,7 +689,12 @@ class _ReportDetailTagihanPageState extends State<ReportDetailTagihanPage> {
       );
     }
 
-    return Scaffold(
+    return WillPopScope(
+      onWillPop: () async {
+        Navigator.pop(context, _statusUpdated);
+        return false;
+      },
+      child: Scaffold(
       backgroundColor: kScaffoldBg,
       body: CustomScrollView(
         slivers: [
@@ -691,6 +720,7 @@ class _ReportDetailTagihanPageState extends State<ReportDetailTagihanPage> {
         ],
       ),
       bottomNavigationBar: _buildBottomBar(),
+      ),
     );
   }
 

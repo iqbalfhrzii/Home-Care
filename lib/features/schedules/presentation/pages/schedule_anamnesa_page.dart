@@ -377,15 +377,15 @@ class _ScheduleAnamnesaPageState extends State<ScheduleAnamnesaPage> {
   }
 
   Future<void> _saveAnamnesa() async {
-    // Pastikan validasi dilakukan di halaman terakhir sebelum simpan
     if (!_formKey.currentState!.validate() || !_validateRequiredFields()) {
       return;
     }
 
     setState(() => _isSaving = true);
     try {
+      debugPrint('🟢 [SAVE] Starting save anamnesa for registrationId=${widget.registrationId}');
+      
       final repo = getIt<AnamnesaRepository>();
-      // Build flat payload per backend schema (confirmed working)
       final bool riwayatAlergiBool = _riwayatAlergi.toLowerCase() == 'ya';
       final bool adlBool = _adl.toLowerCase() == 'mandiri';
       final bool resikoJatuhBool = _resikoJatuh.toLowerCase().contains('ada');
@@ -394,114 +394,59 @@ class _ScheduleAnamnesaPageState extends State<ScheduleAnamnesaPage> {
       int asFlag(bool v) => v ? 1 : 0;
 
       final Map<String, dynamic> payload = {
-        // ids
         'registrasi_id': widget.registrationId,
-        // flat fields
-        'keluhan': _keluhanPasienController.text,
-        'tekanan_darah': _tekananDarahController.text,
+        'keluhan': _keluhanPasienController.text.trim(),
+        'tekanan_darah': _tekananDarahController.text.trim(),
         'nadi': parseNum(_frekuensiNadiController.text) ?? 0,
         'suhu': parseNum(_suhuController.text) ?? 0,
         'pernapasan': parseNum(_frekuensiPernapasanController.text) ?? 0,
-
-        'berat_badan': _beratBadanController.text,
-        'tinggi_badan': _tinggiBadanController.text,
+        'berat_badan': _beratBadanController.text.trim(),
+        'tinggi_badan': _tinggiBadanController.text.trim(),
         'imt': parseNum(_imtController.text) ?? 0,
-        'lingkar_kepala': _lingkarKepalaController.text,
-
-        'alat_bantu': _alatBantuController.text,
-        'prothesa': _prothesaController.text,
-        'cacat_tubuh': _cacatTubuhController.text,
-
+        'lingkar_kepala': _lingkarKepalaController.text.trim(),
+        'alat_bantu': _alatBantuController.text.trim(),
+        'prothesa': _prothesaController.text.trim(),
+        'cacat_tubuh': _cacatTubuhController.text.trim(),
         'adl': adlBool ? 1 : 0,
         'resiko_jatuh': resikoJatuhBool ? 1 : 0,
-
-        'riwayat': _riwayatPenyakitDahuluController.text,
+        'riwayat': _riwayatPenyakitDahuluController.text.trim(),
         'riwayat_alergi': riwayatAlergiBool ? 1 : 0,
-
-        'jalan_nafas': asFlag(
-          _masalahKeperawatanOptions['Bersihan jalan nafas'] == true,
-        ),
-        'pola_nafas': asFlag(
-          _masalahKeperawatanOptions['Pola nafas tidak efektif'] == true,
-        ),
-        'hipertermia': asFlag(
-          _masalahKeperawatanOptions['Hipertermia'] == true,
-        ),
-        'nyeri_kronik': asFlag(
-          _masalahKeperawatanOptions['Nyeri kronik'] == true,
-        ),
+        'jalan_nafas': asFlag(_masalahKeperawatanOptions['Bersihan jalan nafas'] == true),
+        'pola_nafas': asFlag(_masalahKeperawatanOptions['Pola nafas tidak efektif'] == true),
+        'hipertermia': asFlag(_masalahKeperawatanOptions['Hipertermia'] == true),
+        'nyeri_kronik': asFlag(_masalahKeperawatanOptions['Nyeri kronik'] == true),
         'nyeri_akut': asFlag(_masalahKeperawatanOptions['Nyeri akut'] == true),
         'mual': asFlag(_masalahKeperawatanOptions['Mual'] == true),
-        'gangguan_perfusi': asFlag(
-          _masalahKeperawatanOptions['Gangguan perfusi jaringan serebral'] ==
-              true,
-        ),
-        'gangguan_cairan': asFlag(
-          _masalahKeperawatanOptions['Gangguan keseimbangan cairan'] == true,
-        ),
-        'lainnya': _masalahKeperawatanLainnyaController.text,
-
-        'pemeriksaan_fisik': _pemeriksaanFisikController.text,
-        'diagnosis': _diagnosisController.text,
-        'rencana_dan_terapi': _rencanaTerapiController.text,
-        'pemeriksaan_penunjang': _pemeriksaanPenunjangController.text,
-
+        'gangguan_perfusi': asFlag(_masalahKeperawatanOptions['Gangguan perfusi jaringan serebral'] == true),
+        'gangguan_cairan': asFlag(_masalahKeperawatanOptions['Gangguan keseimbangan cairan'] == true),
+        'lainnya': _masalahKeperawatanLainnyaController.text.trim(),
+        'pemeriksaan_fisik': _pemeriksaanFisikController.text.trim(),
+        'diagnosis': _diagnosisController.text.trim(),
+        'rencana_dan_terapi': _rencanaTerapiController.text.trim(),
+        'pemeriksaan_penunjang': _pemeriksaanPenunjangController.text.trim(),
         'cara_berjalan': asFlag(_intervensiTimeUpGoOptions.values.elementAt(0)),
-        'cara_berjalan2': asFlag(
-          _intervensiTimeUpGoOptions.values.elementAt(1),
-        ),
+        'cara_berjalan2': asFlag(_intervensiTimeUpGoOptions.values.elementAt(1)),
         'menopang': asFlag(_intervensiTimeUpGoOptions.values.elementAt(2)),
         'risiko': 'tidak_berisiko',
-
-        'nutrisi_bb':
-            _skriningNutrisiMstAnswers['penurunan_berat'] == 'Tidak (0)'
-            ? 'Normal'
-            : 'Perlu evaluasi',
-        'asup_makan': _skriningNutrisiMstAnswers['makan_menurun'] == 'Tidak (0)'
-            ? 'Cukup'
-            : 'Kurang',
-        'strong_kids1':
-            (_skriningNutrisiStrongkidsAnswers['penyakit_malnutrisi'] ?? '')
-                .contains('(1)')
-            ? 1
-            : 0,
-        'strong_kids2':
-            (_skriningNutrisiStrongkidsAnswers['tampak_kurus'] ?? '').contains(
-              '(1)',
-            )
-            ? 1
-            : 0,
-        'strong_kids3':
-            (_skriningNutrisiStrongkidsAnswers['tindakan_khusus'] ?? '')
-                .contains('(1)')
-            ? 1
-            : 0,
-        'strong_kids4':
-            (_skriningNutrisiStrongkidsAnswers['nyeri'] ?? '').contains('(1)')
-            ? 1
-            : 0,
-
-        'kontrol': _kontrolController.text,
+        'nutrisi_bb': _skriningNutrisiMstAnswers['penurunan_berat'] == 'Tidak (0)' ? 'Normal' : 'Perlu evaluasi',
+        'asup_makan': _skriningNutrisiMstAnswers['makan_menurun'] == 'Tidak (0)' ? 'Cukup' : 'Kurang',
+        'strong_kids1': (_skriningNutrisiStrongkidsAnswers['penyakit_malnutrisi'] ?? '').contains('(1)') ? 1 : 0,
+        'strong_kids2': (_skriningNutrisiStrongkidsAnswers['tampak_kurus'] ?? '').contains('(1)') ? 1 : 0,
+        'strong_kids3': (_skriningNutrisiStrongkidsAnswers['tindakan_khusus'] ?? '').contains('(1)') ? 1 : 0,
+        'strong_kids4': (_skriningNutrisiStrongkidsAnswers['nyeri'] ?? '').contains('(1)') ? 1 : 0,
+        'kontrol': _kontrolController.text.trim(),
         'jenis_perawatan': _jenisPerawatan.toLowerCase(),
-
         'edukasi': _edukasiPasienOptions.values.any((v) => v == true) ? 1 : 0,
-        'edukasi_ket': _edukasiPasienOptions.entries
-            .where((e) => e.value)
-            .map((e) => e.key)
-            .join(', '),
-
-        'renc_usia_lanjut': _hambatanMobilisasiOptions['lanjut_usia'] == true
-            ? 1
-            : 0,
-        'renc_hmbtn_mobil': _hambatanMobilisasiOptions['tidak_ada'] == true
-            ? 0
-            : 1,
+        'edukasi_ket': _edukasiPasienOptions.entries.where((e) => e.value).map((e) => e.key).join(', '),
+        'renc_usia_lanjut': _hambatanMobilisasiOptions['lanjut_usia'] == true ? 1 : 0,
+        'renc_hmbtn_mobil': _hambatanMobilisasiOptions['tidak_ada'] == true ? 0 : 1,
         'renc_layanan_medis': 0,
         'renc_tergnt_org': 0,
-
         'tanggal': DateTime.now().toIso8601String().split('T').first,
       };
 
+      debugPrint('📦 [SAVE] Payload prepared with ${payload.length} fields');
+      
       await repo.upsertAnamnesa(
         registrasiId: widget.registrationId,
         data: payload,
@@ -509,21 +454,30 @@ class _ScheduleAnamnesaPageState extends State<ScheduleAnamnesaPage> {
 
       if (!mounted) return;
       setState(() => _isSaving = false);
+      
+      debugPrint('✅ [SAVE] Anamnesa saved successfully');
+      
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Anamnesa berhasil disimpan!'),
           backgroundColor: kSuccessColor,
+          duration: Duration(seconds: 2),
         ),
       );
       widget.onCompleted?.call();
       Navigator.pop(context, true);
-    } catch (e) {
+    } catch (e, stackTrace) {
+      debugPrint('❌ [SAVE] Error: $e');
+      debugPrint('❌ [SAVE] StackTrace: $stackTrace');
+      
       if (!mounted) return;
       setState(() => _isSaving = false);
+      
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Gagal menyimpan anamnesa: $e'),
+          content: Text('Gagal menyimpan: ${e.toString()}'),
           backgroundColor: kDangerColor,
+          duration: const Duration(seconds: 5),
         ),
       );
     }

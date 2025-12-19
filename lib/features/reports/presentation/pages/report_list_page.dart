@@ -41,6 +41,15 @@ class _ReportListPageState extends State<ReportListPage> {
     _searchController.addListener(_filterTagihan);
   }
 
+  void _refreshData() {
+    setState(() {
+      _isLoaded = false;
+      _allTagihan = [];
+      _filteredTagihan = [];
+    });
+    _loadTagihan();
+  }
+
   @override
   void dispose() {
     _searchController.dispose();
@@ -379,8 +388,8 @@ class _ReportListPageState extends State<ReportListPage> {
           final tagihan = _filteredTagihan[index];
           return _TagihanCard(
             tagihan: tagihan,
-            onTap: () {
-              Navigator.push(
+            onTap: () async {
+              final result = await Navigator.push(
                 context,
                 MaterialPageRoute(
                   builder: (_) => ReportDetailTagihanPage(
@@ -389,6 +398,10 @@ class _ReportListPageState extends State<ReportListPage> {
                   ),
                 ),
               );
+              // Refresh data if status was updated
+              if (result == true) {
+                _refreshData();
+              }
             },
           );
         }, childCount: _filteredTagihan.length),

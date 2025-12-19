@@ -8,6 +8,15 @@ import 'package:homecare_mobile/features/schedules/data/repositories/registrasi_
 class AnamnesaRepository {
   AnamnesaRepository();
 
+  void _clearRegistrasiCache() {
+    try {
+      getIt<RegistrasiRepository>().clearCache();
+      debugPrint('🗑️ Registrasi cache cleared');
+    } catch (e) {
+      debugPrint('⚠️ Failed to clear registrasi cache: $e');
+    }
+  }
+
   Future<List<Anamnesa>> getAllAnamnesa() async {
     try {
       final resp = await dio.get(
@@ -71,6 +80,7 @@ class AnamnesaRepository {
         throw Exception('Gagal membuat anamnesa');
       }
       final data = resp.data is Map && (resp.data as Map).containsKey('data') ? resp.data['data'] : resp.data;
+      _clearRegistrasiCache();
       return Anamnesa.fromJson(Map<String, dynamic>.from(data));
     } on dio_pkg.DioException catch (e) {
       debugPrint('❌ DioException create anamnesa: type=${e.type}, message=${e.message}, response=${e.response?.data}');
@@ -113,13 +123,19 @@ class AnamnesaRepository {
     required int registrasiId,
     required Map<String, dynamic> data,
   }) async {
+    debugPrint('🔵 [UPSERT] Starting upsert for registrasiId=$registrasiId');
+    debugPrint('🔵 [UPSERT] Payload keys: ${data.keys.join(", ")}');
+    
     final regRepo = getIt<RegistrasiRepository>();
     Map<String, dynamic>? raw;
     try {
       raw = await regRepo.getRegistrasiRawById(registrasiId);
-    } catch (_) {
+      debugPrint('✅ [UPSERT] Got registrasi data');
+    } catch (e) {
+      debugPrint('⚠️ [UPSERT] Failed to get registrasi: $e');
       raw = null;
     }
+    
     final existing = raw != null && raw['anamnesa'] is Map<String, dynamic>
       ? Map<String, dynamic>.from(raw['anamnesa'] as Map)
         : null;
@@ -128,69 +144,70 @@ class AnamnesaRepository {
       final int anamnesaId = existing['id'] is String
           ? int.tryParse(existing['id']) ?? existing['id'] as int
           : existing['id'] as int;
+      debugPrint('🔄 [UPSERT] Updating existing anamnesa id=$anamnesaId');
+      
       try {
-        debugPrint('[PUT] /api/v1/anamnesa/$anamnesaId registrasi_id=$registrasiId');
+        final payload = {'registrasi_id': registrasiId, ...data}..removeWhere((k, v) => v == null);
+        debugPrint('📤 [PUT] /api/v1/anamnesa/$anamnesaId');
+        
         final resp = await dio.put(
           '/anamnesa/$anamnesaId',
-          // Send only non-null fields to reduce 422 risks
-          data: ({'registrasi_id': registrasiId, ...data}
-            ..removeWhere((k, v) => v == null)),
+          data: payload,
           options: dio_pkg.Options(
-            receiveTimeout: const Duration(seconds: 20),
-            sendTimeout: const Duration(seconds: 20),
+            receiveTimeout: const Duration(seconds: 30),
+            sendTimeout: const Duration(seconds: 30),
             validateStatus: (_) => true,
+            contentType: 'application/json',
           ),
         );
-        debugPrint('[PUT] /api/v1/anamnesa/$anamnesaId -> status=${resp.statusCode}');
+        
+        debugPrint('📥 [PUT] Response status=${resp.statusCode}');
+        
         if (resp.statusCode != null && resp.statusCode! >= 400) {
-          // Fallback to POST if update not accepted (e.g., 422)
-          debugPrint('[PUT] failed with ${resp.statusCode}, fallback to POST /anamnesa');
-          try {
-            await createAnamnesaWithPayload(registrasiId: registrasiId, data: data);
-          } catch (e) {
-            // Last resort: send minimal payload only
-            debugPrint('[POST] /api/v1/anamnesa minimal payload fallback');
-            await createAnamnesaWithPayload(
-              registrasiId: registrasiId,
-              data: {
-                'tanggal': DateTime.now().toIso8601String(),
-              },
-            );
-          }
+          debugPrint('❌ [PUT] Failed: ${resp.data}');
+          throw Exception('Update failed with status ${resp.statusCode}');
         }
+        
+        debugPrint('✅ [UPSERT] Update successful');
+        _clearRegistrasiCache();
         return;
-      } on dio_pkg.DioException catch (e) {
-        debugPrint('❌ DioException update anamnesa: type=${e.type}, message=${e.message}, response=${e.response?.data}');
-        // Fallback to POST on DioException with 422/validation
-        try {
-          await createAnamnesaWithPayload(registrasiId: registrasiId, data: data);
-          return;
-        } catch (e2) {
-          // Last resort: minimal payload
-          debugPrint('[POST] /api/v1/anamnesa minimal payload fallback after DioException');
-          await createAnamnesaWithPayload(
-            registrasiId: registrasiId,
-            data: {
-              'tanggal': DateTime.now().toIso8601String(),
-            },
-          );
-          return;
-        }
+      } catch (e) {
+        debugPrint('❌ [PUT] Exception: $e');
+        debugPrint('🔄 [UPSERT] Fallback to POST');
       }
+    } else {
+      debugPrint('➕ [UPSERT] Creating new anamnesa');
     }
 
-    // No existing anamnesa → create
+    // Create new anamnesa
     try {
-      await createAnamnesaWithPayload(registrasiId: registrasiId, data: data);
-    } catch (e) {
-      // minimal payload fallback for create
-      debugPrint('[POST] /api/v1/anamnesa minimal payload fallback (create)');
-      await createAnamnesaWithPayload(
-        registrasiId: registrasiId,
-        data: {
-          'tanggal': DateTime.now().toIso8601String(),
-        },
+      final payload = {'registrasi_id': registrasiId, ...data}..removeWhere((k, v) => v == null);
+      debugPrint('📤 [POST] /api/v1/anamnesa');
+      debugPrint('📤 [POST] Payload size: ${payload.length} fields');
+      
+      final resp = await dio.post(
+        '/anamnesa',
+        data: payload,
+        options: dio_pkg.Options(
+          receiveTimeout: const Duration(seconds: 30),
+          sendTimeout: const Duration(seconds: 30),
+          validateStatus: (_) => true,
+          contentType: 'application/json',
+        ),
       );
+      
+      debugPrint('📥 [POST] Response status=${resp.statusCode}');
+      
+      if (resp.statusCode != null && resp.statusCode! >= 400) {
+        debugPrint('❌ [POST] Failed: ${resp.data}');
+        throw Exception('Create failed with status ${resp.statusCode}: ${resp.data}');
+      }
+      
+      debugPrint('✅ [UPSERT] Create successful');
+      _clearRegistrasiCache();
+    } catch (e) {
+      debugPrint('❌ [POST] Exception: $e');
+      rethrow;
     }
   }
 
@@ -209,6 +226,7 @@ class AnamnesaRepository {
         debugPrint('❌ Update anamnesa error: status=${resp.statusCode}, data=${resp.data}');
         throw Exception('Gagal mengupdate anamnesa');
       }
+      _clearRegistrasiCache();
     } on dio_pkg.DioException catch (e) {
       debugPrint('❌ DioException update anamnesa: type=${e.type}, message=${e.message}, response=${e.response?.data}');
       rethrow;

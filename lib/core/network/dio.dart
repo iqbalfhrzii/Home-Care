@@ -17,9 +17,9 @@ final Dio dio = Dio(
     AuthInterceptor(),
     PrettyDioLogger(
       requestHeader: true,
-      requestBody: false,
+      requestBody: true,
       responseHeader: true,
-      responseBody: false, // avoid logging huge bodies that may cause issues
+      responseBody: true,
       compact: true,
       maxWidth: 120,
     ),
