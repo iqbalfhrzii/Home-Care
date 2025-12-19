@@ -127,11 +127,8 @@ class _HomePageState extends State<HomePage> {
     try {
       final pasienRepo = getIt<PasienRepository>();
       final regRepo = getIt<RegistrasiRepository>();
-      final tagihanRepo = TagihanRepository();
       final patients = await pasienRepo.getAllPasien();
       final regs = await regRepo.getAllRegistrasi();
-      // Fetch tagihan list to determine which registrasi already have billing
-      final tagihans = await tagihanRepo.getAllTagihan();
 
       // De-duplicate patients using IDs from both `/pasien` and `/registrasi`
       final uniquePatientIds = <int>{};
@@ -143,26 +140,66 @@ class _HomePageState extends State<HomePage> {
         if (pid != null) uniquePatientIds.add(pid);
       }
 
+      // Calculate progress and pending visits using same logic as schedule page
+      int pendingCount = 0;
+      int completeCount = 0;
+      final now = DateTime.now();
+      final today = DateTime(now.year, now.month, now.day);
+
+      for (final r in regs) {
+        // Calculate progress from complete data (same as schedule page)
+        int progress = 0;
+        final rawData = r.toJson();
+
+        // Check tindakan
+        final tindakanList = rawData['tindakan'] as List?;
+        final hasTindakan = tindakanList != null && tindakanList.isNotEmpty;
+        if (hasTindakan) progress += 1;
+
+        // Check ICD
+        final icdList = rawData['icd'] as List?;
+        final hasIcd = icdList != null && icdList.isNotEmpty;
+        if (hasIcd) progress += 1;
+
+        // Check anamnesa (vital signs)
+        final anamnesaData = rawData['anamnesa'];
+        bool hasAnamnesa = false;
+        if (anamnesaData != null && anamnesaData is Map) {
+          final pengkajianKeperawatan = anamnesaData['pengkajian_keperawatan'];
+          if (pengkajianKeperawatan != null && pengkajianKeperawatan is Map) {
+            final tandaVital = pengkajianKeperawatan['tanda_vital'];
+            if (tandaVital != null && tandaVital is Map && tandaVital.isNotEmpty) {
+              final hasTekananDarah = tandaVital['tekanan_darah']?.toString().isNotEmpty == true;
+              final hasNadi = tandaVital['nadi'] != null;
+              final hasSuhu = tandaVital['suhu'] != null;
+              final hasPernapasan = tandaVital['pernapasan'] != null;
+              hasAnamnesa = hasTekananDarah || hasNadi || hasSuhu || hasPernapasan;
+            }
+          }
+        }
+        if (hasAnamnesa) progress += 1;
+
+        // Check if overdue (same logic as schedule page)
+        final dateStr = r.tglJamReg;
+        if (dateStr != null) {
+          final dt = DateTime.tryParse(dateStr);
+          if (dt != null) {
+            final scheduleDate = DateTime(dt.year, dt.month, dt.day);
+            final isOverdue = scheduleDate.isBefore(today) && progress < 3;
+            if (isOverdue) pendingCount++;
+          }
+        }
+
+        // Count complete registrations
+        if (progress == 3) completeCount++;
+      }
+
       if (mounted) {
         setState(() {
           _totalPatients = uniquePatientIds.length;
-          _totalVisits = regs.length; // visits from registrasi count
-          // Pending kunjungan: registrasi yang belum punya tagihan
-          final billedRegistrasiIds = tagihans
-              .map((t) => t.registrasiId)
-              .toSet();
-          _pendingVisits = regs
-              .where((r) => !billedRegistrasiIds.contains(r.id))
-              .length;
-
-          // Data lengkap: registrasi yang memiliki anamnesa, tindakan dan icd (non-null / non-empty)
-          _completeRegistrations = regs.where((r) {
-            final hasAnamnesa = r.anamnesa != null && (r.anamnesa!.isNotEmpty);
-            final hasTindakan = r.tindakans != null && r.tindakans!.isNotEmpty;
-            final hasIcd = r.icds != null && r.icds!.isNotEmpty;
-            return hasAnamnesa && hasTindakan && hasIcd;
-          }).length;
-
+          _totalVisits = regs.length;
+          _pendingVisits = pendingCount; // Now matches schedule page logic
+          _completeRegistrations = completeCount;
           _isLoadingStats = false;
         });
       }
