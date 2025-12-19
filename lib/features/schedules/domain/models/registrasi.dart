@@ -72,6 +72,10 @@ class Registrasi {
   @JsonKey(name: 'icd')
   final List<dynamic>? icds;
 
+  // Anamnesa data (Map) and Tagihan data (Map) from API
+  final Map<String, dynamic>? anamnesa;
+  final Map<String, dynamic>? tagihan;
+
   final String? createdAt;
   final String? updatedAt;
 
@@ -101,6 +105,8 @@ class Registrasi {
     this.pasien,
     this.tindakans,
     this.icds,
+    this.anamnesa,
+    this.tagihan,
     this.createdAt,
     this.updatedAt,
   });

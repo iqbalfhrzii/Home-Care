@@ -4,11 +4,12 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
-// Removed unused import for app_injections.dart
+import 'package:homecare_mobile/shared/app_injections.dart';
+import 'package:homecare_mobile/features/reports/data/repositories/tagihan_repository.dart';
+import 'package:homecare_mobile/features/reports/domain/models/tagihan.dart'
+    as model;
 import 'package:homecare_mobile/features/schedules/data/repositories/registrasi_repository.dart';
-import 'package:homecare_mobile/features/reports/presentation/pages/report_view_anamnesa_page.dart';
-import 'package:homecare_mobile/features/reports/presentation/pages/report_view_tindakan_page.dart';
-import 'package:homecare_mobile/features/reports/presentation/pages/report_view_icd_page.dart';
+// Removed report view pages (Anamnesa/Tindakan/ICD) per request
 
 const Color kPrimaryColor = Color(0xFF004B8C);
 const Color kPrimaryLight = Color(0xFF0063B2);
@@ -20,60 +21,7 @@ const Color kSuccessColor = Color(0xFF22C55E);
 const Color kWarningColor = Color(0xFFF59E0B);
 const Color kDangerColor = Color(0xFFEF4444);
 
-// Mock data model
-class TagihanDetailItem {
-  final String kategori;
-  final String tanggalLayanan;
-  final String kodeLayanan;
-  final String deskripsi;
-  final int jumlah;
-  final int hargaSatuan;
-  final int diskon;
-  final int subtotal;
-
-  TagihanDetailItem({
-    required this.kategori,
-    required this.tanggalLayanan,
-    required this.kodeLayanan,
-    required this.deskripsi,
-    required this.jumlah,
-    required this.hargaSatuan,
-    required this.diskon,
-    required this.subtotal,
-  });
-}
-
-class TagihanDetail {
-  final String id;
-  final String noInvoice;
-  final String patientName;
-  final String mrNumber;
-  final String noTelepon;
-  final DateTime tanggalTagihan;
-  final String primaryIcd;
-  final int totalBiaya;
-  final int deposit;
-  final int sisaBiaya;
-  final String terbilang;
-  final String statusPembayaran;
-  final List<TagihanDetailItem> items;
-
-  TagihanDetail({
-    required this.id,
-    required this.noInvoice,
-    required this.patientName,
-    required this.mrNumber,
-    required this.noTelepon,
-    required this.tanggalTagihan,
-    required this.primaryIcd,
-    required this.totalBiaya,
-    required this.deposit,
-    required this.sisaBiaya,
-    required this.terbilang,
-    required this.statusPembayaran,
-    required this.items,
-  });
-}
+// Mock data models no longer used - using real Tagihan model from API
 
 class ReportDetailTagihanPage extends StatefulWidget {
   final int tagihanId;
@@ -91,9 +39,16 @@ class ReportDetailTagihanPage extends StatefulWidget {
 }
 
 class _ReportDetailTagihanPageState extends State<ReportDetailTagihanPage> {
-  late TagihanDetail _tagihan;
+  model.Tagihan? _tagihan;
   bool _isLoading = true;
-  // Raw registrasi no longer used here after moving to dedicated pages
+  String? _errorMessage;
+
+  int _parseCurrencyStringToInt(String? str) {
+    if (str == null || str.isEmpty) return 0;
+    final cleaned = str.replaceAll(RegExp(r'[^(0-9)\.\-]'), '');
+    final d = double.tryParse(cleaned) ?? 0.0;
+    return d.round();
+  }
 
   @override
   void initState() {
@@ -101,113 +56,104 @@ class _ReportDetailTagihanPageState extends State<ReportDetailTagihanPage> {
     _loadTagihanDetail();
   }
 
-  void _loadTagihanDetail() {
-    // Mock data - nanti diganti dengan API call
-    Future.delayed(const Duration(milliseconds: 500), () {
-      setState(() {
-        _tagihan = TagihanDetail(
-          id: widget.tagihanId.toString(),
-          noInvoice: 'INV-2025-001',
-          patientName: 'Budi Santoso',
-          mrNumber: 'MR-2025-001',
-          noTelepon: '081234567890',
-          tanggalTagihan: DateTime(2025, 11, 15),
-          primaryIcd: 'E11 - Diabetes Mellitus Tipe 2',
-          totalBiaya: 850000,
-          deposit: 500000,
-          sisaBiaya: 350000,
-          terbilang: 'Delapan Ratus Lima Puluh Ribu Rupiah',
-          statusPembayaran: 'belum_lunas',
-          items: [
-            TagihanDetailItem(
-              kategori: 'Tindakan Keperawatan',
-              tanggalLayanan: '2025-11-15',
-              kodeLayanan: 'T001',
-              deskripsi: 'Pemasangan Infus',
-              jumlah: 1,
-              hargaSatuan: 50000,
-              diskon: 0,
-              subtotal: 50000,
-            ),
-            TagihanDetailItem(
-              kategori: 'Tindakan Keperawatan',
-              tanggalLayanan: '2025-11-15',
-              kodeLayanan: 'T002',
-              deskripsi: 'Pemberian Obat Injeksi',
-              jumlah: 3,
-              hargaSatuan: 35000,
-              diskon: 5000,
-              subtotal: 100000,
-            ),
-            TagihanDetailItem(
-              kategori: 'Tindakan Pemeriksaan',
-              tanggalLayanan: '2025-11-15',
-              kodeLayanan: 'T005',
-              deskripsi: 'EKG',
-              jumlah: 1,
-              hargaSatuan: 100000,
-              diskon: 0,
-              subtotal: 100000,
-            ),
-            TagihanDetailItem(
-              kategori: 'Obat-obatan',
-              tanggalLayanan: '2025-11-15',
-              kodeLayanan: 'OBT-001',
-              deskripsi: 'Metformin 500mg',
-              jumlah: 30,
-              hargaSatuan: 2000,
-              diskon: 0,
-              subtotal: 60000,
-            ),
-            TagihanDetailItem(
-              kategori: 'Konsultasi',
-              tanggalLayanan: '2025-11-15',
-              kodeLayanan: 'KNS-001',
-              deskripsi: 'Konsultasi Dokter Umum',
-              jumlah: 1,
-              hargaSatuan: 150000,
-              diskon: 0,
-              subtotal: 150000,
-            ),
-            TagihanDetailItem(
-              kategori: 'Laboratorium',
-              tanggalLayanan: '2025-11-15',
-              kodeLayanan: 'LAB-001',
-              deskripsi: 'Pemeriksaan Gula Darah',
-              jumlah: 1,
-              hargaSatuan: 50000,
-              diskon: 0,
-              subtotal: 50000,
-            ),
-            TagihanDetailItem(
-              kategori: 'Administrasi',
-              tanggalLayanan: '2025-11-15',
-              kodeLayanan: 'ADM-001',
-              deskripsi: 'Biaya Administrasi',
-              jumlah: 1,
-              hargaSatuan: 340000,
-              diskon: 0,
-              subtotal: 340000,
-            ),
-          ],
-        );
-        _isLoading = false;
-      });
+  // Helper methods to extract data from embedded registrasi
+  String _getPatientName() {
+    final reg = _tagihan?.registrasi;
+    if (reg == null) return 'Tidak diketahui';
+    final pasien = reg['pasien'];
+    if (pasien is Map) return pasien['nama'] as String? ?? 'Tidak diketahui';
+    return 'Tidak diketahui';
+  }
+
+  String _getMRNumber() {
+    final reg = _tagihan?.registrasi;
+    if (reg == null) return '-';
+    final pasien = reg['pasien'];
+    if (pasien is Map) return pasien['mrn'] as String? ?? '-';
+    return '-';
+  }
+
+  String _getPhoneNumber() {
+    final reg = _tagihan?.registrasi;
+    if (reg == null) return '-';
+    final pasien = reg['pasien'];
+    if (pasien is Map) return pasien['telepon'] as String? ?? '-';
+    return '-';
+  }
+
+  DateTime _getTagihanDate() {
+    final dateStr = _tagihan?.tanggalInvoice;
+    if (dateStr == null || dateStr.isEmpty) return DateTime.now();
+    return DateTime.tryParse(dateStr) ?? DateTime.now();
+  }
+
+  int _getTotalBiaya() {
+    final str = _tagihan?.totalBiaya;
+    if (str == null || str.isEmpty) return 0;
+    // Parse decimal string like "150000000.00" correctly to int (rupiah)
+    final cleaned = str.replaceAll(RegExp(r'[^(0-9)\.\-]'), '');
+    final d = double.tryParse(cleaned) ?? 0.0;
+    return d.round();
+  }
+
+  int _getDeposit() {
+    final str = _tagihan?.deposit;
+    if (str == null || str.isEmpty) return 0;
+    final cleaned = str.replaceAll(RegExp(r'[^(0-9)\.\-]'), '');
+    final d = double.tryParse(cleaned) ?? 0.0;
+    return d.round();
+  }
+
+  int _getSisaBiaya() {
+    final str = _tagihan?.biayaYangHarusDibayar;
+    if (str == null || str.isEmpty) return 0;
+    final cleaned = str.replaceAll(RegExp(r'[^(0-9)\.\-]'), '');
+    final d = double.tryParse(cleaned) ?? 0.0;
+    return d.round();
+  }
+
+  Future<void> _loadTagihanDetail() async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
     });
 
-    // Raw registrasi is not fetched here; view pages handle their own data
+    try {
+      final repo = getIt<TagihanRepository>();
+      final tagihan = await repo.getTagihanById(widget.tagihanId);
+
+      if (!mounted) return;
+
+      if (tagihan == null) {
+        setState(() {
+          _errorMessage = 'Tagihan tidak ditemukan';
+          _isLoading = false;
+        });
+        return;
+      }
+
+      setState(() {
+        _tagihan = tagihan;
+        _isLoading = false;
+      });
+    } catch (e) {
+      debugPrint('❌ Error loading tagihan detail: $e');
+      if (!mounted) return;
+      setState(() {
+        _errorMessage = 'Gagal memuat data tagihan: $e';
+        _isLoading = false;
+      });
+    }
   }
 
   // Raw registrasi fetching handled by dedicated view pages
 
   Color _getStatusColor(String status) {
     switch (status) {
-      case 'lunas':
+      case 'sudah_bayar':
         return kSuccessColor;
-      case 'belum_lunas':
+      case 'belum_bayar':
         return kWarningColor;
-      case 'pending':
-        return kDangerColor;
       default:
         return kTextGrey;
     }
@@ -215,111 +161,64 @@ class _ReportDetailTagihanPageState extends State<ReportDetailTagihanPage> {
 
   String _getStatusText(String status) {
     switch (status) {
-      case 'lunas':
-        return 'Lunas';
-      case 'belum_lunas':
-        return 'Belum Lunas';
-      case 'pending':
-        return 'Pending';
+      case 'sudah_bayar':
+        return 'Sudah Bayar';
+      case 'belum_bayar':
+        return 'Belum Bayar';
       default:
         return status;
     }
   }
 
-  Future<void> _shareViaWhatsApp() async {
-    final message = _generateWhatsAppMessage();
-    final phoneNumber = _tagihan.noTelepon.replaceAll(RegExp(r'[^0-9]'), '');
-
-    // Format nomor telepon ke format internasional
-    String formattedPhone = phoneNumber;
-    if (phoneNumber.startsWith('0')) {
-      formattedPhone = '62${phoneNumber.substring(1)}';
-    } else if (!phoneNumber.startsWith('62')) {
-      formattedPhone = '62$phoneNumber';
-    }
-
-    final url = Uri.parse(
-      'https://wa.me/$formattedPhone?text=${Uri.encodeComponent(message)}',
-    );
-
-    try {
-      if (await canLaunchUrl(url)) {
-        await launchUrl(url, mode: LaunchMode.externalApplication);
-      } else {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Tidak dapat membuka WhatsApp'),
-              backgroundColor: kDangerColor,
-            ),
-          );
-        }
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e'), backgroundColor: kDangerColor),
-        );
-      }
-    }
-  }
+  // WhatsApp sharing removed per user request.
 
   String _generateWhatsAppMessage() {
     final buffer = StringBuffer();
     buffer.writeln('*TAGIHAN PEMBAYARAN*');
     buffer.writeln('━━━━━━━━━━━━━━━━━━━━');
     buffer.writeln('');
-    buffer.writeln('*Invoice:* ${_tagihan.noInvoice}');
+    buffer.writeln('*Invoice:* ${_tagihan!.noInvoice}');
     buffer.writeln(
-      '*Tanggal:* ${DateFormat('d MMMM yyyy', 'id_ID').format(_tagihan.tanggalTagihan)}',
+      '*Tanggal:* ${DateFormat('d MMMM yyyy', 'id_ID').format(_getTagihanDate())}',
     );
-    buffer.writeln('*Pasien:* ${_tagihan.patientName}');
-    buffer.writeln('*No. RM:* ${_tagihan.mrNumber}');
-    buffer.writeln('*Diagnosis:* ${_tagihan.primaryIcd}');
+    buffer.writeln('*Pasien:* ${_getPatientName()}');
+    buffer.writeln('*No. RM:* ${_getMRNumber()}');
+    buffer.writeln('*Diagnosis:* ${_tagihan!.primaryIcd ?? '-'}');
     buffer.writeln('');
     buffer.writeln('*RINCIAN BIAYA*');
     buffer.writeln('━━━━━━━━━━━━━━━━━━━━');
 
-    // Group items by kategori
-    final groupedItems = <String, List<TagihanDetailItem>>{};
-    for (var item in _tagihan.items) {
-      groupedItems.putIfAbsent(item.kategori, () => []).add(item);
-    }
-
-    groupedItems.forEach((kategori, items) {
-      buffer.writeln('');
-      buffer.writeln('*$kategori*');
-      for (var item in items) {
-        buffer.write('• ${item.deskripsi}');
-        if (item.jumlah > 1) {
-          buffer.write(' (${item.jumlah}x)');
-        }
-        buffer.writeln('');
-        buffer.writeln(
-          '  Rp ${NumberFormat('#,###', 'id_ID').format(item.subtotal)}',
-        );
+    final items = _tagihan!.items ?? [];
+    for (var item in items) {
+      buffer.write('• ${item.deskripsi ?? '-'}');
+      if (item.jumlah > 1) {
+        buffer.write(' (${item.jumlah}x)');
       }
-    });
+      buffer.writeln('');
+      final subtotal = _parseCurrencyStringToInt(item.subtotal);
+      buffer.writeln('  Rp ${NumberFormat('#,###', 'id_ID').format(subtotal)}');
+    }
 
     buffer.writeln('');
     buffer.writeln('━━━━━━━━━━━━━━━━━━━━');
     buffer.writeln(
-      '*Total Biaya:* Rp ${NumberFormat('#,###', 'id_ID').format(_tagihan.totalBiaya)}',
+      '*Total Biaya:* Rp ${NumberFormat('#,###', 'id_ID').format(_getTotalBiaya())}',
     );
 
-    if (_tagihan.deposit > 0) {
+    final deposit = _getDeposit();
+    if (deposit > 0) {
       buffer.writeln(
-        '*Deposit:* Rp ${NumberFormat('#,###', 'id_ID').format(_tagihan.deposit)}',
+        '*Deposit:* Rp ${NumberFormat('#,###', 'id_ID').format(deposit)}',
       );
       buffer.writeln(
-        '*Sisa Pembayaran:* Rp ${NumberFormat('#,###', 'id_ID').format(_tagihan.sisaBiaya)}',
+        '*Sisa Pembayaran:* Rp ${NumberFormat('#,###', 'id_ID').format(_getSisaBiaya())}',
       );
     }
 
-    buffer.writeln('*Terbilang:* ${_tagihan.terbilang}');
+    buffer.writeln('*Terbilang:* ${_tagihan!.terbilang ?? '-'}');
     buffer.writeln('');
     buffer.writeln('━━━━━━━━━━━━━━━━━━━━');
-    buffer.writeln('*Status:* ${_getStatusText(_tagihan.statusPembayaran)}');
+    buffer.writeln('*Status:* ${_getStatusText(_tagihan!.statusPembayaran)}');
     buffer.writeln('');
     buffer.writeln('Terima kasih atas kepercayaan Anda.');
     buffer.writeln('');
@@ -329,22 +228,46 @@ class _ReportDetailTagihanPageState extends State<ReportDetailTagihanPage> {
   }
 
   Future<void> _printPdf() async {
-    final doc = pw.Document();
+    // Download PDF bytes via authenticated request and render locally
+    try {
+      final repo = getIt<TagihanRepository>();
+      final bytes = await repo.downloadPrintPdf(_tagihan!.id);
+      if (bytes == null) {
+        throw Exception('Gagal mengunduh PDF dari server');
+      }
 
-    // Group items by kategori
-    final groupedItems = <String, List<TagihanDetailItem>>{};
-    for (var item in _tagihan.items) {
-      groupedItems.putIfAbsent(item.kategori, () => []).add(item);
+      await Printing.layoutPdf(
+        onLayout: (PdfPageFormat format) async => bytes,
+        name: 'Invoice-${_tagihan!.noInvoice}.pdf',
+      );
+      return;
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error: $e'), backgroundColor: kDangerColor),
+      );
+      // fallback: try open URL externally (may fail if authentication required)
+      try {
+        final repo = getIt<TagihanRepository>();
+        final printUrl = await repo.getPrintUrl(_tagihan!.id);
+        if (printUrl != null) {
+          final url = Uri.parse(printUrl);
+          if (await canLaunchUrl(url)) {
+            await launchUrl(url, mode: LaunchMode.externalApplication);
+          }
+        }
+      } catch (_) {}
+      return;
     }
 
+    final doc = pw.Document();
+    final items = _tagihan!.items ?? [];
     final currency = (num v) =>
         'Rp ${NumberFormat('#,###', 'id_ID').format(v)}';
 
     doc.addPage(
       pw.MultiPage(
-        pageTheme: const pw.PageTheme(
-          margin: pw.EdgeInsets.all(24),
-        ),
+        pageTheme: const pw.PageTheme(margin: pw.EdgeInsets.all(24)),
         build: (context) => [
           pw.Container(
             padding: const pw.EdgeInsets.all(12),
@@ -359,38 +282,49 @@ class _ReportDetailTagihanPageState extends State<ReportDetailTagihanPage> {
                 pw.Column(
                   crossAxisAlignment: pw.CrossAxisAlignment.start,
                   children: [
-                    pw.Text('Invoice',
-                        style: pw.TextStyle(
-                            fontSize: 10, color: PdfColors.grey700)),
+                    pw.Text(
+                      'Invoice',
+                      style: pw.TextStyle(
+                        fontSize: 10,
+                        color: PdfColors.grey700,
+                      ),
+                    ),
                     pw.SizedBox(height: 4),
                     pw.Text(
-                      _tagihan.noInvoice,
-                      style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold),
+                      _tagihan!.noInvoice,
+                      style: pw.TextStyle(
+                        fontSize: 16,
+                        fontWeight: pw.FontWeight.bold,
+                      ),
                     ),
                     pw.SizedBox(height: 2),
                     pw.Text(
-                      DateFormat('d MMMM yyyy', 'id_ID')
-                          .format(_tagihan.tanggalTagihan),
+                      DateFormat(
+                        'd MMMM yyyy',
+                        'id_ID',
+                      ).format(_getTagihanDate()),
                       style: const pw.TextStyle(fontSize: 10),
                     ),
                   ],
                 ),
                 pw.Container(
                   padding: const pw.EdgeInsets.symmetric(
-                      horizontal: 8, vertical: 4),
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
                   decoration: pw.BoxDecoration(
                     color: PdfColors.blue,
                     borderRadius: pw.BorderRadius.circular(6),
                   ),
                   child: pw.Text(
-                    _getStatusText(_tagihan.statusPembayaran),
+                    _getStatusText(_tagihan!.statusPembayaran),
                     style: pw.TextStyle(
                       color: PdfColors.white,
                       fontSize: 9,
                       fontWeight: pw.FontWeight.bold,
                     ),
                   ),
-                )
+                ),
               ],
             ),
           ),
@@ -406,21 +340,21 @@ class _ReportDetailTagihanPageState extends State<ReportDetailTagihanPage> {
             child: pw.Column(
               crossAxisAlignment: pw.CrossAxisAlignment.start,
               children: [
-                pw.Text('Data Pasien',
-                    style: pw.TextStyle(
-                      fontWeight: pw.FontWeight.bold,
-                    )),
+                pw.Text(
+                  'Data Pasien',
+                  style: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+                ),
                 pw.SizedBox(height: 8),
-                _pdfInfoRow('Nama', _tagihan.patientName),
-                _pdfInfoRow('No. RM', _tagihan.mrNumber),
-                _pdfInfoRow('Telepon', _tagihan.noTelepon),
-                _pdfInfoRow('Diagnosis', _tagihan.primaryIcd),
+                _pdfInfoRow('Nama', _getPatientName()),
+                _pdfInfoRow('No. RM', _getMRNumber()),
+                _pdfInfoRow('Telepon', _getPhoneNumber()),
+                _pdfInfoRow('Diagnosis', _tagihan!.primaryIcd ?? '-'),
               ],
             ),
           ),
           pw.SizedBox(height: 12),
 
-          // Items grouped by kategori
+          // Items list
           pw.Container(
             padding: const pw.EdgeInsets.all(12),
             decoration: pw.BoxDecoration(
@@ -430,89 +364,103 @@ class _ReportDetailTagihanPageState extends State<ReportDetailTagihanPage> {
             child: pw.Column(
               crossAxisAlignment: pw.CrossAxisAlignment.start,
               children: [
-                pw.Text('Rincian Biaya',
-                    style: pw.TextStyle(
-                        fontWeight: pw.FontWeight.bold, fontSize: 14)),
+                pw.Text(
+                  'Rincian Biaya',
+                  style: pw.TextStyle(
+                    fontWeight: pw.FontWeight.bold,
+                    fontSize: 14,
+                  ),
+                ),
                 pw.SizedBox(height: 8),
-                ...groupedItems.entries.expand((entry) => [
-                      pw.Padding(
-                        padding: const pw.EdgeInsets.only(top: 6, bottom: 4),
-                        child: pw.Text(entry.key,
-                          style: pw.TextStyle(
-                            color: PdfColors.blue,
-                            fontWeight: pw.FontWeight.bold)),
-                      ),
-                      ...entry.value.map((item) => pw.Column(
-                            crossAxisAlignment: pw.CrossAxisAlignment.start,
-                            children: [
-                              pw.Row(
-                                mainAxisAlignment:
-                                    pw.MainAxisAlignment.spaceBetween,
-                                crossAxisAlignment: pw.CrossAxisAlignment.start,
-                                children: [
-                                  pw.Expanded(
-                                    flex: 3,
-                                    child: pw.Column(
-                                      crossAxisAlignment:
-                                          pw.CrossAxisAlignment.start,
-                                      children: [
-                                        pw.Text(item.deskripsi,
-                                          style: pw.TextStyle(
-                                            fontSize: 11,
-                                            fontWeight: pw.FontWeight.bold)),
-                                        pw.SizedBox(height: 2),
-                                        pw.Text(item.kodeLayanan,
-                                            style: const pw.TextStyle(
-                                                fontSize: 9,
-                                                color: PdfColors.grey700)),
-                                      ],
-                                    ),
-                                  ),
-                                  pw.SizedBox(width: 8),
-                                  pw.Flexible(
-                                    flex: 2,
-                                    child: pw.Text(
-                                      currency(item.subtotal),
-                                      textAlign: pw.TextAlign.right,
-                                      style: pw.TextStyle(
-                                          fontSize: 11,
-                                          fontWeight: pw.FontWeight.bold),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              pw.SizedBox(height: 2),
-                              pw.Row(children: [
+                ...items.map((item) {
+                  final subtotal = _parseCurrencyStringToInt(item.subtotal);
+                  final hargaSatuan = _parseCurrencyStringToInt(
+                    item.hargaSatuan,
+                  );
+                  final diskon = _parseCurrencyStringToInt(item.diskon);
+
+                  return pw.Column(
+                    crossAxisAlignment: pw.CrossAxisAlignment.start,
+                    children: [
+                      pw.Row(
+                        mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+                        crossAxisAlignment: pw.CrossAxisAlignment.start,
+                        children: [
+                          pw.Expanded(
+                            flex: 3,
+                            child: pw.Column(
+                              crossAxisAlignment: pw.CrossAxisAlignment.start,
+                              children: [
                                 pw.Text(
-                                  '${item.jumlah}x @ ${currency(item.hargaSatuan)}',
-                                  style: const pw.TextStyle(
-                                      fontSize: 9, color: PdfColors.grey700),
-                                ),
-                                if (item.diskon > 0) ...[
-                                  pw.SizedBox(width: 6),
-                                  pw.Container(
-                                    padding: const pw.EdgeInsets.symmetric(
-                                        horizontal: 4, vertical: 1),
-                                    decoration: pw.BoxDecoration(
-                                      color: PdfColors.grey200,
-                                      borderRadius:
-                                          pw.BorderRadius.circular(3),
-                                    ),
-                                    child: pw.Text(
-                                      'Diskon ${currency(item.diskon)}',
-                                      style: pw.TextStyle(
-                                          fontSize: 8,
-                                          color: PdfColors.red,
-                                          fontWeight: pw.FontWeight.bold),
-                                    ),
+                                  item.deskripsi ?? '-',
+                                  style: pw.TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: pw.FontWeight.bold,
                                   ),
-                                ]
-                              ]),
-                              pw.SizedBox(height: 8),
-                            ],
-                          )),
-                      pw.Divider(height: 14),
-                    ]),
+                                ),
+                                pw.SizedBox(height: 2),
+                                pw.Text(
+                                  item.kodeLayanan ?? '-',
+                                  style: const pw.TextStyle(
+                                    fontSize: 9,
+                                    color: PdfColors.grey700,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          pw.SizedBox(width: 8),
+                          pw.Flexible(
+                            flex: 2,
+                            child: pw.Text(
+                              currency(subtotal),
+                              textAlign: pw.TextAlign.right,
+                              style: pw.TextStyle(
+                                fontSize: 11,
+                                fontWeight: pw.FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      pw.SizedBox(height: 2),
+                      pw.Row(
+                        children: [
+                          pw.Text(
+                            '${item.jumlah}x @ ${currency(hargaSatuan)}',
+                            style: const pw.TextStyle(
+                              fontSize: 9,
+                              color: PdfColors.grey700,
+                            ),
+                          ),
+                          if (diskon > 0) ...[
+                            pw.SizedBox(width: 6),
+                            pw.Container(
+                              padding: const pw.EdgeInsets.symmetric(
+                                horizontal: 4,
+                                vertical: 1,
+                              ),
+                              decoration: pw.BoxDecoration(
+                                color: PdfColors.grey200,
+                                borderRadius: pw.BorderRadius.circular(3),
+                              ),
+                              child: pw.Text(
+                                'Diskon ${currency(diskon)}',
+                                style: pw.TextStyle(
+                                  fontSize: 8,
+                                  color: PdfColors.red,
+                                  fontWeight: pw.FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                      pw.SizedBox(height: 8),
+                      pw.Divider(height: 6),
+                    ],
+                  );
+                }),
               ],
             ),
           ),
@@ -525,28 +473,45 @@ class _ReportDetailTagihanPageState extends State<ReportDetailTagihanPage> {
               color: PdfColor.fromInt(kPrimaryColor.value),
               borderRadius: pw.BorderRadius.circular(8),
             ),
-            child: pw.Column(children: [
-              _pdfSummaryRow('Total Biaya', currency(_tagihan.totalBiaya),
-                  isBold: true, color: PdfColors.white),
-              if (_tagihan.deposit > 0) ...[
-                pw.SizedBox(height: 6),
-                _pdfSummaryRow('Deposit', currency(_tagihan.deposit),
-                    color: PdfColors.white),
-                pw.Divider(color: PdfColors.white, height: 16, thickness: 0.3),
-                _pdfSummaryRow('Sisa Pembayaran', currency(_tagihan.sisaBiaya),
-                    isBold: true, color: PdfColors.white),
-              ],
-              pw.SizedBox(height: 6),
-              pw.Text(
-                _tagihan.terbilang,
-                style: pw.TextStyle(
+            child: pw.Column(
+              children: [
+                _pdfSummaryRow(
+                  'Total Biaya',
+                  currency(_getTotalBiaya()),
+                  isBold: true,
                   color: PdfColors.white,
-                  fontSize: 9,
-                  fontStyle: pw.FontStyle.italic,
                 ),
-                textAlign: pw.TextAlign.center,
-              )
-            ]),
+                if (_getDeposit() > 0) ...[
+                  pw.SizedBox(height: 6),
+                  _pdfSummaryRow(
+                    'Deposit',
+                    currency(_getDeposit()),
+                    color: PdfColors.white,
+                  ),
+                  pw.Divider(
+                    color: PdfColors.white,
+                    height: 16,
+                    thickness: 0.3,
+                  ),
+                  _pdfSummaryRow(
+                    'Sisa Pembayaran',
+                    currency(_getSisaBiaya()),
+                    isBold: true,
+                    color: PdfColors.white,
+                  ),
+                ],
+                pw.SizedBox(height: 6),
+                pw.Text(
+                  _tagihan!.terbilang ?? '-',
+                  style: pw.TextStyle(
+                    color: PdfColors.white,
+                    fontSize: 9,
+                    fontStyle: pw.FontStyle.italic,
+                  ),
+                  textAlign: pw.TextAlign.center,
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -554,67 +519,67 @@ class _ReportDetailTagihanPageState extends State<ReportDetailTagihanPage> {
 
     await Printing.layoutPdf(
       onLayout: (PdfPageFormat format) async => doc.save(),
-      name: 'Invoice-${_tagihan.noInvoice}.pdf',
+      name: 'Invoice-${_tagihan!.noInvoice}.pdf',
     );
   }
 
   pw.Widget _pdfInfoRow(String label, String value) => pw.Padding(
-        padding: const pw.EdgeInsets.only(bottom: 4),
-        child: pw.Row(
-          mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
-          crossAxisAlignment: pw.CrossAxisAlignment.start,
-          children: [
-            pw.Expanded(
-              flex: 2,
-              child: pw.Text(label,
-                  style: const pw.TextStyle(
-                      fontSize: 10, color: PdfColors.grey700)),
-            ),
-            pw.SizedBox(width: 6),
-            pw.Expanded(
-              flex: 3,
-              child: pw.Text(value,
-                  textAlign: pw.TextAlign.right,
-                  style: pw.TextStyle(
-                      fontSize: 10, fontWeight: pw.FontWeight.bold)),
-            ),
-          ],
+    padding: const pw.EdgeInsets.only(bottom: 4),
+    child: pw.Row(
+      mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
+      children: [
+        pw.Expanded(
+          flex: 2,
+          child: pw.Text(
+            label,
+            style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey700),
+          ),
         ),
-      );
+        pw.SizedBox(width: 6),
+        pw.Expanded(
+          flex: 3,
+          child: pw.Text(
+            value,
+            textAlign: pw.TextAlign.right,
+            style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold),
+          ),
+        ),
+      ],
+    ),
+  );
 
-  pw.Widget _pdfSummaryRow(String label, String value,
-          {bool isBold = false, PdfColor? color}) =>
-      pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [
-        pw.Text(label,
-            style: pw.TextStyle(
-                color: color ?? PdfColors.grey100,
-                fontSize: 12,
-                fontWeight: isBold ? pw.FontWeight.bold : pw.FontWeight.normal)),
-        pw.Text(value,
-            style: pw.TextStyle(
-                color: color ?? PdfColors.black,
-                fontSize: 12,
-                fontWeight: pw.FontWeight.bold)),
-      ]);
+  pw.Widget _pdfSummaryRow(
+    String label,
+    String value, {
+    bool isBold = false,
+    PdfColor? color,
+  }) => pw.Row(
+    mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+    children: [
+      pw.Text(
+        label,
+        style: pw.TextStyle(
+          color: color ?? PdfColors.grey100,
+          fontSize: 12,
+          fontWeight: isBold ? pw.FontWeight.bold : pw.FontWeight.normal,
+        ),
+      ),
+      pw.Text(
+        value,
+        style: pw.TextStyle(
+          color: color ?? PdfColors.black,
+          fontSize: 12,
+          fontWeight: pw.FontWeight.bold,
+        ),
+      ),
+    ],
+  );
 
   Future<void> _updateStatus(String newStatus) async {
     // TODO: Implement API call to update status
     setState(() {
-      _tagihan = TagihanDetail(
-        id: _tagihan.id,
-        noInvoice: _tagihan.noInvoice,
-        patientName: _tagihan.patientName,
-        mrNumber: _tagihan.mrNumber,
-        noTelepon: _tagihan.noTelepon,
-        tanggalTagihan: _tagihan.tanggalTagihan,
-        primaryIcd: _tagihan.primaryIcd,
-        totalBiaya: _tagihan.totalBiaya,
-        deposit: _tagihan.deposit,
-        sisaBiaya: _tagihan.sisaBiaya,
-        terbilang: _tagihan.terbilang,
-        statusPembayaran: newStatus,
-        items: _tagihan.items,
-      );
+      _tagihan = _tagihan?.copyWith(statusPembayaran: newStatus);
     });
 
     if (mounted) {
@@ -636,27 +601,19 @@ class _ReportDetailTagihanPageState extends State<ReportDetailTagihanPage> {
           mainAxisSize: MainAxisSize.min,
           children: [
             ListTile(
-              leading: const Icon(Icons.schedule, color: kDangerColor),
-              title: const Text('Pending'),
-              onTap: () {
-                Navigator.pop(context);
-                _updateStatus('pending');
-              },
-            ),
-            ListTile(
               leading: const Icon(Icons.pending, color: kWarningColor),
-              title: const Text('Belum Lunas'),
+              title: const Text('Belum Bayar'),
               onTap: () {
                 Navigator.pop(context);
-                _updateStatus('belum_lunas');
+                _updateStatus('belum_bayar');
               },
             ),
             ListTile(
               leading: const Icon(Icons.check_circle, color: kSuccessColor),
-              title: const Text('Lunas'),
+              title: const Text('Sudah Bayar'),
               onTap: () {
                 Navigator.pop(context);
-                _updateStatus('lunas');
+                _updateStatus('sudah_bayar');
               },
             ),
           ],
@@ -676,6 +633,35 @@ class _ReportDetailTagihanPageState extends State<ReportDetailTagihanPage> {
           foregroundColor: kWhite,
         ),
         body: const Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    if (_errorMessage != null || _tagihan == null) {
+      return Scaffold(
+        backgroundColor: kScaffoldBg,
+        appBar: AppBar(
+          title: const Text('Detail Tagihan'),
+          backgroundColor: kPrimaryColor,
+          foregroundColor: kWhite,
+        ),
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.error_outline, size: 64, color: kDangerColor),
+              const SizedBox(height: 16),
+              Text(
+                _errorMessage ?? 'Tagihan tidak ditemukan',
+                style: const TextStyle(fontSize: 16, color: kTextGrey),
+              ),
+              const SizedBox(height: 16),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Kembali'),
+              ),
+            ],
+          ),
+        ),
       );
     }
 
@@ -709,7 +695,7 @@ class _ReportDetailTagihanPageState extends State<ReportDetailTagihanPage> {
   }
 
   Widget _buildSliverAppBar() {
-    final statusColor = _getStatusColor(_tagihan.statusPembayaran);
+    final statusColor = _getStatusColor(_tagihan!.statusPembayaran);
 
     return SliverAppBar(
       expandedHeight: 160,
@@ -738,7 +724,7 @@ class _ReportDetailTagihanPageState extends State<ReportDetailTagihanPage> {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    _tagihan.noInvoice,
+                    _tagihan!.noInvoice,
                     style: const TextStyle(
                       color: kWhite,
                       fontSize: 20,
@@ -748,21 +734,29 @@ class _ReportDetailTagihanPageState extends State<ReportDetailTagihanPage> {
                     overflow: TextOverflow.ellipsis,
                   ),
                   const SizedBox(height: 6),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 5,
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(
+                      maxWidth: 160,
+                      minWidth: 0,
                     ),
-                    decoration: BoxDecoration(
-                      color: statusColor,
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: Text(
-                      _getStatusText(_tagihan.statusPembayaran),
-                      style: const TextStyle(
-                        color: kWhite,
-                        fontSize: 11,
-                        fontWeight: FontWeight.bold,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 5,
+                      ),
+                      decoration: BoxDecoration(
+                        color: statusColor,
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: Text(
+                        _getStatusText(_tagihan!.statusPembayaran),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: kWhite,
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                     ),
                   ),
@@ -778,8 +772,63 @@ class _ReportDetailTagihanPageState extends State<ReportDetailTagihanPage> {
           onPressed: _showUpdateStatusDialog,
           tooltip: 'Update Status',
         ),
+        IconButton(
+          icon: const Icon(Icons.delete_outline),
+          onPressed: _confirmDeleteTagihan,
+          tooltip: 'Hapus Tagihan',
+        ),
       ],
     );
+  }
+
+  Future<void> _confirmDeleteTagihan() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Hapus Tagihan'),
+        content: const Text(
+          'Yakin ingin menghapus tagihan ini? Tindakan ini tidak bisa dibatalkan.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Batal'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Hapus'),
+          ),
+        ],
+      ),
+    );
+
+    if (ok != true) return;
+    try {
+      final repo = getIt<TagihanRepository>();
+      final success = await repo.deleteTagihan(_tagihan!.id);
+      if (!mounted) return;
+      if (success) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Tagihan berhasil dihapus'),
+            backgroundColor: kSuccessColor,
+          ),
+        );
+        Navigator.pop(context, true);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Gagal menghapus tagihan'),
+            backgroundColor: kDangerColor,
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error: $e'), backgroundColor: kDangerColor),
+      );
+    }
   }
 
   Widget _buildPatientCard() {
@@ -827,15 +876,15 @@ class _ReportDetailTagihanPageState extends State<ReportDetailTagihanPage> {
             ],
           ),
           const SizedBox(height: 16),
-          _buildInfoRow('Nama', _tagihan.patientName),
+          _buildInfoRow('Nama', _getPatientName()),
           const SizedBox(height: 12),
-          _buildInfoRow('No. RM', _tagihan.mrNumber),
+          _buildInfoRow('No. RM', _getMRNumber()),
           const SizedBox(height: 12),
-          _buildInfoRow('Telepon', _tagihan.noTelepon),
+          _buildInfoRow('Telepon', _getPhoneNumber()),
           const SizedBox(height: 12),
           _buildInfoRow(
             'Tanggal',
-            DateFormat('d MMMM yyyy', 'id_ID').format(_tagihan.tanggalTagihan),
+            DateFormat('d MMMM yyyy', 'id_ID').format(_getTagihanDate()),
           ),
         ],
       ),
@@ -882,15 +931,86 @@ class _ReportDetailTagihanPageState extends State<ReportDetailTagihanPage> {
                   style: TextStyle(fontSize: 12, color: kTextGrey),
                 ),
                 const SizedBox(height: 4),
-                Text(
-                  _tagihan.primaryIcd,
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.bold,
-                    color: kTextDark,
-                  ),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
+                Builder(
+                  builder: (context) {
+                    // Try to extract ICD/deskripsi from registrasi if present
+                    final reg = _tagihan?.registrasi;
+                    final List<String> icdNames = [];
+
+                    if (reg is Map) {
+                      final Map<String, dynamic> regMap =
+                          Map<String, dynamic>.from(reg as Map);
+                      final dynamic rawIcd =
+                          regMap['icd'] ??
+                          regMap['icd_list'] ??
+                          regMap['diagnosa'];
+                      if (rawIcd is List) {
+                        for (final item in rawIcd) {
+                          if (item is Map) {
+                            final name =
+                                (item['deskripsi'] ??
+                                        item['deskripsi_icd'] ??
+                                        item['name'] ??
+                                        item['nama'] ??
+                                        item['kode'])
+                                    ?.toString();
+                            if (name != null && name.isNotEmpty) {
+                              icdNames.add(name);
+                            }
+                          } else if (item != null) {
+                            final s = item.toString();
+                            if (s.isNotEmpty) icdNames.add(s);
+                          }
+                        }
+                      }
+                    }
+
+                    // Fallback to primaryIcd (may contain code or description)
+                    if (icdNames.isEmpty) {
+                      final primary = _tagihan!.primaryIcd;
+                      if (primary != null && primary.isNotEmpty)
+                        icdNames.add(primary);
+                    }
+
+                    if (icdNames.isEmpty) {
+                      return const Text('-');
+                    }
+
+                    // If multiple diagnoses, show as vertical list; otherwise single bold line
+                    if (icdNames.length == 1) {
+                      return Text(
+                        icdNames.first,
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.bold,
+                          color: kTextDark,
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      );
+                    }
+
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: icdNames
+                          .map(
+                            (n) => Padding(
+                              padding: const EdgeInsets.only(bottom: 4),
+                              child: Text(
+                                '• $n',
+                                style: const TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.bold,
+                                  color: kTextDark,
+                                ),
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          )
+                          .toList(),
+                    );
+                  },
                 ),
               ],
             ),
@@ -901,10 +1021,31 @@ class _ReportDetailTagihanPageState extends State<ReportDetailTagihanPage> {
   }
 
   Widget _buildItemsSection() {
-    // Group items by kategori
-    final groupedItems = <String, List<TagihanDetailItem>>{};
-    for (var item in _tagihan.items) {
-      groupedItems.putIfAbsent(item.kategori, () => []).add(item);
+    // Prefer showing tindakan from registrasi (billing-first: registrasi.tindakan)
+    final reg = _tagihan?.registrasi;
+
+    List<dynamic> tindakan = [];
+    if (reg is Map) {
+      final Map<String, dynamic> regMap = Map<String, dynamic>.from(reg as Map);
+      final dynamic t =
+          regMap['tindakan'] ?? regMap['tindakan_from_tagihan'] ?? [];
+      if (t is List) tindakan = List<dynamic>.from(t);
+    }
+
+    if (tindakan.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: kWhite,
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: const Center(
+          child: Text(
+            'Tidak ada rincian tindakan',
+            style: TextStyle(color: kTextGrey),
+          ),
+        ),
+      );
     }
 
     return Container(
@@ -933,11 +1074,15 @@ class _ReportDetailTagihanPageState extends State<ReportDetailTagihanPage> {
                   ),
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: const Icon(Icons.receipt_long, color: kWhite, size: 20),
+                child: const Icon(
+                  Icons.medical_services,
+                  color: kWhite,
+                  size: 20,
+                ),
               ),
               const SizedBox(width: 12),
               const Text(
-                'Rincian Biaya',
+                'Tindakan',
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
@@ -947,32 +1092,53 @@ class _ReportDetailTagihanPageState extends State<ReportDetailTagihanPage> {
             ],
           ),
           const SizedBox(height: 16),
-          ...groupedItems.entries.map((entry) {
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.only(top: 12, bottom: 8),
-                  child: Text(
-                    entry.key,
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.bold,
-                      color: kPrimaryColor,
-                    ),
-                  ),
-                ),
-                ...entry.value.map((item) => _buildItemRow(item)),
-                const Divider(height: 20),
-              ],
-            );
-          }),
+          ...tindakan.map((t) => _buildTindakanRow(t)),
         ],
       ),
     );
   }
 
-  Widget _buildItemRow(TagihanDetailItem item) {
+  Widget _buildTindakanRow(dynamic tindakan) {
+    // tindakan can be a Map with pivot or a model-like object. Normalize access.
+    final Map t = tindakan is Map ? tindakan : {};
+    final pivot = t['pivot'] is Map ? t['pivot'] as Map : <String, dynamic>{};
+
+    final deskripsi =
+        t['deskripsi'] as String? ?? t['description'] as String? ?? '-';
+    final kode = t['kode'] as String? ?? t['kode_layanan'] as String? ?? '-';
+
+    final jumlah = (pivot['jumlah'] ?? t['jumlah'] ?? 0);
+    final hargaStr =
+        (pivot['harga_satuan'] ?? t['harga_satuan'] ?? t['tarif'] ?? '0')
+            .toString();
+    final diskonStr = (pivot['diskon'] ?? t['diskon'] ?? '0').toString();
+    final subtotalStr =
+        (pivot['subtotal'] ??
+                t['subtotal'] ??
+                (int.parse(jumlah.toString()) *
+                        (double.tryParse(hargaStr) ?? 0.0))
+                    .toString())
+            .toString();
+
+    final tanggalRaw = pivot['tanggal_layanan'] ?? t['tanggal_layanan'];
+    String tanggalText = '';
+    if (tanggalRaw != null) {
+      try {
+        final dt = DateTime.tryParse(tanggalRaw.toString());
+        if (dt != null) {
+          tanggalText = DateFormat('d MMM yyyy, HH:mm', 'id_ID').format(dt);
+        } else {
+          tanggalText = tanggalRaw.toString();
+        }
+      } catch (_) {
+        tanggalText = tanggalRaw.toString();
+      }
+    }
+
+    final subtotalInt = _parseCurrencyStringToInt(subtotalStr);
+    final hargaInt = _parseCurrencyStringToInt(hargaStr);
+    final diskonInt = _parseCurrencyStringToInt(diskonStr);
+
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Column(
@@ -987,7 +1153,7 @@ class _ReportDetailTagihanPageState extends State<ReportDetailTagihanPage> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      item.deskripsi,
+                      deskripsi,
                       style: const TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w600,
@@ -998,7 +1164,7 @@ class _ReportDetailTagihanPageState extends State<ReportDetailTagihanPage> {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      item.kodeLayanan,
+                      kode,
                       style: const TextStyle(fontSize: 11, color: kTextGrey),
                     ),
                   ],
@@ -1008,7 +1174,7 @@ class _ReportDetailTagihanPageState extends State<ReportDetailTagihanPage> {
               Flexible(
                 flex: 2,
                 child: Text(
-                  'Rp ${NumberFormat('#,###', 'id_ID').format(item.subtotal)}',
+                  'Rp ${NumberFormat('#,###', 'id_ID').format(subtotalInt)}',
                   style: const TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.bold,
@@ -1025,10 +1191,10 @@ class _ReportDetailTagihanPageState extends State<ReportDetailTagihanPage> {
           Row(
             children: [
               Text(
-                '${item.jumlah}x @ Rp ${NumberFormat('#,###', 'id_ID').format(item.hargaSatuan)}',
+                '${jumlah}x @ Rp ${NumberFormat('#,###', 'id_ID').format(hargaInt)}',
                 style: const TextStyle(fontSize: 12, color: kTextGrey),
               ),
-              if (item.diskon > 0) ...[
+              if ((diskonInt) > 0) ...[
                 const SizedBox(width: 8),
                 Container(
                   padding: const EdgeInsets.symmetric(
@@ -1040,7 +1206,99 @@ class _ReportDetailTagihanPageState extends State<ReportDetailTagihanPage> {
                     borderRadius: BorderRadius.circular(4),
                   ),
                   child: Text(
-                    'Diskon Rp ${NumberFormat('#,###', 'id_ID').format(item.diskon)}',
+                    'Diskon Rp ${NumberFormat('#,###', 'id_ID').format(diskonInt)}',
+                    style: const TextStyle(
+                      fontSize: 10,
+                      color: kDangerColor,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ],
+              const Spacer(),
+              if (tanggalText.isNotEmpty)
+                Text(
+                  tanggalText,
+                  style: const TextStyle(fontSize: 11, color: kTextGrey),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildItemRow(model.TagihanItem item) {
+    final subtotalInt = _parseCurrencyStringToInt(item.subtotal);
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                flex: 3,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      item.deskripsi ?? '-',
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: kTextDark,
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      item.kodeLayanan ?? '-',
+                      style: const TextStyle(fontSize: 11, color: kTextGrey),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Flexible(
+                flex: 2,
+                child: Text(
+                  'Rp ${NumberFormat('#,###', 'id_ID').format(subtotalInt)}',
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.bold,
+                    color: kTextDark,
+                  ),
+                  textAlign: TextAlign.end,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Row(
+            children: [
+              Text(
+                '${item.jumlah}x @ Rp ${NumberFormat('#,###', 'id_ID').format(_parseCurrencyStringToInt(item.hargaSatuan))}',
+                style: const TextStyle(fontSize: 12, color: kTextGrey),
+              ),
+              if ((_parseCurrencyStringToInt(item.diskon)) > 0) ...[
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 2,
+                  ),
+                  decoration: BoxDecoration(
+                    color: kDangerColor.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text(
+                    'Diskon Rp ${NumberFormat('#,###', 'id_ID').format(_parseCurrencyStringToInt(item.diskon))}',
                     style: const TextStyle(
                       fontSize: 10,
                       color: kDangerColor,
@@ -1057,6 +1315,10 @@ class _ReportDetailTagihanPageState extends State<ReportDetailTagihanPage> {
   }
 
   Widget _buildSummaryCard() {
+    final totalBiaya = _getTotalBiaya();
+    final deposit = _getDeposit();
+    final sisaBiaya = _getSisaBiaya();
+
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -1078,22 +1340,22 @@ class _ReportDetailTagihanPageState extends State<ReportDetailTagihanPage> {
         children: [
           _buildSummaryRow(
             'Total Biaya',
-            'Rp ${NumberFormat('#,###', 'id_ID').format(_tagihan.totalBiaya)}',
+            'Rp ${NumberFormat('#,###', 'id_ID').format(totalBiaya)}',
             isBold: true,
             fontSize: 14,
             color: kWhite,
           ),
-          if (_tagihan.deposit > 0) ...[
+          if (deposit > 0) ...[
             const SizedBox(height: 12),
             _buildSummaryRow(
               'Deposit',
-              'Rp ${NumberFormat('#,###', 'id_ID').format(_tagihan.deposit)}',
+              'Rp ${NumberFormat('#,###', 'id_ID').format(deposit)}',
               color: Colors.white70,
             ),
             const Divider(color: Colors.white38, height: 24),
             _buildSummaryRow(
               'Sisa Pembayaran',
-              'Rp ${NumberFormat('#,###', 'id_ID').format(_tagihan.sisaBiaya)}',
+              'Rp ${NumberFormat('#,###', 'id_ID').format(sisaBiaya)}',
               isBold: true,
               fontSize: 16,
               color: kWhite,
@@ -1101,7 +1363,7 @@ class _ReportDetailTagihanPageState extends State<ReportDetailTagihanPage> {
           ],
           const SizedBox(height: 10),
           Text(
-            _tagihan.terbilang,
+            _tagihan!.terbilang ?? '-',
             style: const TextStyle(
               fontSize: 11,
               color: Colors.white70,
@@ -1200,8 +1462,10 @@ class _ReportDetailTagihanPageState extends State<ReportDetailTagihanPage> {
                   child: OutlinedButton.icon(
                     onPressed: _printPdf,
                     icon: const Icon(Icons.picture_as_pdf, size: 18),
-                    label:
-                        const Text('Cetak PDF', style: TextStyle(fontSize: 13)),
+                    label: const Text(
+                      'Cetak PDF',
+                      style: TextStyle(fontSize: 13),
+                    ),
                     style: OutlinedButton.styleFrom(
                       foregroundColor: kPrimaryColor,
                       side: const BorderSide(color: kPrimaryColor),
@@ -1212,58 +1476,9 @@ class _ReportDetailTagihanPageState extends State<ReportDetailTagihanPage> {
                     ),
                   ),
                 ),
-                const SizedBox(width: 8),
-                Expanded(
-                  flex: 2,
-                  child: ElevatedButton.icon(
-                    onPressed: _shareViaWhatsApp,
-                    icon: const Icon(Icons.share, size: 18),
-                    label: const Text(
-                      'Kirim via WA',
-                      style: TextStyle(fontSize: 13),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF25D366),
-                      foregroundColor: kWhite,
-                      padding: const EdgeInsets.symmetric(
-                        vertical: 12,
-                        horizontal: 8,
-                      ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                  ),
-                ),
               ],
             ),
             const SizedBox(height: 10),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: _showAnamnesa,
-                    child: const Text('Lihat Anamnesa'),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: _showTindakan,
-                    child: const Text('Lihat Tindakan'),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: _showIcd,
-                    child: const Text('Lihat ICD'),
-                  ),
-                ),
-              ],
-            ),
           ],
         ),
       ),
@@ -1272,50 +1487,5 @@ class _ReportDetailTagihanPageState extends State<ReportDetailTagihanPage> {
 
   // Bottom sheet helper removed; navigation to pages is used
 
-  void _showAnamnesa() {
-    if (widget.registrasiId == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('RegistrasiId tidak tersedia')),
-      );
-      return;
-    }
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => ReportViewAnamnesaPage(registrasiId: widget.registrasiId!),
-      ),
-    );
-  }
-
-  void _showTindakan() {
-    if (widget.registrasiId == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('RegistrasiId tidak tersedia')),
-      );
-      return;
-    }
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => ReportViewTindakanPage(registrasiId: widget.registrasiId!),
-      ),
-    );
-  }
-
-  // Parsing helpers moved to tindakan page
-
-  void _showIcd() {
-    if (widget.registrasiId == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('RegistrasiId tidak tersedia')),
-      );
-      return;
-    }
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => ReportViewIcdPage(registrasiId: widget.registrasiId!),
-      ),
-    );
-  }
+  // Anamnesa/Tindakan/ICD pages removed per request
 }

@@ -25,6 +25,9 @@ class Tagihan {
   // Items will be loaded separately
   final List<TagihanItem>? items;
 
+  // Registrasi data (includes pasien info)
+  final Map<String, dynamic>? registrasi;
+
   final String? createdAt;
   final String? updatedAt;
 
@@ -46,6 +49,7 @@ class Tagihan {
     this.computerTime,
     this.userId,
     this.items,
+    this.registrasi,
     this.createdAt,
     this.updatedAt,
   });
@@ -73,6 +77,7 @@ class Tagihan {
     String? computerTime,
     int? userId,
     List<TagihanItem>? items,
+    Map<String, dynamic>? registrasi,
     String? createdAt,
     String? updatedAt,
   }) {
@@ -95,6 +100,7 @@ class Tagihan {
       computerTime: computerTime ?? this.computerTime,
       userId: userId ?? this.userId,
       items: items ?? this.items,
+      registrasi: registrasi ?? this.registrasi,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );

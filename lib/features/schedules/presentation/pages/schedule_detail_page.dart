@@ -6,7 +6,7 @@ import 'package:intl/intl.dart';
 import 'package:go_router/go_router.dart';
 import 'package:homecare_mobile/shared/app_injections.dart';
 import 'package:homecare_mobile/features/schedules/data/repositories/registrasi_repository.dart';
-import 'package:homecare_mobile/features/schedules/data/repositories/tagihan_repository.dart';
+import 'package:homecare_mobile/features/reports/data/repositories/tagihan_repository.dart';
 import 'package:homecare_mobile/features/schedules/domain/models/registrasi.dart'
     as db;
 import 'package:homecare_mobile/features/patients/data/repositories/pasien_repository.dart';
@@ -516,8 +516,8 @@ class _ScheduleDetailPageState extends State<ScheduleDetailPage> {
           'Simpan Tagihan',
           'Buat invoice dari tindakan + ICD',
           Icons.receipt_long,
-          kSecondaryColor,
-          _tindakanDone && _icdDone, // done indicator when both exist
+          kPrimaryColor,
+          false,
           _createTagihan,
         ),
       ],
@@ -554,22 +554,22 @@ class _ScheduleDetailPageState extends State<ScheduleDetailPage> {
           borderRadius: BorderRadius.circular(16),
           onTap: onTap,
           child: Padding(
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.all(16),
             child: Row(
               children: [
                 Container(
-                  padding: const EdgeInsets.all(12),
+                  padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
                     color: kWhite.withValues(alpha: 0.2),
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(10),
                   ),
                   child: Icon(
                     isDone ? Icons.check_circle : icon,
                     color: kWhite,
-                    size: 28,
+                    size: 22,
                   ),
                 ),
-                const SizedBox(width: 16),
+                const SizedBox(width: 12),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -578,53 +578,25 @@ class _ScheduleDetailPageState extends State<ScheduleDetailPage> {
                         title,
                         style: const TextStyle(
                           color: kWhite,
-                          fontSize: 16,
+                          fontSize: 14,
                           fontWeight: FontWeight.bold,
                         ),
                       ),
-                      const SizedBox(height: 4),
+                      const SizedBox(height: 2),
                       Text(
                         subtitle,
                         style: TextStyle(
                           color: kWhite.withValues(alpha: 0.9),
-                          fontSize: 13,
+                          fontSize: 12,
                         ),
                       ),
-      const SizedBox(height: 12),
-      Row(
-        children: [
-          Expanded(
-            child: OutlinedButton.icon(
-              onPressed: _resetAnamnesa,
-              icon: const Icon(Icons.refresh),
-              label: const Text('Reset Anamnesa'),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: OutlinedButton.icon(
-              onPressed: _resetTindakan,
-              icon: const Icon(Icons.refresh),
-              label: const Text('Reset Tindakan'),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: OutlinedButton.icon(
-              onPressed: _resetIcd,
-              icon: const Icon(Icons.refresh),
-              label: const Text('Reset ICD'),
-            ),
-          ),
-        ],
-      ),
                     ],
                   ),
                 ),
                 Icon(
                   isDone ? Icons.edit : Icons.arrow_forward_ios,
                   color: kWhite,
-                  size: 20,
+                  size: 18,
                 ),
               ],
             ),
@@ -645,7 +617,7 @@ class _ScheduleDetailPageState extends State<ScheduleDetailPage> {
         return;
       }
 
-      // Extract ICD (primary) and tindakan selections from raw
+      // Check ICD and tindakan
       final icdList = raw['icd'] is List ? (raw['icd'] as List) : const [];
       if (icdList.isEmpty) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -653,7 +625,6 @@ class _ScheduleDetailPageState extends State<ScheduleDetailPage> {
         );
         return;
       }
-      final String primaryIcd = (icdList.first['kode'] ?? icdList.first.toString()).toString();
 
       final tindakanList = raw['tindakan'] is List ? (raw['tindakan'] as List) : const [];
       if (tindakanList.isEmpty) {
@@ -663,43 +634,29 @@ class _ScheduleDetailPageState extends State<ScheduleDetailPage> {
         return;
       }
 
-      final nowIso = DateTime.now().toIso8601String();
-      final items = tindakanList.map<Map<String, dynamic>>((t) {
-        final num qty = (t['jumlah'] ?? 1) is num ? t['jumlah'] as num : 1;
-        final num harga = (t['tarif'] ?? 0) is num ? t['tarif'] as num : num.tryParse('${t['tarif']}') ?? 0;
-        final num diskon = (t['diskon'] ?? 0) is num ? t['diskon'] as num : num.tryParse('${t['diskon']}') ?? 0;
-        final subtotal = qty * harga - diskon;
-        return {
-          'kategori_layanan_id': t['kategori_layanan_id'] ?? 0,
-          'tanggal_layanan': nowIso,
-          'deskripsi': (t['deskripsi'] ?? t['kode'] ?? 'Tindakan'),
-          'jumlah': qty,
-          'harga_satuan': harga,
-          'diskon': diskon,
-          'subtotal': subtotal,
-        };
-      }).toList();
+      // Check if tagihan already exists
+      final tagihanRepo = getIt<TagihanRepository>();
+      final existingTagihan = await tagihanRepo.getTagihanByRegistrasiId(widget.registrationId);
 
-      final repo = getIt<TagihanRepository>();
-      final res = await repo.createTagihan(
-        registrasiId: widget.registrationId,
-        primaryIcd: primaryIcd,
-        items: items,
+      // Navigate to tagihan form page with registrasi data and existing tagihan
+      final result = await context.push(
+        '/reports/tagihan/create',
+        extra: {
+          'registrasiId': widget.registrationId,
+          'registrasiData': raw,
+          'existingTagihan': existingTagihan,
+        },
       );
 
-      if (res.statusCode == 200 || res.statusCode == 201) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Tagihan berhasil dibuat')),
-        );
-        _loadData();
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Gagal membuat tagihan: ${res.statusCode}')),
-        );
+      if (result != null && mounted) {
+        // Clear cache to force refresh
+        final regRepo = getIt<RegistrasiRepository>();
+        regRepo.clearCache();
+        await _loadData();
       }
     } catch (e) {
       ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('Gagal membuat tagihan: $e')));
+          .showSnackBar(SnackBar(content: Text('Error: $e')));
     }
   }
 

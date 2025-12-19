@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import 'package:homecare_mobile/features/patients/presentation/bloc/patient_bloc.dart';
 import 'package:homecare_mobile/shared/app_injections.dart';
 import 'package:homecare_mobile/features/patients/domain/models/pasien.dart';
+import 'package:flutter/services.dart';
 
 const Color kPrimaryColor = Color(0xFF004B8C);
 const Color kPrimaryLight = Color(0xFF0063B2);
@@ -126,93 +127,116 @@ class _PatientEditFormState extends State<_PatientEditForm> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: kScaffoldBg,
-      body: BlocListener<PatientBloc, PatientState>(
-        listener: (context, state) {
-          if (state is PatientOperationSuccess &&
-              state.type == PatientOperationType.update) {
-            context.pop(true);
-          } else if (state is PatientError) {
-            setState(() => _isLoading = false);
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text(state.message),
-                backgroundColor: kDangerColor,
-              ),
-            );
-          }
-        },
-        child: Column(
-          children: [
-            _buildHeader(),
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(20),
-                child: Form(
-                  key: _formKey,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _buildInfoCard(),
-                      const SizedBox(height: 20),
-                      _buildSectionTitle('Informasi Dasar'),
-                      const SizedBox(height: 12),
-                      _buildTextField(
-                        controller: _namaController,
-                        label: 'Nama Lengkap',
-                        icon: Icons.person,
-                        validator: (value) {
-                          if (value == null || value.trim().isEmpty) {
-                            return 'Nama harus diisi';
-                          }
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: 16),
-                      _buildDateField(),
-                      const SizedBox(height: 16),
-                      _buildGenderField(),
-                      const SizedBox(height: 24),
-                      _buildSectionTitle('Kontak & Alamat'),
-                      const SizedBox(height: 12),
-                      _buildTextField(
-                        controller: _noTelpController,
-                        label: 'No. Telepon',
-                        icon: Icons.phone,
-                        keyboardType: TextInputType.phone,
-                        validator: (value) {
-                          if (value == null || value.trim().isEmpty) {
-                            return 'No. telepon harus diisi';
-                          }
-                          if (value.length < 10) {
-                            return 'No. telepon tidak valid';
-                          }
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: 16),
-                      _buildTextField(
-                        controller: _alamatController,
-                        label: 'Alamat Lengkap',
-                        icon: Icons.home,
-                        maxLines: 3,
-                        validator: (value) {
-                          if (value == null || value.trim().isEmpty) {
-                            return 'Alamat harus diisi';
-                          }
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: 32),
-                      _buildSubmitButton(),
-                      const SizedBox(height: 20),
-                    ],
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: const SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent, // ⬅️ menyatu dengan header
+        statusBarIconBrightness: Brightness.light, // ikon putih (Android)
+        statusBarBrightness: Brightness.dark, // iOS
+      ),
+      child: Scaffold(
+        backgroundColor: kScaffoldBg,
+        body: SafeArea(
+          top: false, // ⬅️ PENTING
+          child: BlocListener<PatientBloc, PatientState>(
+            listener: (context, state) {
+              if (state is PatientOperationSuccess &&
+                  state.type == PatientOperationType.update) {
+                context.pop(true);
+              } else if (state is PatientError) {
+                setState(() => _isLoading = false);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(state.message),
+                    backgroundColor: kDangerColor,
+                  ),
+                );
+              }
+            },
+            child: Column(
+              children: [
+                _buildHeader(),
+                Expanded(
+                  child: Builder(
+                    builder: (context) {
+                      final bottomInset =
+                          MediaQuery.of(context).viewInsets.bottom +
+                          MediaQuery.of(context).padding.bottom +
+                          8.0;
+                      return SingleChildScrollView(
+                        padding: EdgeInsets.fromLTRB(
+                          20,
+                          20,
+                          20,
+                          20 + bottomInset,
+                        ),
+                        child: Form(
+                          key: _formKey,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _buildInfoCard(),
+                              const SizedBox(height: 20),
+                              _buildSectionTitle('Informasi Dasar'),
+                              const SizedBox(height: 12),
+                              _buildTextField(
+                                controller: _namaController,
+                                label: 'Nama Lengkap',
+                                icon: Icons.person,
+                                validator: (value) {
+                                  if (value == null || value.trim().isEmpty) {
+                                    return 'Nama harus diisi';
+                                  }
+                                  return null;
+                                },
+                              ),
+                              const SizedBox(height: 16),
+                              _buildDateField(),
+                              const SizedBox(height: 16),
+                              _buildGenderField(),
+                              const SizedBox(height: 24),
+                              _buildSectionTitle('Kontak & Alamat'),
+                              const SizedBox(height: 12),
+                              _buildTextField(
+                                controller: _noTelpController,
+                                label: 'No. Telepon',
+                                icon: Icons.phone,
+                                keyboardType: TextInputType.phone,
+                                validator: (value) {
+                                  if (value == null || value.trim().isEmpty) {
+                                    return 'No. telepon harus diisi';
+                                  }
+                                  if (value.length < 10) {
+                                    return 'No. telepon tidak valid';
+                                  }
+                                  return null;
+                                },
+                              ),
+                              const SizedBox(height: 16),
+                              _buildTextField(
+                                controller: _alamatController,
+                                label: 'Alamat Lengkap',
+                                icon: Icons.home,
+                                maxLines: 3,
+                                validator: (value) {
+                                  if (value == null || value.trim().isEmpty) {
+                                    return 'Alamat harus diisi';
+                                  }
+                                  return null;
+                                },
+                              ),
+                              const SizedBox(height: 32),
+                              _buildSubmitButton(),
+                              const SizedBox(height: 20),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
                   ),
                 ),
-              ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );
@@ -221,8 +245,8 @@ class _PatientEditFormState extends State<_PatientEditForm> {
   Widget _buildHeader() {
     return Container(
       width: double.infinity,
-      height: 140,
-      padding: const EdgeInsets.fromLTRB(20, 50, 20, 20),
+      // PASTIKAN: Tidak ada properti 'height' di sini agar tidak overflow
+      padding: const EdgeInsets.fromLTRB(24, 60, 24, 30),
       decoration: const BoxDecoration(
         borderRadius: BorderRadius.only(
           bottomLeft: Radius.circular(32),
@@ -233,25 +257,23 @@ class _PatientEditFormState extends State<_PatientEditForm> {
           end: Alignment.bottomRight,
           colors: [kPrimaryColor, kPrimaryLight],
         ),
-        boxShadow: [
-          BoxShadow(
-            color: Color(0x33004B8C),
-            blurRadius: 20,
-            offset: Offset(0, 10),
-          ),
-        ],
       ),
-      child: Column(
+      child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              IconButton(
-                icon: const Icon(Icons.arrow_back, color: kWhite),
-                onPressed: () => context.pop(),
-              ),
-              const Expanded(
-                child: Text(
+          IconButton(
+            onPressed: () => context.pop(),
+            icon: const Icon(Icons.arrow_back, color: kWhite),
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
                   'Edit Data Pasien',
                   style: TextStyle(
                     color: kWhite,
@@ -259,15 +281,14 @@ class _PatientEditFormState extends State<_PatientEditForm> {
                     fontWeight: FontWeight.w800,
                   ),
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 4),
-          const Padding(
-            padding: EdgeInsets.only(left: 56),
-            child: Text(
-              'Perbarui informasi pasien',
-              style: TextStyle(color: Colors.white70, fontSize: 14),
+                const SizedBox(height: 4),
+                // Teks ini SEKARANG ada di dalam area biru,
+                // otomatis warnanya menyatu karena background Container ini biru.
+                const Text(
+                  'Perbarui informasi pasien',
+                  style: TextStyle(color: Colors.white70, fontSize: 14),
+                ),
+              ],
             ),
           ),
         ],
@@ -279,16 +300,16 @@ class _PatientEditFormState extends State<_PatientEditForm> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: kPrimaryColor.withValues(alpha: 0.05),
+        color: kPrimaryColor.withOpacity(0.05),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: kPrimaryColor.withValues(alpha: 0.2)),
+        border: Border.all(color: kPrimaryColor.withOpacity(0.2)),
       ),
       child: Row(
         children: [
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: kPrimaryColor.withValues(alpha: 0.1),
+              color: kPrimaryColor.withOpacity(0.1),
               borderRadius: BorderRadius.circular(8),
             ),
             child: const Icon(Icons.badge, color: kPrimaryColor, size: 24),
@@ -365,11 +386,11 @@ class _PatientEditFormState extends State<_PatientEditForm> {
         fillColor: kWhite,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: kTextGrey.withValues(alpha: 0.3)),
+          borderSide: BorderSide(color: kTextGrey.withOpacity(0.3)),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: kTextGrey.withValues(alpha: 0.3)),
+          borderSide: BorderSide(color: kTextGrey.withOpacity(0.3)),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
@@ -400,11 +421,11 @@ class _PatientEditFormState extends State<_PatientEditForm> {
         fillColor: kWhite,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: kTextGrey.withValues(alpha: 0.3)),
+          borderSide: BorderSide(color: kTextGrey.withOpacity(0.3)),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: kTextGrey.withValues(alpha: 0.3)),
+          borderSide: BorderSide(color: kTextGrey.withOpacity(0.3)),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
@@ -450,10 +471,10 @@ class _PatientEditFormState extends State<_PatientEditForm> {
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
         decoration: BoxDecoration(
-          color: isSelected ? color.withValues(alpha: 0.1) : kWhite,
+          color: isSelected ? color.withOpacity(0.1) : kWhite,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
-            color: isSelected ? color : kTextGrey.withValues(alpha: 0.3),
+            color: isSelected ? color : kTextGrey.withOpacity(0.3),
             width: isSelected ? 2 : 1,
           ),
         ),

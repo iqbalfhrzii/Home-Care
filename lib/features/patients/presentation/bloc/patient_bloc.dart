@@ -11,7 +11,7 @@ class PatientBloc extends Bloc<PatientEvent, PatientState> {
   final RegistrasiRepository registrasiRepository;
 
   PatientBloc({required this.repository, required this.registrasiRepository})
-      : super(const PatientInitial()) {
+    : super(const PatientInitial()) {
     on<LoadPatients>(_onLoadPatients);
     on<SearchPatients>(_onSearchPatients);
     on<FilterPatients>(_onFilterPatients);
@@ -28,35 +28,68 @@ class PatientBloc extends Bloc<PatientEvent, PatientState> {
   ) async {
     emit(const PatientLoading());
     try {
+      // Force clear caches to ensure we fetch the latest data (avoid stale registrasi cache)
+      try {
+        repository.clearCache();
+      } catch (_) {}
+      try {
+        registrasiRepository.clearCache();
+      } catch (_) {}
+
       // Muat pasien terlebih dahulu
       final patients = await repository.getAllPasien();
 
-      // Tampilkan indikator loading untuk registrasi
-      emit(PatientListLoaded(
-        patients: patients,
-        filteredPatients: patients,
-        isLoadingRegistrations: true,
-      ));
+      // Emit patients quickly while we load registration-derived data
+      emit(
+        PatientListLoaded(
+          patients: patients,
+          filteredPatients: patients,
+          isLoadingRegistrations: true,
+        ),
+      );
 
-      // Ambil semua registrasi lalu tandai pasien yang terdaftar
+      // Try to load registrations (IDs) and attach flags to patients.
+      // If fetching full registrations fails, fall back to a safe count.
+      try {
         final regs = await registrasiRepository.getAllRegistrasi();
         final registeredIds = regs
-          .map((r) => r.safePasienId)
-          .where((id) => id > 0)
-          .toSet();
+            .map((r) => r.safePasienId)
+            .where((id) => id > 0)
+            .toSet();
 
-      final merged = patients.map((p) {
-        if (registeredIds.contains(p.id)) {
-          return p.copyWith(registrasi: const ['registered']);
+        final merged = patients.map((p) {
+          if (registeredIds.contains(p.id)) {
+            return p.copyWith(registrasi: const ['registered']);
+          }
+          return p;
+        }).toList();
+
+        emit(
+          PatientListLoaded(
+            patients: merged,
+            filteredPatients: merged,
+            isLoadingRegistrations: false,
+            registrasiCount: regs.length,
+          ),
+        );
+      } catch (e) {
+        // Fallback: try to get only the total count to at least populate the summary.
+        int? registrasiTotal;
+        try {
+          registrasiTotal = await registrasiRepository.getRegistrasiCount();
+        } catch (_) {
+          registrasiTotal = null;
         }
-        return p;
-      }).toList();
 
-      emit(PatientListLoaded(
-        patients: merged,
-        filteredPatients: merged,
-        isLoadingRegistrations: false,
-      ));
+        emit(
+          PatientListLoaded(
+            patients: patients,
+            filteredPatients: patients,
+            isLoadingRegistrations: false,
+            registrasiCount: registrasiTotal,
+          ),
+        );
+      }
     } catch (e) {
       emit(PatientError('Gagal memuat data pasien: ${e.toString()}'));
     }
@@ -184,7 +217,10 @@ class PatientBloc extends Bloc<PatientEvent, PatientState> {
       final yy = now.year % 100;
       final mm = now.month.toString().padLeft(2, '0');
       final dd = now.day.toString().padLeft(2, '0');
-      final rand = (now.millisecondsSinceEpoch % 100000).toString().padLeft(5, '0');
+      final rand = (now.millisecondsSinceEpoch % 100000).toString().padLeft(
+        5,
+        '0',
+      );
       final generatedMrn = 'RM$yy$mm$dd$rand';
 
       final newPasien = Pasien(
@@ -200,10 +236,7 @@ class PatientBloc extends Bloc<PatientEvent, PatientState> {
       );
       await repository.createPasien(newPasien);
 
-      // Reload patient list
-      final patients = await repository.getAllPasien();
-      emit(PatientListLoaded(patients: patients, filteredPatients: patients));
-
+      // Emit success and let UI trigger a RefreshPatients which shows loading
       emit(
         const PatientOperationSuccess(
           message: 'Pasien berhasil ditambahkan',
@@ -280,19 +313,14 @@ class PatientBloc extends Bloc<PatientEvent, PatientState> {
       await repository.deletePasien(event.id);
       print('✅ Patient deleted successfully: ${event.id}');
 
-      // Reload patient list
-      final patients = await repository.getAllPasien();
-
-      // Emit success with loaded data (single emit to prevent loops)
+      // Emit success and let the UI listener trigger `RefreshPatients` which
+      // will show the loading state and reload data (so we don't flash stale counts).
       emit(
         const PatientOperationSuccess(
           message: 'Pasien berhasil dihapus',
           type: PatientOperationType.delete,
         ),
       );
-
-      // Then emit the new list
-      emit(PatientListLoaded(patients: patients, filteredPatients: patients));
     } catch (e) {
       print('❌ Delete patient error: $e');
       emit(
@@ -313,7 +341,52 @@ class PatientBloc extends Bloc<PatientEvent, PatientState> {
       repository.clearCache();
       registrasiRepository.clearCache();
       final patients = await repository.getAllPasien();
+
+      // Emit an interim state to indicate registrations are loading
+      if (currentState is PatientListLoaded) {
+        // reapply filters/search to preserve view while we fetch registrations
+        List<Pasien> filtered = patients;
+        if (currentState.activeFilter != null)
+          filtered = _applyFilter(filtered, currentState.activeFilter!);
+        if (currentState.searchQuery.isNotEmpty) {
+          final q = currentState.searchQuery.toLowerCase();
+          filtered = filtered
+              .where(
+                (p) =>
+                    p.nama.toLowerCase().contains(q) ||
+                    p.mrn.toLowerCase().contains(q) ||
+                    p.telepon.toLowerCase().contains(q),
+              )
+              .toList();
+        }
+        emit(
+          PatientListLoaded(
+            patients: patients,
+            filteredPatients: filtered,
+            searchQuery: currentState.searchQuery,
+            activeFilter: currentState.activeFilter,
+            isLoadingRegistrations: true,
+            registrasiCount: currentState.registrasiCount,
+          ),
+        );
+      } else {
+        emit(
+          PatientListLoaded(
+            patients: patients,
+            filteredPatients: patients,
+            isLoadingRegistrations: true,
+          ),
+        );
+      }
+
       final regs = await registrasiRepository.getAllRegistrasi();
+      // Try to get total count from meta as a fallback when pagination parsing fails
+      int? registrasiTotal;
+      try {
+        registrasiTotal = await registrasiRepository.getRegistrasiCount();
+      } catch (_) {
+        registrasiTotal = null;
+      }
       final registeredIds = regs
           .map((r) => r.safePasienId)
           .where((id) => id > 0)
@@ -348,15 +421,30 @@ class PatientBloc extends Bloc<PatientEvent, PatientState> {
           print('🔄 After re-applying search: ${filtered.length} results');
         }
 
-        emit(PatientListLoaded(
-          patients: merged,
-          filteredPatients: filtered,
-          searchQuery: currentState.searchQuery,
-          activeFilter: currentState.activeFilter,
-        ));
+        emit(
+          PatientListLoaded(
+            patients: merged,
+            filteredPatients: filtered,
+            searchQuery: currentState.searchQuery,
+            activeFilter: currentState.activeFilter,
+            registrasiCount: registrasiTotal ?? regs.length,
+          ),
+        );
       } else {
-        emit(PatientListLoaded(patients: merged, filteredPatients: merged));
-        emit(PatientListLoaded(patients: merged, filteredPatients: merged));
+        emit(
+          PatientListLoaded(
+            patients: merged,
+            filteredPatients: merged,
+            registrasiCount: registrasiTotal ?? regs.length,
+          ),
+        );
+        emit(
+          PatientListLoaded(
+            patients: merged,
+            filteredPatients: merged,
+            registrasiCount: registrasiTotal ?? regs.length,
+          ),
+        );
       }
     } catch (e) {
       print('❌ RefreshPatients error: $e');

@@ -76,7 +76,9 @@ class _RegistrationFormPageState extends State<RegistrationFormPage> {
     // Then load existing registration if in edit mode (or infer from pasienId)
     if (widget.isEdit && widget.registrasiId != null) {
       await _loadExistingRegistration();
-    } else if (widget.isEdit && widget.registrasiId == null && widget.pasienId != null) {
+    } else if (widget.isEdit &&
+        widget.registrasiId == null &&
+        widget.pasienId != null) {
       // Infer latest registrasi by pasienId if id not provided
       try {
         final repo = getIt<RegistrasiRepository>();
@@ -113,8 +115,14 @@ class _RegistrationFormPageState extends State<RegistrationFormPage> {
 
     try {
       // Fallback: gunakan instance global dio
-      final respDokter = await dio.get('/dokter', queryParameters: {'per_page': 1000});
-      final respPoli = await dio.get('/poli', queryParameters: {'per_page': 1000});
+      final respDokter = await dio.get(
+        '/dokter',
+        queryParameters: {'per_page': 1000},
+      );
+      final respPoli = await dio.get(
+        '/poli',
+        queryParameters: {'per_page': 1000},
+      );
 
       List<dynamic> dokterItems = [];
       if (respDokter.data is Map && (respDokter.data as Map)['data'] is List) {
@@ -133,7 +141,9 @@ class _RegistrationFormPageState extends State<RegistrationFormPage> {
       final fetchedDokter = dokterItems.map((e) {
         final m = Map<String, dynamic>.from(e);
         return Dokter(
-          id: (m['id'] ?? 0) is int ? m['id'] as int : int.tryParse('${m['id']}') ?? 0,
+          id: (m['id'] ?? 0) is int
+              ? m['id'] as int
+              : int.tryParse('${m['id']}') ?? 0,
           dokterId: '${m['dokter_id'] ?? m['kode'] ?? ''}',
           namaDokter: '${m['nama_dokter'] ?? m['nama'] ?? ''}',
           bidangKeahlian: '${m['bidang_keahlian'] ?? m['spesialis'] ?? ''}',
@@ -152,6 +162,16 @@ class _RegistrationFormPageState extends State<RegistrationFormPage> {
       }).toList();
 
       if (!mounted) return;
+      // debug: log fetched dokter/poli for troubleshooting
+      try {
+        debugPrint('🔍 fetchedDokter count=${fetchedDokter.length}');
+        for (var d in fetchedDokter.take(8)) {
+          debugPrint(
+            '   Dokter{id:${d.id}, kode:${d.dokterId}, nama:${d.namaDokter}}',
+          );
+        }
+      } catch (_) {}
+
       setState(() {
         _dokterList = fetchedDokter;
         _poliList = fetchedPoli;
@@ -189,7 +209,9 @@ class _RegistrationFormPageState extends State<RegistrationFormPage> {
       });
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Gagal memuat data dokter/poli dari API, gunakan default.'),
+          content: Text(
+            'Gagal memuat data dokter/poli dari API, gunakan default.',
+          ),
           backgroundColor: Colors.orange,
         ),
       );
@@ -197,14 +219,30 @@ class _RegistrationFormPageState extends State<RegistrationFormPage> {
   }
 
   Future<void> _loadExistingRegistration() async {
-    setState(() => _isLoading = true);
     try {
       final repository = getIt<RegistrasiRepository>();
       final id = widget.registrasiId ?? _resolvedRegistrasiId;
       if (id == null) {
         throw Exception('Registrasi ID tidak ditemukan untuk mode edit');
       }
+      
+      // Fetch raw map to get nested penanggung object
+      final rawMap = await repository.getRegistrasiRawById(id);
       final registration = await repository.getRegistrasiById(id);
+
+      // Extract penanggung data from nested object
+      Map<String, dynamic>? penanggungData;
+      dynamic rawDokField;
+      
+      if (rawMap != null) {
+        if (rawMap.containsKey('penanggung') && rawMap['penanggung'] is Map) {
+          penanggungData = Map<String, dynamic>.from(rawMap['penanggung']);
+          debugPrint('🔍 penanggung data: $penanggungData');
+        }
+        if (rawMap.containsKey('dokter_id')) {
+          rawDokField = rawMap['dokter_id'];
+        }
+      }
 
       if (mounted) {
         // Normalize incoming values to match allowed dropdown items to avoid assertion failures
@@ -248,9 +286,56 @@ class _RegistrationFormPageState extends State<RegistrationFormPage> {
           _tipePasien = tipePasienItems.contains(normTipe) ? normTipe : 'UMUM';
 
           // Only set selected values if they exist in the dropdown lists
-          if (registration?.dokterId != null &&
-              _dokterList.any((d) => d.id == registration?.dokterId)) {
-            _selectedDokterId = registration?.dokterId;
+          if (registration?.dokterId != null || rawDokField != null) {
+            final rawDoc = registration?.dokterId ?? rawDokField;
+
+            // normalize helper
+            String normalize(Object? v) => '${v ?? ''}'.trim().toLowerCase();
+
+            // 1) try numeric id match
+            int? matchedId;
+            if (rawDoc is int) matchedId = rawDoc;
+            matchedId ??= int.tryParse('$rawDoc');
+
+            if (matchedId != null &&
+                _dokterList.any((d) => d.id == matchedId)) {
+              _selectedDokterId = matchedId;
+            } else {
+              final rawNorm = normalize(rawDoc);
+
+              // 2) try exact kode match (dokterId) normalized
+              final kodeMatch = _dokterList.firstWhere(
+                (d) => normalize(d.dokterId) == rawNorm,
+                orElse: () => null as Dokter,
+              );
+
+              if (kodeMatch != null) {
+                _selectedDokterId = kodeMatch.id;
+              } else {
+                // 3) try partial contains match on kode
+                final containsMatch = _dokterList.firstWhere(
+                  (d) =>
+                      normalize(d.dokterId).contains(rawNorm) ||
+                      rawNorm.contains(normalize(d.dokterId)),
+                  orElse: () => null as Dokter,
+                );
+                if (containsMatch != null) {
+                  _selectedDokterId = containsMatch.id;
+                } else {
+                  // 4) try match by namaDokter (in case backend returned name)
+                  final nameMatch = _dokterList.firstWhere(
+                    (d) =>
+                        normalize(d.namaDokter) == rawNorm ||
+                        normalize(d.namaDokter).contains(rawNorm) ||
+                        rawNorm.contains(normalize(d.namaDokter)),
+                    orElse: () => null as Dokter,
+                  );
+                  if (nameMatch != null) {
+                    _selectedDokterId = nameMatch.id;
+                  }
+                }
+              }
+            }
           }
 
           if (registration?.kodePoli != null &&
@@ -271,21 +356,23 @@ class _RegistrationFormPageState extends State<RegistrationFormPage> {
             }
           }
 
-          _penanggungNamaController.text = registration?.penanggungNama ?? '';
+          // Load penanggung data from nested object or fallback to flat fields
+          _penanggungNamaController.text = 
+              penanggungData?['nama']?.toString() ?? registration?.penanggungNama ?? '';
           _penanggungNoPegawaiController.text =
-              registration?.penanggungNoPegawai ?? '';
+              penanggungData?['no_pegawai']?.toString() ?? registration?.penanggungNoPegawai ?? '';
           _penanggungAlamatController.text =
-              registration?.penanggungAlamat ?? '';
+              penanggungData?['alamat']?.toString() ?? registration?.penanggungAlamat ?? '';
           _penanggungTeleponController.text =
-              registration?.penanggungTelepon ?? '';
-          _penanggungIdController.text = registration?.penanggungId ?? '';
-          _isLoading = false;
+              penanggungData?['telepon']?.toString() ?? registration?.penanggungTelepon ?? '';
+          _penanggungIdController.text = 
+              penanggungData?['id']?.toString() ?? registration?.penanggungId ?? '';
         });
       }
     } catch (e) {
       debugPrint('❌ Error loading registration: $e');
       if (mounted) {
-        setState(() => _isLoading = false);
+        setState(() {});
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Gagal memuat data registrasi: $e'),
@@ -411,10 +498,7 @@ class _RegistrationFormPageState extends State<RegistrationFormPage> {
         if (widget.isEdit && updateId != null) {
           // UPDATE existing registration
           final updateRepo = getIt<RegistrasiRepository>();
-          await updateRepo.updateRegistrasiFromMap(
-            updateId,
-            registrationData,
-          );
+          await updateRepo.updateRegistrasiFromMap(updateId, registrationData);
           debugPrint('✅ Registration updated with ID: $updateId');
         } else {
           // CREATE new registration
@@ -429,12 +513,21 @@ class _RegistrationFormPageState extends State<RegistrationFormPage> {
             patientName: widget.pasienNama ?? 'Pasien',
             noRm: 'REG-${newRegistration.id}',
             visitDate: DateFormat(
-              'd MMMM yyyy',
+              'd MMMM yyyy, HH:mm',
               'id_ID',
-            ).format(currentDateTime),
+            ).format(_tglJamKunjungan ?? currentDateTime),
           );
 
-          debugPrint('✅ Notification sent');
+          // Schedule reminder notification 1 hour before visit
+          final visitTime = _tglJamKunjungan ?? currentDateTime;
+          await notificationService.scheduleVisitReminder(
+            registrasiId: newRegistration.id,
+            patientName: widget.pasienNama ?? 'Pasien',
+            address: 'Alamat pasien', // TODO: Get from patient data
+            visitTime: visitTime,
+          );
+
+          debugPrint('✅ Notifications sent and scheduled');
         }
 
         if (mounted) {
@@ -537,125 +630,138 @@ class _RegistrationFormPageState extends State<RegistrationFormPage> {
     }
 
     return Scaffold(
-      backgroundColor: kScaffoldBg,
-      body: Column(
+        backgroundColor: kPrimaryColor, // ⬅️ PENTING: Ganti warna scaffold
+        body: Column(
         children: [
           _buildHeader(),
           Expanded(
-            child: ListView(
-              padding: const EdgeInsets.all(24.0),
-              children: [
-                Form(
-                  key: _formKey,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _buildSectionCard(
-                        title: 'Informasi Registrasi',
-                        icon: Icons.assignment,
-                        children: [
-                          _buildTextField(
-                            controller: _noRegController,
-                            label: 'No. Registrasi',
-                            icon: Icons.confirmation_number,
-                            readOnly: true,
-                          ),
-                          const SizedBox(height: 16),
-                          _buildDropdownField(
-                            label: 'Jenis Kunjungan',
-                            icon: Icons.local_hospital,
-                            value: _jenisKunjungan,
-                            items: [
-                              'HOME CARE',
-                              'KUNJUNGAN BARU',
-                              'KUNJUNGAN LANJUTAN',
-                            ],
-                            onChanged: (value) {
-                              setState(() {
-                                _jenisKunjungan = value!;
-                              });
-                            },
-                          ),
-                          const SizedBox(height: 16),
-                          _buildDropdownField(
-                            label: 'Tipe Pasien',
-                            icon: Icons.person,
-                            value: _tipePasien,
-                            items: ['UMUM', 'BPJS', 'ASURANSI'],
-                            onChanged: (value) {
-                              setState(() {
-                                _tipePasien = value!;
-                              });
-                            },
-                          ),
-                          const SizedBox(height: 16),
-                          _buildDropdownField(
-                            label: 'Asal Pasien',
-                            icon: Icons.directions_walk,
-                            value: _asalPasien,
-                            items: ['POLIKLINIK', 'LANGSUNG', 'RUJUKAN', 'IGD'],
-                            onChanged: (value) {
-                              setState(() {
-                                _asalPasien = value!;
-                              });
-                            },
-                          ),
-                          const SizedBox(height: 16),
-                          _buildDateTimeKunjunganField(),
-                        ],
-                      ),
-                      const SizedBox(height: 20),
-                      _buildSectionCard(
-                        title: 'Layanan Medis',
-                        icon: Icons.medical_services,
-                        children: [
-                          _buildDokterDropdown(),
-                          const SizedBox(height: 16),
-                          _buildPoliDropdown(),
-                        ],
-                      ),
-                      const SizedBox(height: 20),
-                      _buildSectionCard(
-                        title: 'Data Penanggung Jawab (Opsional)',
-                        icon: Icons.family_restroom,
-                        children: [
-                          _buildTextField(
-                            controller: _penanggungNamaController,
-                            label: 'Nama Penanggung',
-                            icon: Icons.person_outline,
-                          ),
-                          const SizedBox(height: 16),
-                          _buildTextField(
-                            controller: _penanggungNoPegawaiController,
-                            label: 'No. Pegawai',
-                            icon: Icons.badge,
-                          ),
-                          const SizedBox(height: 16),
-                          _buildTextField(
-                            controller: _penanggungIdController,
-                            label: 'ID Penanggung',
-                            icon: Icons.credit_card,
-                          ),
-                          const SizedBox(height: 16),
-                          _buildTextField(
-                            controller: _penanggungTeleponController,
-                            label: 'No. Telepon',
-                            icon: Icons.phone,
-                            keyboardType: TextInputType.phone,
-                          ),
-                          const SizedBox(height: 16),
-                          _buildTextField(
-                            controller: _penanggungAlamatController,
-                            label: 'Alamat Penanggung',
-                            icon: Icons.location_on,
-                            maxLines: 3,
-                          ),
-                        ],
-                      ),
-                    ],
+            child: Container(
+              color: kScaffoldBg, // Background putih untuk konten
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(
+                  24,
+                  0,
+                  24,
+                  24,
+                ), // Hapus top padding
+                children: [
+                  Form(
+                    key: _formKey,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _buildSectionCard(
+                          title: 'Informasi Registrasi',
+                          icon: Icons.assignment,
+                          children: [
+                            _buildTextField(
+                              controller: _noRegController,
+                              label: 'No. Registrasi',
+                              icon: Icons.confirmation_number,
+                              readOnly: true,
+                            ),
+                            const SizedBox(height: 16),
+                            _buildDropdownField(
+                              label: 'Jenis Kunjungan',
+                              icon: Icons.local_hospital,
+                              value: _jenisKunjungan,
+                              items: [
+                                'HOME CARE',
+                                'KUNJUNGAN BARU',
+                                'KUNJUNGAN LANJUTAN',
+                              ],
+                              onChanged: (value) {
+                                setState(() {
+                                  _jenisKunjungan = value!;
+                                });
+                              },
+                            ),
+                            const SizedBox(height: 16),
+                            _buildDropdownField(
+                              label: 'Tipe Pasien',
+                              icon: Icons.person,
+                              value: _tipePasien,
+                              items: ['UMUM', 'BPJS', 'ASURANSI'],
+                              onChanged: (value) {
+                                setState(() {
+                                  _tipePasien = value!;
+                                });
+                              },
+                            ),
+                            const SizedBox(height: 16),
+                            _buildDropdownField(
+                              label: 'Asal Pasien',
+                              icon: Icons.directions_walk,
+                              value: _asalPasien,
+                              items: [
+                                'POLIKLINIK',
+                                'LANGSUNG',
+                                'RUJUKAN',
+                                'IGD',
+                              ],
+                              onChanged: (value) {
+                                setState(() {
+                                  _asalPasien = value!;
+                                });
+                              },
+                            ),
+                            const SizedBox(height: 16),
+                            _buildDateTimeKunjunganField(),
+                          ],
+                        ),
+                        const SizedBox(height: 20),
+                        _buildSectionCard(
+                          title: 'Layanan Medis',
+                          icon: Icons.medical_services,
+                          children: [
+                            _buildDokterDropdown(),
+                            const SizedBox(height: 16),
+                            _buildPoliDropdown(),
+                          ],
+                        ),
+                        const SizedBox(height: 20),
+                        _buildSectionCard(
+                          title: 'Data Penanggung Jawab (Opsional)',
+                          icon: Icons.family_restroom,
+                          children: [
+                            _buildTextField(
+                              controller: _penanggungNamaController,
+                              label: 'Nama Penanggung',
+                              icon: Icons.person_outline,
+                            ),
+                            const SizedBox(height: 16),
+                            _buildTextField(
+                              controller: _penanggungNoPegawaiController,
+                              label: 'No. Pegawai',
+                              icon: Icons.badge,
+                            ),
+                            const SizedBox(height: 16),
+                            _buildTextField(
+                              controller: _penanggungIdController,
+                              label: 'ID Penanggung',
+                              icon: Icons.credit_card,
+                            ),
+                            const SizedBox(height: 16),
+                            _buildTextField(
+                              controller: _penanggungTeleponController,
+                              label: 'No. Telepon',
+                              icon: Icons.phone,
+                              keyboardType: TextInputType.phone,
+                            ),
+                            const SizedBox(height: 16),
+                            _buildTextField(
+                              controller: _penanggungAlamatController,
+                              label: 'Alamat Penanggung',
+                              icon: Icons.location_on,
+                              maxLines: 3,
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ],
@@ -667,63 +773,74 @@ class _RegistrationFormPageState extends State<RegistrationFormPage> {
   Widget _buildHeader() {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(24, 50, 24, 24),
       decoration: const BoxDecoration(
-        borderRadius: BorderRadius.only(
-          bottomLeft: Radius.circular(32),
-          bottomRight: Radius.circular(32),
-        ),
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [kPrimaryColor, kPrimaryLight],
         ),
-        boxShadow: [
-          BoxShadow(
-            color: Color(0x33004B8C),
-            blurRadius: 20,
-            offset: Offset(0, 10),
-          ),
-        ],
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              IconButton(
-                onPressed: () => context.pop(),
-                icon: const Icon(Icons.arrow_back, color: kWhite),
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(),
+      child: SafeArea(
+        bottom: false,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Back button & Title
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
+              child: Row(
+                children: [
+                  IconButton(
+                    onPressed: () => context.pop(),
+                    icon: const Icon(Icons.arrow_back, color: kWhite),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          widget.isEdit
+                              ? 'Edit Registrasi'
+                              : 'Registrasi Pasien',
+                          style: const TextStyle(
+                            color: Colors.white70,
+                            fontSize: 14,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          widget.pasienNama ?? 'Pasien Baru',
+                          style: const TextStyle(
+                            color: kWhite,
+                            fontSize: 22,
+                            fontWeight: FontWeight.w800,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      widget.isEdit ? 'Edit Registrasi' : 'Registrasi Pasien',
-                      style: const TextStyle(
-                        color: Colors.white70,
-                        fontSize: 14,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      widget.pasienNama ?? 'Pasien Baru',
-                      style: const TextStyle(
-                        color: kWhite,
-                        fontSize: 22,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                  ],
+            ),
+
+            // Curved white container at the bottom
+            Container(
+              height: 30,
+              decoration: const BoxDecoration(
+                color: kScaffoldBg,
+                borderRadius: BorderRadius.only(
+                  topLeft: Radius.circular(32),
+                  topRight: Radius.circular(32),
                 ),
               ),
-            ],
-          ),
-        ],
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -763,12 +880,14 @@ class _RegistrationFormPageState extends State<RegistrationFormPage> {
                   child: Icon(icon, color: kWhite, size: 20),
                 ),
                 const SizedBox(width: 12),
-                Text(
-                  title,
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: kTextDark,
+                Expanded(
+                  child: Text(
+                    title,
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: kTextDark,
+                    ),
                   ),
                 ),
               ],
@@ -982,6 +1101,7 @@ class _RegistrationFormPageState extends State<RegistrationFormPage> {
 
     return DropdownButtonFormField<String>(
       value: _selectedPoliKode,
+      isExpanded: true,
       decoration: InputDecoration(
         labelText: 'Pilih Poli *',
         prefixIcon: const Icon(Icons.local_hospital, color: kPrimaryColor),
@@ -991,18 +1111,31 @@ class _RegistrationFormPageState extends State<RegistrationFormPage> {
           borderRadius: BorderRadius.circular(12),
           borderSide: BorderSide.none,
         ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide.none,
-        ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
           borderSide: const BorderSide(color: kPrimaryColor, width: 2),
         ),
       ),
+
       hint: const Text('Pilih poliklinik'),
-      items: _poliList.toSet().toList().map((poli) {
-        return DropdownMenuItem(
+
+      // 🔑 INI KUNCINYA
+      selectedItemBuilder: (context) {
+        return _poliList.map((poli) {
+          return Align(
+            alignment: Alignment.centerLeft,
+            child: Text(
+              poli.namaPoli,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
+          );
+        }).toList();
+      },
+
+      items: _poliList.map((poli) {
+        return DropdownMenuItem<String>(
           value: poli.kodePoli,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1010,8 +1143,11 @@ class _RegistrationFormPageState extends State<RegistrationFormPage> {
             children: [
               Text(
                 poli.namaPoli,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
                 style: const TextStyle(fontWeight: FontWeight.w600),
               ),
+              const SizedBox(height: 2),
               Text(
                 poli.kodePoli,
                 style: const TextStyle(fontSize: 12, color: kTextGrey),
@@ -1020,11 +1156,11 @@ class _RegistrationFormPageState extends State<RegistrationFormPage> {
           ),
         );
       }).toList(),
+
       onChanged: (value) {
-        setState(() {
-          _selectedPoliKode = value;
-        });
+        setState(() => _selectedPoliKode = value);
       },
+
       validator: (value) {
         if (value == null || value.isEmpty) {
           return 'Poli harus dipilih';
@@ -1036,10 +1172,22 @@ class _RegistrationFormPageState extends State<RegistrationFormPage> {
 
   Widget _buildBottomButtons() {
     return Container(
-      color: kWhite,
-      padding: const EdgeInsets.all(
-        16.0,
-      ).copyWith(bottom: MediaQuery.of(context).padding.bottom + 16),
+      decoration: BoxDecoration(
+        color: kWhite,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 10,
+            offset: const Offset(0, -5),
+          ),
+        ],
+      ),
+      padding: EdgeInsets.fromLTRB(
+        16,
+        16,
+        16,
+        MediaQuery.of(context).padding.bottom + 16,
+      ),
       child: widget.isEdit
           ? Column(
               mainAxisSize: MainAxisSize.min,
@@ -1053,8 +1201,8 @@ class _RegistrationFormPageState extends State<RegistrationFormPage> {
                     label: const Text('Batalkan Registrasi'),
                     style: OutlinedButton.styleFrom(
                       foregroundColor: Colors.red,
-                      side: const BorderSide(color: Colors.red),
-                      minimumSize: const Size(double.infinity, 48),
+                      side: const BorderSide(color: Colors.red, width: 1.5),
+                      minimumSize: const Size(double.infinity, 50),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
                       ),
@@ -1075,7 +1223,7 @@ class _RegistrationFormPageState extends State<RegistrationFormPage> {
                           side: BorderSide(
                             color: kTextGrey.withValues(alpha: 0.3),
                           ),
-                          minimumSize: const Size(double.infinity, 48),
+                          minimumSize: const Size(double.infinity, 50),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(12),
                           ),
@@ -1092,7 +1240,8 @@ class _RegistrationFormPageState extends State<RegistrationFormPage> {
                         style: ElevatedButton.styleFrom(
                           backgroundColor: kPrimaryColor,
                           foregroundColor: kWhite,
-                          minimumSize: const Size(double.infinity, 48),
+                          minimumSize: const Size(double.infinity, 50),
+                          elevation: 2,
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(12),
                           ),
@@ -1113,7 +1262,7 @@ class _RegistrationFormPageState extends State<RegistrationFormPage> {
                     style: OutlinedButton.styleFrom(
                       foregroundColor: kTextGrey,
                       side: BorderSide(color: kTextGrey.withValues(alpha: 0.3)),
-                      minimumSize: const Size(double.infinity, 48),
+                      minimumSize: const Size(double.infinity, 50),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
                       ),
@@ -1130,7 +1279,8 @@ class _RegistrationFormPageState extends State<RegistrationFormPage> {
                     style: ElevatedButton.styleFrom(
                       backgroundColor: kPrimaryColor,
                       foregroundColor: kWhite,
-                      minimumSize: const Size(double.infinity, 48),
+                      minimumSize: const Size(double.infinity, 50),
+                      elevation: 2,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
                       ),

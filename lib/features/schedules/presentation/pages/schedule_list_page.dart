@@ -42,12 +42,7 @@ class RegistrasiLite {
   final String? tglJamReg; // ISO8601 string
   final String? status; // 'terjadwal' | 'dalam_proses' | 'selesai' | etc
   final PasienLite? pasien;
-  RegistrasiLite({
-    required this.id,
-    this.tglJamReg,
-    this.status,
-    this.pasien,
-  });
+  RegistrasiLite({required this.id, this.tglJamReg, this.status, this.pasien});
 }
 
 class ScheduleItem {
@@ -55,7 +50,12 @@ class ScheduleItem {
   final PasienLite? patient;
   final int progress;
   final bool hasTagihan;
-  ScheduleItem({required this.registration, this.patient, this.progress = 0, this.hasTagihan = false});
+  ScheduleItem({
+    required this.registration,
+    this.patient,
+    this.progress = 0,
+    this.hasTagihan = false,
+  });
 }
 
 class ScheduleListPage extends StatefulWidget {
@@ -73,17 +73,34 @@ class _ScheduleListPageState extends State<ScheduleListPage> {
   DateTime? _selectedDate;
 
   final TextEditingController _dateController = TextEditingController();
+  final TextEditingController _searchController = TextEditingController();
 
   bool _isLoading = true;
 
   String? _selectedStatus;
-  bool _enrichmentRan = false;
 
   // Progress tracking removed - will be calculated from related records if needed
 
-  int get _notStartedCount => _allSchedules.where((s) => s.progress == 0).length;
+  bool _isOverdue(ScheduleItem item) {
+    final dateStr = item.registration.tglJamReg;
+    if (dateStr == null) return false;
+    final dt = DateTime.tryParse(dateStr);
+    if (dt == null) return false;
+    // Overdue: tanggal sudah lewat DAN belum selesai (progress < 3)
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final scheduleDate = DateTime(dt.year, dt.month, dt.day);
+    return scheduleDate.isBefore(today) && item.progress < 3;
+  }
 
-  int get _inProgressCount => _allSchedules.where((s) => s.progress >= 1 && s.progress <= 2).length;
+  int get _pendingCount => _allSchedules.where((s) => _isOverdue(s)).length;
+
+  int get _notStartedCount =>
+      _allSchedules.where((s) => s.progress == 0).length;
+
+  int get _inProgressCount => _allSchedules
+      .where((s) => s.progress >= 1 && s.progress < 3)
+      .length;
 
   int get _completedCount => _allSchedules.where((s) => s.progress == 3).length;
 
@@ -96,7 +113,7 @@ class _ScheduleListPageState extends State<ScheduleListPage> {
   @override
   void dispose() {
     _dateController.dispose();
-
+    _searchController.dispose();
     super.dispose();
   }
 
@@ -104,44 +121,103 @@ class _ScheduleListPageState extends State<ScheduleListPage> {
     setState(() => _isLoading = true);
     try {
       final repo = getIt<RegistrasiRepository>();
-      final billsRepo = getIt<TagihanRepository>();
-      final allTagihan = await billsRepo.getAllTagihan();
       final regs = await repo.getAllRegistrasi();
+
+      print('DEBUG: Total registrasi loaded: ${regs.length}');
+
       final items = <ScheduleItem>[];
+
+      // Calculate progress from complete data (API now includes all relations)
       for (final r in regs) {
         final pasien = r.pasien;
-        final litePatient = pasien != null ? PasienLite(nama: pasien.nama, mrn: pasien.mrn) : null;
+        final litePatient = pasien != null
+            ? PasienLite(nama: pasien.nama, mrn: pasien.mrn)
+            : null;
 
         int progress = 0;
         bool hasTagihan = false;
-        // Avoid per-item raw calls to keep UI responsive; infer from Tagihan only
-        Tagihan? found;
-        for (final t in allTagihan) {
-          if (t.registrasiId == r.id) {
-            found = t;
-            break;
+
+        // Convert to JSON to access dynamic fields
+        final rawData = r.toJson();
+
+        // Check if tagihan exists
+        if (rawData['tagihan'] != null) {
+          hasTagihan = true;
+        }
+
+        // Progress calculation based on complete data from API:
+        // 1. Check tindakan - must have at least one item
+        final tindakanList = rawData['tindakan'] as List?;
+        final hasTindakan = tindakanList != null && tindakanList.isNotEmpty;
+        if (hasTindakan) {
+          progress += 1;
+        }
+
+        // 2. Check ICD - must have at least one item
+        final icdList = rawData['icd'] as List?;
+        final hasIcd = icdList != null && icdList.isNotEmpty;
+        if (hasIcd) {
+          progress += 1;
+        }
+
+        // 3. Check anamnesa - focus on tanda_vital (vital signs)
+        final anamnesaData = rawData['anamnesa'];
+        bool hasAnamnesa = false;
+
+        if (anamnesaData != null && anamnesaData is Map) {
+          // Check if pengkajian_keperawatan exists
+          final pengkajianKeperawatan = anamnesaData['pengkajian_keperawatan'];
+          if (pengkajianKeperawatan != null && pengkajianKeperawatan is Map) {
+            // Check if tanda_vital exists and has at least one field filled
+            final tandaVital = pengkajianKeperawatan['tanda_vital'];
+            if (tandaVital != null &&
+                tandaVital is Map &&
+                tandaVital.isNotEmpty) {
+              // Check if any vital sign field is filled
+              final hasTekananDarah =
+                  tandaVital['tekanan_darah']?.toString().isNotEmpty == true;
+              final hasNadi = tandaVital['nadi'] != null;
+              final hasSuhu = tandaVital['suhu'] != null;
+              final hasPernapasan = tandaVital['pernapasan'] != null;
+
+              hasAnamnesa =
+                  hasTekananDarah || hasNadi || hasSuhu || hasPernapasan;
+            }
           }
         }
-        if (found != null) {
-          hasTagihan = true;
-          if ((found.items ?? const []).isNotEmpty) progress += 1; // tindakan
-          if ((found.primaryIcd ?? '').isNotEmpty) progress += 1; // icd
+
+        if (hasAnamnesa) {
+          progress += 1;
         }
 
-        items.add(ScheduleItem(
-          registration: RegistrasiLite(
-            id: r.id,
-            tglJamReg: r.tglJamReg,
-            status: r.status,
-            pasien: litePatient,
+        // Debug log for items with all 3 data but not marked as complete
+        if (hasTindakan && hasIcd && hasAnamnesa && progress != 3) {
+          print(
+            '⚠️ DEBUG Reg #${r.id}: Has all data but progress=$progress. Tindakan: ${tindakanList?.length}, ICD: ${icdList?.length}, Anamnesa: $hasAnamnesa',
+          );
+        }
+
+        items.add(
+          ScheduleItem(
+            registration: RegistrasiLite(
+              id: r.id,
+              tglJamReg: r.tglJamReg,
+              status: r.status,
+              pasien: litePatient,
+            ),
+            patient: litePatient,
+            progress: progress,
+            hasTagihan: hasTagihan,
           ),
-          patient: litePatient,
-          progress: progress,
-          hasTagihan: hasTagihan,
-        ));
+        );
       }
 
-      // Sort newest first
+      print('DEBUG: Total items created: ${items.length}');
+      print(
+        'DEBUG: Progress summary - Belum: ${items.where((s) => s.progress == 0).length}, Proses: ${items.where((s) => s.progress >= 1 && s.progress <= 2).length}, Selesai: ${items.where((s) => s.progress == 3).length}',
+      );
+
+      // Sort newest first, with consistent secondary sort by ID
       items.sort((a, b) {
         final dateA = a.registration.tglJamReg != null
             ? DateTime.tryParse(a.registration.tglJamReg!)
@@ -151,7 +227,13 @@ class _ScheduleListPageState extends State<ScheduleListPage> {
             : null;
         final safeA = dateA ?? DateTime(1970);
         final safeB = dateB ?? DateTime(1970);
-        return safeB.compareTo(safeA);
+
+        // Primary sort: by date (newest first)
+        final dateComparison = safeB.compareTo(safeA);
+        if (dateComparison != 0) return dateComparison;
+
+        // Secondary sort: by ID (descending) for consistent ordering
+        return b.registration.id.compareTo(a.registration.id);
       });
 
       if (!mounted) return;
@@ -160,12 +242,6 @@ class _ScheduleListPageState extends State<ScheduleListPage> {
         _filteredSchedules = items;
         _isLoading = false;
       });
-
-      // Enrich progress with Anamnesa in background to avoid blocking UI
-      if (!_enrichmentRan) {
-        _enrichmentRan = true;
-        _enrichProgressWithAnamnesa(regs);
-      }
     } catch (e) {
       if (!mounted) return;
       setState(() => _isLoading = false);
@@ -176,42 +252,6 @@ class _ScheduleListPageState extends State<ScheduleListPage> {
         ),
       );
     }
-  }
-
-  Future<void> _enrichProgressWithAnamnesa(List<dynamic> regs) async {
-    final repo = getIt<RegistrasiRepository>();
-    final updated = List<ScheduleItem>.from(_allSchedules);
-    // Limit batch size to avoid flooding backend
-    final int limit = regs.length > 10 ? 10 : regs.length;
-    for (int i = 0; i < limit; i++) {
-      final r = regs[i];
-      try {
-        final raw = await repo.getRegistrasiRawById(r.id);
-        final hasAnamnesa = raw != null && raw['anamnesa'] != null;
-        if (hasAnamnesa) {
-          // find and update the corresponding item
-          final idx = updated.indexWhere((s) => s.registration.id == r.id);
-          if (idx != -1) {
-            final s = updated[idx];
-            if (s.progress < 3) {
-              updated[idx] = ScheduleItem(
-                registration: s.registration,
-                patient: s.patient,
-                progress: s.progress + 1,
-                hasTagihan: s.hasTagihan,
-              );
-            }
-          }
-        }
-      } catch (_) {
-        // ignore per-item errors
-      }
-    }
-    if (!mounted) return;
-    setState(() {
-      _allSchedules = updated;
-      _filterSchedules();
-    });
   }
 
   Future<void> _pickDate() async {
@@ -259,6 +299,15 @@ class _ScheduleListPageState extends State<ScheduleListPage> {
   void _filterSchedules() {
     List<ScheduleItem> filtered = List.of(_allSchedules);
 
+    // Search filter
+    if (_searchController.text.isNotEmpty) {
+      final query = _searchController.text.toLowerCase();
+      filtered = filtered.where((item) {
+        final nama = item.patient?.nama.toLowerCase() ?? '';
+        return nama.contains(query);
+      }).toList();
+    }
+
     if (_selectedDate != null) {
       filtered = filtered.where((item) {
         final dateStr = item.registration.tglJamReg;
@@ -275,16 +324,19 @@ class _ScheduleListPageState extends State<ScheduleListPage> {
       }).toList();
     }
 
-    // Status filter: 'belum' (0), 'proses' (1-2), 'selesai' (3 or hasTagihan)
+    // Status filter: 'pending' (overdue), 'belum' (0), 'proses' (1-2), 'selesai' (3)
     if (_selectedStatus != null) {
       filtered = filtered.where((item) {
         final p = item.progress;
         final selesai = p == 3;
+        final overdue = _isOverdue(item);
         switch (_selectedStatus) {
+          case 'pending':
+            return overdue;
           case 'belum':
-            return p == 0;
+            return p == 0 && !overdue;
           case 'proses':
-            return p >= 1 && p <= 2;
+            return p >= 1 && p <= 2 && !overdue;
           case 'selesai':
             return selesai;
           default:
@@ -292,6 +344,23 @@ class _ScheduleListPageState extends State<ScheduleListPage> {
         }
       }).toList();
     }
+
+    // Maintain consistent sort order after filtering
+    filtered.sort((a, b) {
+      final dateA = a.registration.tglJamReg != null
+          ? DateTime.tryParse(a.registration.tglJamReg!)
+          : null;
+      final dateB = b.registration.tglJamReg != null
+          ? DateTime.tryParse(b.registration.tglJamReg!)
+          : null;
+      final safeA = dateA ?? DateTime(1970);
+      final safeB = dateB ?? DateTime(1970);
+
+      final dateComparison = safeB.compareTo(safeA);
+      if (dateComparison != 0) return dateComparison;
+
+      return b.registration.id.compareTo(a.registration.id);
+    });
 
     setState(() => _filteredSchedules = filtered);
   }
@@ -372,28 +441,28 @@ class _ScheduleListPageState extends State<ScheduleListPage> {
                       ],
                     ),
                   )
-                : ListView.separated(
-                    padding: const EdgeInsets.all(24),
-
-                    itemCount: _filteredSchedules.length,
-
-                    separatorBuilder: (_, __) => const SizedBox(height: 12),
-
-                    itemBuilder: (context, index) {
+                : RefreshIndicator(
+                    onRefresh: _loadSchedules,
+                    child: ListView.separated(
+                      padding: const EdgeInsets.all(24),
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      itemCount: _filteredSchedules.length,
+                      separatorBuilder: (_, __) => const SizedBox(height: 12),
+                      itemBuilder: (context, index) {
                       final schedule = _filteredSchedules[index];
 
-                      return _ScheduleCard(
-                        schedule: schedule,
-
-                        onTap: () {
-                          context
-                              .push(
-                                '/schedules/detail/${schedule.registration.id}',
-                              )
-                              .then((_) => _loadSchedules());
-                        },
-                      );
-                    },
+                        return _ScheduleCard(
+                          schedule: schedule,
+                          onTap: () {
+                            context
+                                .push(
+                                  '/schedules/detail/${schedule.registration.id}',
+                                )
+                                .then((_) => _loadSchedules());
+                          },
+                        );
+                      },
+                    ),
                   ),
           ),
         ],
@@ -521,7 +590,7 @@ class _ScheduleListPageState extends State<ScheduleListPage> {
             ),
           ),
 
-          const SizedBox(width: 8),
+          const SizedBox(width: 6),
 
           Expanded(
             child: _buildStatusCard(
@@ -537,7 +606,7 @@ class _ScheduleListPageState extends State<ScheduleListPage> {
             ),
           ),
 
-          const SizedBox(width: 8),
+          const SizedBox(width: 6),
 
           Expanded(
             child: _buildStatusCard(
@@ -550,6 +619,22 @@ class _ScheduleListPageState extends State<ScheduleListPage> {
               Icons.check_circle,
 
               'selesai',
+            ),
+          ),
+
+          const SizedBox(width: 6),
+
+          Expanded(
+            child: _buildStatusCard(
+              'Pending',
+
+              _pendingCount.toString(),
+
+              kDangerColor,
+
+              Icons.warning_amber_rounded,
+
+              'pending',
             ),
           ),
         ],
@@ -646,54 +731,71 @@ class _ScheduleListPageState extends State<ScheduleListPage> {
   Widget _buildFilterSection() {
     return Container(
       padding: const EdgeInsets.all(16),
-
       color: kWhite,
-
-      child: GestureDetector(
-        onTap: _pickDate,
-
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-
-          decoration: BoxDecoration(
-            color: kScaffoldBg,
-
-            borderRadius: BorderRadius.circular(12),
-
-            border: Border.all(color: kTextGrey.withValues(alpha: 0.2)),
-          ),
-
-          child: Row(
-            children: [
-              const Icon(Icons.calendar_today, size: 20, color: kPrimaryColor),
-
-              const SizedBox(width: 12),
-
-              Expanded(
-                child: Text(
-                  _dateController.text.isEmpty
-                      ? 'Pilih Tanggal Kunjungan'
-                      : _dateController.text,
-
-                  style: TextStyle(
-                    color: _dateController.text.isEmpty ? kTextGrey : kTextDark,
-
-                    fontSize: 14,
-
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
+      child: Column(
+        children: [
+          // Search field
+          TextField(
+            controller: _searchController,
+            decoration: InputDecoration(
+              hintText: 'Cari nama pasien',
+              prefixIcon: const Icon(Icons.search, color: kPrimaryColor),
+              suffixIcon: _searchController.text.isNotEmpty
+                  ? IconButton(
+                      icon: const Icon(Icons.clear, color: kTextGrey),
+                      onPressed: () {
+                        _searchController.clear();
+                        _filterSchedules();
+                      },
+                    )
+                  : null,
+              filled: true,
+              fillColor: kScaffoldBg,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide.none,
               ),
-
-              if (_dateController.text.isNotEmpty)
-                GestureDetector(
-                  onTap: _clearDateFilter,
-
-                  child: Icon(Icons.close, size: 20, color: kDangerColor),
-                ),
-            ],
+              contentPadding: const EdgeInsets.symmetric(vertical: 14),
+            ),
+            onChanged: (_) => _filterSchedules(),
           ),
-        ),
+          const SizedBox(height: 12),
+          // Date filter
+          GestureDetector(
+            onTap: _pickDate,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              decoration: BoxDecoration(
+                color: kScaffoldBg,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: kTextGrey.withValues(alpha: 0.2)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.calendar_today, size: 20, color: kPrimaryColor),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      _dateController.text.isEmpty
+                          ? 'Pilih Tanggal Kunjungan'
+                          : _dateController.text,
+                      style: TextStyle(
+                        color: _dateController.text.isEmpty ? kTextGrey : kTextDark,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                  if (_dateController.text.isNotEmpty)
+                    GestureDetector(
+                      onTap: _clearDateFilter,
+                      child: Icon(Icons.close, size: 20, color: kDangerColor),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

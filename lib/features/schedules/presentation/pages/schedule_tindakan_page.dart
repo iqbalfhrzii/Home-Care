@@ -55,11 +55,13 @@ class TindakanItem {
 class ScheduleTindakanPage extends StatefulWidget {
   final int registrationId;
   final VoidCallback? onCompleted;
+  final List<dynamic>? existingTindakanData;
 
   const ScheduleTindakanPage({
     super.key,
     required this.registrationId,
     this.onCompleted,
+    this.existingTindakanData,
   });
 
   @override
@@ -89,47 +91,73 @@ class _ScheduleTindakanPageState extends State<ScheduleTindakanPage> {
 
   Future<void> _loadAllTindakan() async {
     setState(() => _isLoadingTindakan = true);
-    try {
-      debugPrint('📚 Loading Tindakan catalog...');
-      final repo = TindakanCatalogRepository();
-      final list = await repo.getAll();
-      final items = list.map((e) {
-        final id = (e['id'] ?? '').toString();
-        final kode = (e['kode'] ?? '').toString();
-        final nama = (e['deskripsi'] ?? '').toString();
-        final hargaStr = (e['tarif'] ?? '0').toString();
-        final harga =
-            int.tryParse(hargaStr.split('.').first) ??
-            int.tryParse(hargaStr) ??
-            0;
-        return TindakanItem(
-          id: id,
-          kode: kode,
-          namaTindakan: nama,
-          kategori: 'Tindakan',
-          harga: harga,
-        );
-      }).toList();
+    
+    const maxRetries = 3;
+    for (int attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        debugPrint('📚 Loading Tindakan catalog (attempt $attempt/$maxRetries)...');
+        final repo = TindakanCatalogRepository();
+        final list = await repo.getAll();
+        
+        if (list.isEmpty && attempt < maxRetries) {
+          debugPrint('⚠️ Empty response, retrying...');
+          await Future.delayed(Duration(milliseconds: 500 * attempt));
+          continue;
+        }
+        
+        final items = list.map((e) {
+          final id = (e['id'] ?? '').toString();
+          final kode = (e['kode'] ?? '').toString();
+          final nama = (e['deskripsi'] ?? '').toString();
+          final hargaStr = (e['tarif'] ?? '0').toString();
+          final harga =
+              int.tryParse(hargaStr.split('.').first) ??
+              int.tryParse(hargaStr) ??
+              0;
+          return TindakanItem(
+            id: id,
+            kode: kode,
+            namaTindakan: nama,
+            kategori: 'Tindakan',
+            harga: harga,
+          );
+        }).toList();
 
-      if (mounted) {
-        setState(() {
-          _allTindakan = items;
-          _filteredTindakan = _allTindakan;
-          _isLoadingTindakan = false;
-        });
-        debugPrint('✅ Tindakan catalog loaded: ${_allTindakan.length} items');
+        if (mounted) {
+          setState(() {
+            _allTindakan = items;
+            _filteredTindakan = _allTindakan;
+            _isLoadingTindakan = false;
+          });
+          debugPrint('✅ Tindakan catalog loaded: ${_allTindakan.length} items');
 
-        // Load existing tindakan after catalog is ready
-        await _loadExistingTindakan();
-      }
-    } catch (e) {
-      debugPrint('❌ Error loading tindakan catalog: $e');
-      if (mounted) {
-        setState(() {
-          _allTindakan = [];
-          _filteredTindakan = [];
-          _isLoadingTindakan = false;
-        });
+          // Load existing tindakan after catalog is ready
+          await _loadExistingTindakan();
+        }
+        return; // Success, exit retry loop
+      } catch (e) {
+        debugPrint('❌ Error loading tindakan catalog (attempt $attempt): $e');
+        
+        if (attempt == maxRetries) {
+          // Last attempt failed, show error
+          if (mounted) {
+            setState(() {
+              _allTindakan = [];
+              _filteredTindakan = [];
+              _isLoadingTindakan = false;
+            });
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Gagal memuat katalog tindakan. Silakan coba lagi.'),
+                backgroundColor: kDangerColor,
+                duration: Duration(seconds: 3),
+              ),
+            );
+          }
+        } else {
+          // Retry after delay
+          await Future.delayed(Duration(milliseconds: 500 * attempt));
+        }
       }
     }
   }
@@ -140,8 +168,26 @@ class _ScheduleTindakanPageState extends State<ScheduleTindakanPage> {
       debugPrint(
         '🔄 Loading existing tindakan for registrasi ${widget.registrationId}',
       );
-      final repo = getIt<RegistrasiRepository>();
-      final existing = await repo.getExistingTindakan(widget.registrationId);
+
+      List<Map<String, dynamic>> existing = [];
+
+      if (widget.existingTindakanData != null) {
+        debugPrint(
+          'ℹ️ Using existingTindakanData provided via navigation extras',
+        );
+        try {
+          existing = List<Map<String, dynamic>>.from(
+            widget.existingTindakanData!,
+          );
+        } catch (_) {
+          existing = widget.existingTindakanData!
+              .map((e) => Map<String, dynamic>.from(e as Map))
+              .toList();
+        }
+      } else {
+        final repo = getIt<RegistrasiRepository>();
+        existing = await repo.getExistingTindakan(widget.registrationId);
+      }
 
       debugPrint(
         '🔍 Tindakan Page - Found ${existing.length} existing tindakan',
@@ -167,13 +213,38 @@ class _ScheduleTindakanPageState extends State<ScheduleTindakanPage> {
             ? item['jumlah'] as int
             : int.tryParse(item['jumlah']?.toString() ?? '1') ?? 1;
 
-        final hargaSatuan = item['harga_satuan'] is int
-            ? item['harga_satuan'] as int
-            : int.tryParse(item['harga_satuan']?.toString() ?? '0') ?? 0;
+        // Parse harga_satuan with proper handling for double/string
+        final hargaSatuanRaw = item['harga_satuan'];
+        int hargaSatuan = 0;
+        if (hargaSatuanRaw is int) {
+          hargaSatuan = hargaSatuanRaw;
+        } else if (hargaSatuanRaw is double) {
+          hargaSatuan = hargaSatuanRaw.toInt();
+        } else if (hargaSatuanRaw != null) {
+          final str = hargaSatuanRaw.toString();
+          // Handle "150000.00" format
+          if (str.contains('.')) {
+            hargaSatuan = int.tryParse(str.split('.').first) ?? 0;
+          } else {
+            hargaSatuan = int.tryParse(str) ?? 0;
+          }
+        }
 
-        final diskon = item['diskon'] is int
-            ? item['diskon'] as int
-            : int.tryParse(item['diskon']?.toString() ?? '0') ?? 0;
+        // Parse diskon
+        final diskonRaw = item['diskon'];
+        int diskon = 0;
+        if (diskonRaw is int) {
+          diskon = diskonRaw;
+        } else if (diskonRaw is double) {
+          diskon = diskonRaw.toInt();
+        } else if (diskonRaw != null) {
+          final str = diskonRaw.toString();
+          if (str.contains('.')) {
+            diskon = int.tryParse(str.split('.').first) ?? 0;
+          } else {
+            diskon = int.tryParse(str) ?? 0;
+          }
+        }
 
         final petugasNama = item['petugas_nama']?.toString() ?? 'Perawat A';
         final keterangan = item['keterangan']?.toString() ?? '';
@@ -203,7 +274,7 @@ class _ScheduleTindakanPageState extends State<ScheduleTindakanPage> {
             kategori: catalogItem.kategori,
             harga: catalogItem.harga,
             jumlah: jumlah,
-            hargaSatuan: hargaSatuan,
+            hargaSatuan: hargaSatuan > 0 ? hargaSatuan : catalogItem.harga,
             diskon: diskon,
             petugasNama: petugasNama,
             keterangan: keterangan,
@@ -219,15 +290,33 @@ class _ScheduleTindakanPageState extends State<ScheduleTindakanPage> {
           debugPrint(
             '⚠️ Tindakan ID $tindakanId not found in catalog, using API data',
           );
+          // Parse tarif from API response as fallback
+          final tarifRaw = item['tarif'];
+          int tarif = hargaSatuan;
+          if (tarif == 0 && tarifRaw != null) {
+            if (tarifRaw is int) {
+              tarif = tarifRaw;
+            } else if (tarifRaw is double) {
+              tarif = tarifRaw.toInt();
+            } else {
+              final str = tarifRaw.toString();
+              if (str.contains('.')) {
+                tarif = int.tryParse(str.split('.').first) ?? 0;
+              } else {
+                tarif = int.tryParse(str) ?? 0;
+              }
+            }
+          }
+          
           tindakanItem = TindakanItem(
             id: tindakanId.toString(),
             kode: item['kode']?.toString() ?? 'TND-$tindakanId',
             namaTindakan:
                 item['nama_tindakan']?.toString() ?? 'Tindakan $tindakanId',
             kategori: item['kategori']?.toString() ?? 'Unknown',
-            harga: hargaSatuan,
+            harga: tarif,
             jumlah: jumlah,
-            hargaSatuan: hargaSatuan,
+            hargaSatuan: hargaSatuan > 0 ? hargaSatuan : tarif,
             diskon: diskon,
             petugasNama: petugasNama,
             keterangan: keterangan,
@@ -414,22 +503,23 @@ class _ScheduleTindakanPageState extends State<ScheduleTindakanPage> {
   }
 
   Future<void> _saveTindakan() async {
-    if (_selectedTindakan.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Pilih minimal 1 tindakan'),
-          backgroundColor: kWarningColor,
-        ),
-      );
-      return;
-    }
-
     setState(() => _isSaving = true);
 
     try {
       final repo = getIt<RegistrasiRepository>();
 
-      // Build items array
+      // Get existing tindakan IDs - fetch fresh from API to ensure we have latest
+      final existingData = await repo.getExistingTindakan(widget.registrationId);
+      final existingIds = existingData.map((e) {
+        final tindakanId = e['tindakan_id'] is int
+            ? e['tindakan_id'] as int
+            : int.tryParse(e['tindakan_id']?.toString() ?? '0') ?? 0;
+        return tindakanId;
+      }).toList();
+      
+      debugPrint('🔍 Existing tindakan IDs to detach: $existingIds');
+
+      // Build items array from selected
       final items = _selectedTindakan.map((item) {
         final tindakanId = int.tryParse(item.id) ?? 0;
         return {
@@ -451,9 +541,14 @@ class _ScheduleTindakanPageState extends State<ScheduleTindakanPage> {
         };
       }).toList();
 
-      // Send all items in one request
-      await repo.attachTindakan(
+      // Get current selected IDs
+      final selectedIds = _selectedTindakan.map((e) => int.tryParse(e.id) ?? 0).toList();
+      debugPrint('🔍 Selected tindakan IDs: $selectedIds');
+      
+      // Use syncTindakan to replace all existing with new selection
+      await repo.syncTindakan(
         registrasiId: widget.registrationId,
+        existingTindakanIds: existingIds,
         items: items,
       );
 
@@ -811,131 +906,129 @@ class _ScheduleTindakanPageState extends State<ScheduleTindakanPage> {
             padding: EdgeInsets.all(32),
             child: CircularProgressIndicator(color: kPrimaryColor),
           )
-        else
-          Container(
-            constraints: BoxConstraints(
-              maxHeight: MediaQuery.of(context).size.height * 0.4,
+        else if (_filteredTindakan.isEmpty)
+          Padding(
+            padding: const EdgeInsets.all(32),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.search_off,
+                  size: 64,
+                  color: kTextGrey.withValues(alpha: 0.5),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'Tidak ada tindakan ditemukan',
+                  style: TextStyle(color: kTextGrey, fontSize: 16),
+                ),
+              ],
             ),
-            child: _filteredTindakan.isEmpty
-                ? Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
+          )
+        else
+          ListView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            itemCount: _filteredTindakan.length,
+            itemBuilder: (context, index) {
+              final tindakan = _filteredTindakan[index];
+
+              return Card(
+                margin: const EdgeInsets.only(bottom: 12),
+                color: kWhite,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: InkWell(
+                  onTap: () => _addTindakan(tindakan),
+                  borderRadius: BorderRadius.circular(12),
+                  child: Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Row(
                       children: [
-                        Icon(
-                          Icons.search_off,
-                          size: 64,
-                          color: kTextGrey.withValues(alpha: 0.5),
+                        Container(
+                          width: 50,
+                          height: 50,
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              colors: [kPrimaryColor, kPrimaryLight],
+                            ),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: const Icon(
+                            Icons.medical_services,
+                            color: kWhite,
+                            size: 24,
+                          ),
                         ),
-                        const SizedBox(height: 16),
-                        Text(
-                          'Tidak ada tindakan ditemukan',
-                          style: TextStyle(color: kTextGrey, fontSize: 16),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment:
+                                CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                tindakan.kode,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 12,
+                                  color: kPrimaryColor,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                tindakan.namaTindakan,
+                                style: const TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                  color: kTextDark,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Row(
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 8,
+                                      vertical: 2,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: kPrimaryColor.withValues(
+                                        alpha: 0.1,
+                                      ),
+                                      borderRadius:
+                                          BorderRadius.circular(4),
+                                    ),
+                                    child: Text(
+                                      tindakan.kategori,
+                                      style: const TextStyle(
+                                        fontSize: 10,
+                                        color: kPrimaryColor,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ),
+                                  const Spacer(),
+                                  Text(
+                                    'Rp ${tindakan.harga.toString().replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (Match m) => '${m[1]}.')}',
+                                    style: const TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.bold,
+                                      color: kSuccessColor,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
                         ),
                       ],
                     ),
-                  )
-                : ListView.builder(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    itemCount: _filteredTindakan.length,
-                    itemBuilder: (context, index) {
-                      final tindakan = _filteredTindakan[index];
-
-                      return Card(
-                        margin: const EdgeInsets.only(bottom: 12),
-                        color: kWhite,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: InkWell(
-                          onTap: () => _addTindakan(tindakan),
-                          borderRadius: BorderRadius.circular(12),
-                          child: Padding(
-                            padding: const EdgeInsets.all(16.0),
-                            child: Row(
-                              children: [
-                                Container(
-                                  width: 50,
-                                  height: 50,
-                                  decoration: BoxDecoration(
-                                    gradient: const LinearGradient(
-                                      colors: [kPrimaryColor, kPrimaryLight],
-                                    ),
-                                    borderRadius: BorderRadius.circular(10),
-                                  ),
-                                  child: const Icon(
-                                    Icons.medical_services,
-                                    color: kWhite,
-                                    size: 24,
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        tindakan.kode,
-                                        style: const TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 12,
-                                          color: kPrimaryColor,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 2),
-                                      Text(
-                                        tindakan.namaTindakan,
-                                        style: const TextStyle(
-                                          fontSize: 14,
-                                          fontWeight: FontWeight.w600,
-                                          color: kTextDark,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 4),
-                                      Row(
-                                        children: [
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(
-                                              horizontal: 8,
-                                              vertical: 2,
-                                            ),
-                                            decoration: BoxDecoration(
-                                              color: kPrimaryColor.withValues(
-                                                alpha: 0.1,
-                                              ),
-                                              borderRadius:
-                                                  BorderRadius.circular(4),
-                                            ),
-                                            child: Text(
-                                              tindakan.kategori,
-                                              style: const TextStyle(
-                                                fontSize: 10,
-                                                color: kPrimaryColor,
-                                                fontWeight: FontWeight.w600,
-                                              ),
-                                            ),
-                                          ),
-                                          const Spacer(),
-                                          Text(
-                                            'Rp ${tindakan.harga.toString().replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (Match m) => '${m[1]}.')}',
-                                            style: const TextStyle(
-                                              fontSize: 14,
-                                              fontWeight: FontWeight.bold,
-                                              color: kSuccessColor,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      );
-                    },
                   ),
+                ),
+              );
+            },
           ),
       ],
     );

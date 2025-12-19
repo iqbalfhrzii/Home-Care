@@ -12,11 +12,14 @@ const Color kDangerColor = Colors.red;
 class ScheduleIcdPage extends StatefulWidget {
   final int registrationId;
   final VoidCallback? onCompleted;
+  final List<dynamic>?
+  existingIcdData; // Optional: to avoid API call if already have data
 
   const ScheduleIcdPage({
     super.key,
     required this.registrationId,
     this.onCompleted,
+    this.existingIcdData,
   });
 
   @override
@@ -27,6 +30,7 @@ class _ScheduleIcdPageState extends State<ScheduleIcdPage> {
   final TextEditingController _searchController = TextEditingController();
   bool _isSaving = false;
   final List<_SelectedIcd> _selectedIcds = [];
+  final List<int> _existingIcdIds = []; // Track existing IDs for detachment
   List<_IcdItem> _allIcd = [];
   List<_IcdItem> _filteredIcd = [];
 
@@ -47,8 +51,17 @@ class _ScheduleIcdPageState extends State<ScheduleIcdPage> {
       debugPrint(
         '🔄 Loading existing ICD for registrasi ${widget.registrationId}',
       );
-      final repo = getIt<RegistrasiRepository>();
-      final existing = await repo.getExistingIcd(widget.registrationId);
+
+      // Use data from widget if provided (avoid API call)
+      List<dynamic> existing;
+      if (widget.existingIcdData != null) {
+        debugPrint('✅ Using existing ICD data from widget parameter');
+        existing = widget.existingIcdData!;
+      } else {
+        debugPrint('🌐 Fetching existing ICD from API');
+        final repo = getIt<RegistrasiRepository>();
+        existing = await repo.getExistingIcd(widget.registrationId);
+      }
 
       debugPrint('🔍 ICD Page - Found ${existing.length} existing ICD');
       debugPrint('🔍 ICD Page - Data: $existing');
@@ -62,30 +75,117 @@ class _ScheduleIcdPageState extends State<ScheduleIcdPage> {
       final List<_SelectedIcd> loadedIcds = [];
 
       for (final item in existing) {
-        final icdId = item['icd_id'] is int
-            ? item['icd_id'] as int
-            : int.tryParse(item['icd_id']?.toString() ?? '0') ?? 0;
-        final isPrimary =
-            item['is_primary'] == true ||
-            item['is_primary'] == 1 ||
-            item['is_primary']?.toString().toLowerCase() == 'true';
+        // Robust parsing for icd id: support multiple possible shapes
+        int icdId = -1;
+        try {
+          if (item['icd_id'] is int) {
+            icdId = item['icd_id'] as int;
+          } else if (item['icd_id'] is Map &&
+              (item['icd_id'] as Map).containsKey('id')) {
+            icdId = (item['icd_id'] as Map)['id'] is int
+                ? (item['icd_id'] as Map)['id'] as int
+                : int.tryParse(
+                        (item['icd_id'] as Map)['id']?.toString() ?? '',
+                      ) ??
+                      -1;
+          } else if (item['id'] is int) {
+            icdId = item['id'] as int;
+          } else if (item['icd'] is Map &&
+              (item['icd'] as Map).containsKey('id')) {
+            icdId = (item['icd'] as Map)['id'] is int
+                ? (item['icd'] as Map)['id'] as int
+                : int.tryParse((item['icd'] as Map)['id']?.toString() ?? '') ??
+                      -1;
+          } else {
+            icdId =
+                int.tryParse(
+                  item['icd_id']?.toString() ?? item['id']?.toString() ?? '-1',
+                ) ??
+                -1;
+          }
+        } catch (e) {
+          debugPrint('⚠️ Failed parsing icd id from item: $item -> $e');
+          icdId = -1;
+        }
+        // Prefer pivot.is_primary when present (from registrasi pivot table)
+        bool isPrimary = false;
+        try {
+          final pivot = item['pivot'] as Map<String, dynamic>?;
+          if (pivot != null && pivot.containsKey('is_primary')) {
+            final p = pivot['is_primary'];
+            isPrimary =
+                p == true ||
+                p == 1 ||
+                p?.toString()?.toLowerCase() == '1' ||
+                p?.toString()?.toLowerCase() == 'true';
+            debugPrint(
+              '🔑 Found pivot.is_primary=$p -> isPrimary=$isPrimary for item id=$icdId',
+            );
+          } else {
+            isPrimary =
+                item['is_primary'] == true ||
+                item['is_primary'] == 1 ||
+                item['is_primary']?.toString().toLowerCase() == 'true';
+          }
+        } catch (e) {
+          debugPrint('⚠️ Error reading pivot.is_primary: $e');
+          isPrimary =
+              item['is_primary'] == true ||
+              item['is_primary'] == 1 ||
+              item['is_primary']?.toString().toLowerCase() == 'true';
+        }
         final kasus =
             item['kasus']?.toString() ?? (isPrimary ? 'Utama' : 'Sekunder');
 
         debugPrint('🔍 Looking for ICD ID: $icdId in catalog');
 
         // Find ICD in catalog
-        final icdItem = _allIcd.firstWhere(
-          (e) => e.id == icdId,
-          orElse: () {
-            debugPrint('⚠️ ICD ID $icdId not found in catalog, using fallback');
-            return _IcdItem(
+        _IcdItem? icdItem = _allIcd.cast<_IcdItem?>().firstWhere(
+          (e) => e?.id == icdId,
+          orElse: () => null,
+        );
+
+        // If not found in catalog, fetch from API
+        if (icdItem == null) {
+          if (icdId <= 0) {
+            debugPrint('⚠️ Invalid ICD id ($icdId) for item: $item');
+          }
+          debugPrint(
+            '⚠️ ICD ID $icdId not found in catalog, fetching from API...',
+          );
+          try {
+            final icdRepo = IcdRepository();
+            final icdData = await icdRepo.getById(icdId);
+            if (icdData != null) {
+              icdItem = _IcdItem(
+                id: (icdData['id'] ?? icdId) as int,
+                code: (icdData['kode'] ?? 'ICD-$icdId').toString(),
+                name: (icdData['deskripsi'] ?? 'Unknown').toString(),
+              );
+              // Add to catalog for future use
+              _allIcd.add(icdItem);
+              debugPrint(
+                '✅ Fetched ICD from API: ${icdItem.code} - ${icdItem.name}',
+              );
+            } else {
+              // Fallback to data from existing item
+              debugPrint('⚠️ API fetch failed, using fallback data');
+              icdItem = _IcdItem(
+                id: icdId,
+                code: item['kode']?.toString() ?? 'ICD-$icdId',
+                name: item['deskripsi']?.toString() ?? 'Unknown',
+              );
+            }
+          } catch (e) {
+            debugPrint('❌ Error fetching ICD $icdId from API: $e');
+            // Fallback to data from existing item
+            icdItem = _IcdItem(
               id: icdId,
               code: item['kode']?.toString() ?? 'ICD-$icdId',
               name: item['deskripsi']?.toString() ?? 'Unknown',
             );
-          },
-        );
+          }
+        }
 
         debugPrint(
           '✅ Found ICD: id=${icdItem.id}, code=${icdItem.code}, name=${icdItem.name}, isPrimary=$isPrimary',
@@ -100,6 +200,8 @@ class _ScheduleIcdPageState extends State<ScheduleIcdPage> {
             kasus: kasus,
           ),
         );
+        // Track existing ICD ID (use master icd id expected by backend)
+        _existingIcdIds.add(icdId);
       }
 
       setState(() {
@@ -116,10 +218,15 @@ class _ScheduleIcdPageState extends State<ScheduleIcdPage> {
 
   Future<void> _loadIcdCatalog() async {
     try {
-      debugPrint('📚 Loading ICD catalog...');
+      debugPrint('📚 Loading ICD catalog (50 items)...');
       final repo = IcdRepository();
-      final list = await repo.getAll();
-      _allIcd = list
+
+      // Load only first 50 items
+      final response = await repo.getAll(page: 1, perPage: 50);
+      final items = response['data'] as List? ?? response as List;
+
+      _allIcd = items
+          .map((e) => e as Map<String, dynamic>)
           .map(
             (e) => _IcdItem(
               id: (e['id'] ?? 0) as int,
@@ -128,6 +235,7 @@ class _ScheduleIcdPageState extends State<ScheduleIcdPage> {
             ),
           )
           .toList();
+
       setState(() {
         _filteredIcd = List.of(_allIcd);
       });
@@ -135,8 +243,9 @@ class _ScheduleIcdPageState extends State<ScheduleIcdPage> {
 
       // Load existing ICD after catalog is ready
       await _loadExistingIcd();
-    } catch (e) {
+    } catch (e, stackTrace) {
       debugPrint('❌ Error loading ICD catalog: $e');
+      debugPrint('Stack trace: $stackTrace');
     }
   }
 
@@ -231,7 +340,30 @@ class _ScheduleIcdPageState extends State<ScheduleIcdPage> {
     try {
       final repo = getIt<RegistrasiRepository>();
 
-      // Build items array
+      // Validate selected ICD ids exist in loaded catalog to avoid server validation errors
+      final availableIds = _allIcd.map((e) => e.id).toSet();
+      final missing = _selectedIcds
+          .where((s) => !availableIds.contains(s.id))
+          .toList();
+      if (missing.isNotEmpty) {
+        debugPrint(
+          '❌ Selected ICD ids not present in catalog: ${missing.map((m) => m.id).toList()}',
+        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Beberapa ICD tidak ditemukan di katalog: ${missing.map((m) => m.code).join(', ')}',
+              ),
+              backgroundColor: const Color(0xFFEF4444),
+            ),
+          );
+        }
+        setState(() => _isSaving = false);
+        return;
+      }
+
+      // Build items payload from selected ICDs
       final items = _selectedIcds.map((item) {
         return {
           'icd_id': item.id,
@@ -240,8 +372,29 @@ class _ScheduleIcdPageState extends State<ScheduleIcdPage> {
         };
       }).toList();
 
-      // Send all items in one request
-      await repo.attachIcd(registrasiId: widget.registrationId, items: items);
+      // Sanitize existing ids and items to avoid sending invalid zeros
+      final sanitizedExisting = _existingIcdIds.where((id) => id > 0).toList();
+      final sanitizedItems = items.where((it) {
+        final iid = int.tryParse(it['icd_id']?.toString() ?? '-1') ?? -1;
+        return iid > 0;
+      }).toList();
+
+      // Debug: print sync parameters
+      debugPrint('🔁 Sync ICD - registrasiId=${widget.registrationId}');
+      debugPrint('📤 Existing ICD IDs (sanitized): $sanitizedExisting');
+      debugPrint(
+        '📤 Items payload (sanitized count): ${sanitizedItems.length}',
+      );
+      debugPrint(
+        '📤 First ICD preview: ${sanitizedItems.isNotEmpty ? sanitizedItems.first : {}}',
+      );
+
+      // Sync (replace) all items in one request
+      await repo.syncIcd(
+        registrasiId: widget.registrationId,
+        existingIcdIds: sanitizedExisting,
+        items: sanitizedItems,
+      );
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -320,10 +473,28 @@ class _ScheduleIcdPageState extends State<ScheduleIcdPage> {
                     ),
                     onPressed: () {
                       setState(() {
-                        _selectedIcds[selectedIndex].isPrimary = !isPrimary;
-                        _selectedIcds[selectedIndex].kasus = !isPrimary
-                            ? 'Utama'
-                            : 'Sekunder';
+                        final willBePrimary = !isPrimary;
+                        if (willBePrimary) {
+                          // Make this the only primary
+                          for (var i = 0; i < _selectedIcds.length; i++) {
+                            _selectedIcds[i].isPrimary = false;
+                            _selectedIcds[i].kasus = 'Sekunder';
+                          }
+                          _selectedIcds[selectedIndex].isPrimary = true;
+                          _selectedIcds[selectedIndex].kasus = 'Utama';
+                        } else {
+                          // Unset this primary
+                          _selectedIcds[selectedIndex].isPrimary = false;
+                          _selectedIcds[selectedIndex].kasus = 'Sekunder';
+                          // Ensure at least one primary remains: set first selected as primary
+                          final anyPrimary = _selectedIcds.any(
+                            (e) => e.isPrimary,
+                          );
+                          if (!anyPrimary && _selectedIcds.isNotEmpty) {
+                            _selectedIcds[0].isPrimary = true;
+                            _selectedIcds[0].kasus = 'Utama';
+                          }
+                        }
                       });
                     },
                     tooltip: isPrimary
@@ -339,19 +510,37 @@ class _ScheduleIcdPageState extends State<ScheduleIcdPage> {
             onTap: () {
               setState(() {
                 if (selected) {
-                  _selectedIcds.removeAt(selectedIndex);
+                  final removed = _selectedIcds.removeAt(selectedIndex);
+                  // If removed item was primary, promote first remaining to primary
+                  if (removed.isPrimary && _selectedIcds.isNotEmpty) {
+                    _selectedIcds[0].isPrimary = true;
+                    _selectedIcds[0].kasus = 'Utama';
+                  }
                 } else {
                   // First selected ICD is primary by default
                   final isFirstIcd = _selectedIcds.isEmpty;
-                  _selectedIcds.add(
-                    _SelectedIcd(
-                      id: item.id,
-                      code: item.code,
-                      name: item.name,
-                      isPrimary: isFirstIcd,
-                      kasus: isFirstIcd ? 'Utama' : 'Sekunder',
-                    ),
-                  );
+                  if (isFirstIcd) {
+                    // ensure others are not primary (none exist)
+                    _selectedIcds.add(
+                      _SelectedIcd(
+                        id: item.id,
+                        code: item.code,
+                        name: item.name,
+                        isPrimary: true,
+                        kasus: 'Utama',
+                      ),
+                    );
+                  } else {
+                    _selectedIcds.add(
+                      _SelectedIcd(
+                        id: item.id,
+                        code: item.code,
+                        name: item.name,
+                        isPrimary: false,
+                        kasus: 'Sekunder',
+                      ),
+                    );
+                  }
                 }
               });
             },

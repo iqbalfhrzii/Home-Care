@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'dart:async';
 import 'package:homecare_mobile/features/reports/presentation/pages/report_detail_tagihan_pages.dart';
 import 'package:homecare_mobile/features/reports/data/repositories/tagihan_repository.dart';
 import 'package:homecare_mobile/features/reports/domain/models/tagihan.dart';
@@ -30,6 +31,8 @@ class _ReportListPageState extends State<ReportListPage> {
   List<Tagihan> _allTagihan = [];
   List<Tagihan> _filteredTagihan = [];
   bool _isLoading = true;
+  bool _isLoaded = false;
+  Timer? _retryTimer;
 
   @override
   void initState() {
@@ -41,33 +44,103 @@ class _ReportListPageState extends State<ReportListPage> {
   @override
   void dispose() {
     _searchController.dispose();
+    _retryTimer?.cancel();
+    _retryTimer = null;
     super.dispose();
   }
 
   Future<void> _loadTagihan() async {
-    setState(() => _isLoading = true);
+    // Try once immediately, then start a retry loop until we successfully load data.
+    await _attemptLoadOnce(startRetryOnFail: true);
+  }
+
+  Future<void> _attemptLoadOnce({bool startRetryOnFail = false}) async {
+    if (!mounted) return;
+    setState(() {
+      _isLoading = true;
+    });
     try {
-      final tagihan = await _repository.getAllTagihan();
+      // Protect against hanging network calls by applying a timeout.
+      final tagihan = await _repository.getAllTagihan().timeout(
+        const Duration(seconds: 8),
+      );
+      if (!mounted) return;
+      // If the fetch returned an empty list, consider it a transient failure
+      // (server may have returned non-JSON or connection failed but repository
+      // returned []) — keep retrying until we get data. This follows the
+      // requested behavior to keep showing a loader until data is successfully
+      // loaded.
+      if ((tagihan.isEmpty) && !_isLoaded) {
+        print('⚠️ getAllTagihan returned empty — will retry');
+        setState(() {
+          _isLoading = true;
+          _isLoaded = false;
+        });
+        if (startRetryOnFail) _startRetryLoop();
+        return;
+      }
+
       setState(() {
         _allTagihan = tagihan;
         _filteredTagihan = tagihan;
         _isLoading = false;
+        _isLoaded = true;
       });
+      // Cancel any pending retry timer
+      _retryTimer?.cancel();
+      _retryTimer = null;
     } catch (e) {
-      setState(() => _isLoading = false);
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Error loading tagihan: $e')));
-      }
+      // Log the error to help debugging (network, timeout, parse, etc.)
+      print('⚠️ loadTagihan attempt failed: $e');
+      if (!mounted) return;
+      // Keep showing loading indicator and optionally start retrying
+      setState(() {
+        _isLoading = true;
+        _isLoaded = false;
+      });
+      if (startRetryOnFail) _startRetryLoop();
     }
+  }
+
+  void _startRetryLoop() {
+    // If already retrying, do nothing
+    if (_retryTimer != null) return;
+    // Retry every 2 seconds until success or widget disposed
+    _retryTimer = Timer.periodic(const Duration(seconds: 2), (t) async {
+      if (!mounted) {
+        t.cancel();
+        return;
+      }
+      if (_isLoaded) {
+        t.cancel();
+        _retryTimer = null;
+        return;
+      }
+      await _attemptLoadOnce(startRetryOnFail: false);
+    });
   }
 
   void _filterTagihan() {
     final query = _searchController.text.toLowerCase();
     setState(() {
       _filteredTagihan = _allTagihan.where((tagihan) {
+        // Get patient name from registrasi
+        String patientName = '';
+        String mrNumber = '';
+        try {
+          final reg = tagihan.registrasi;
+          if (reg != null && reg['pasien'] is Map) {
+            final pasien = reg['pasien'] as Map;
+            patientName = (pasien['nama']?.toString() ?? '').toLowerCase();
+            mrNumber = (pasien['mrn']?.toString() ?? '').toLowerCase();
+          }
+        } catch (e) {
+          // Ignore
+        }
+
         final matchesSearch =
+            patientName.contains(query) ||
+            mrNumber.contains(query) ||
             tagihan.noInvoice.toLowerCase().contains(query) ||
             (tagihan.tanggalInvoice?.toLowerCase().contains(query) ?? false);
 
@@ -99,7 +172,6 @@ class _ReportListPageState extends State<ReportListPage> {
               children: [
                 _buildSummaryCards(),
                 _buildSearchBar(),
-                _buildFilterChips(),
               ],
             ),
           ),
@@ -110,43 +182,53 @@ class _ReportListPageState extends State<ReportListPage> {
   }
 
   Widget _buildSliverAppBar() {
-    return SliverAppBar(
-      expandedHeight: 140,
-      floating: false,
-      pinned: true,
-      backgroundColor: kPrimaryColor,
-      flexibleSpace: FlexibleSpaceBar(
-        background: Container(
-          decoration: const BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [kPrimaryColor, kPrimaryLight],
-            ),
+    return SliverToBoxAdapter(
+      child: Container(
+        width: double.infinity,
+        height: 140,
+        padding: const EdgeInsets.fromLTRB(24, 50, 24, 0),
+        decoration: const BoxDecoration(
+          borderRadius: BorderRadius.only(
+            bottomLeft: Radius.circular(32),
+            bottomRight: Radius.circular(32),
           ),
-          child: SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 60, 16, 16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Tagihan & Pembayaran',
-                    style: TextStyle(color: Colors.white70, fontSize: 14),
-                  ),
-                  const SizedBox(height: 4),
-                  const Text(
-                    'Laporan Billing',
-                    style: TextStyle(
-                      color: kWhite,
-                      fontSize: 24,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ],
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [kPrimaryColor, kPrimaryLight],
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Color(0x33004B8C),
+              blurRadius: 20,
+              offset: Offset(0, 10),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: const [
+            Row(
+              children: [
+                Text(
+                  'Tagihan & Pembayaran',
+                  style: TextStyle(color: Colors.white70, fontSize: 14),
+                ),
+                SizedBox(width: 6),
+                Icon(Icons.receipt_long, color: Color(0xFF8BC43E), size: 16),
+              ],
+            ),
+            SizedBox(height: 6),
+            Text(
+              'Laporan Billing',
+              style: TextStyle(
+                color: kWhite,
+                fontSize: 22,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 0.5,
               ),
             ),
-          ),
+          ],
         ),
       ),
     );
@@ -154,14 +236,11 @@ class _ReportListPageState extends State<ReportListPage> {
 
   Widget _buildSummaryCards() {
     final total = _allTagihan.length;
-    final lunas = _allTagihan
-        .where((t) => t.statusPembayaran == 'lunas')
+    final sudahBayar = _allTagihan
+        .where((t) => t.statusPembayaran == 'sudah_bayar')
         .length;
     final belumBayar = _allTagihan
         .where((t) => t.statusPembayaran == 'belum_bayar')
-        .length;
-    final pending = _allTagihan
-        .where((t) => t.statusPembayaran == 'pending')
         .length;
 
     return Padding(
@@ -174,33 +253,30 @@ class _ReportListPageState extends State<ReportListPage> {
               count: total,
               color: kPrimaryColor,
               icon: Icons.receipt_long,
+              isSelected: _selectedFilter == 'semua',
+              onTap: () => _setFilter('semua'),
             ),
           ),
           const SizedBox(width: 12),
           Expanded(
             child: _SummaryCard(
-              title: 'Lunas',
-              count: lunas,
+              title: 'Sudah Bayar',
+              count: sudahBayar,
               color: kSuccessColor,
               icon: Icons.check_circle,
+              isSelected: _selectedFilter == 'sudah_bayar',
+              onTap: () => _setFilter('sudah_bayar'),
             ),
           ),
           const SizedBox(width: 12),
           Expanded(
             child: _SummaryCard(
-              title: 'Belum',
+              title: 'Belum Bayar',
               count: belumBayar,
               color: kWarningColor,
               icon: Icons.pending,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: _SummaryCard(
-              title: 'Pending',
-              count: pending,
-              color: kDangerColor,
-              icon: Icons.hourglass_empty,
+              isSelected: _selectedFilter == 'belum_bayar',
+              onTap: () => _setFilter('belum_bayar'),
             ),
           ),
         ],
@@ -214,7 +290,7 @@ class _ReportListPageState extends State<ReportListPage> {
       child: TextField(
         controller: _searchController,
         decoration: InputDecoration(
-          hintText: 'Cari invoice, pasien, atau MR...',
+          hintText: 'Cari nama pasien, MR, atau invoice...',
           prefixIcon: const Icon(Icons.search, color: kPrimaryColor),
           filled: true,
           fillColor: kWhite,
@@ -249,9 +325,9 @@ class _ReportListPageState extends State<ReportListPage> {
             ),
             const SizedBox(width: 8),
             _FilterChip(
-              label: 'Lunas',
-              isSelected: _selectedFilter == 'lunas',
-              onTap: () => _setFilter('lunas'),
+              label: 'Sudah Bayar',
+              isSelected: _selectedFilter == 'sudah_bayar',
+              onTap: () => _setFilter('sudah_bayar'),
               color: kSuccessColor,
             ),
             const SizedBox(width: 8),
@@ -260,13 +336,6 @@ class _ReportListPageState extends State<ReportListPage> {
               isSelected: _selectedFilter == 'belum_bayar',
               onTap: () => _setFilter('belum_bayar'),
               color: kWarningColor,
-            ),
-            const SizedBox(width: 8),
-            _FilterChip(
-              label: 'Pending',
-              isSelected: _selectedFilter == 'pending',
-              onTap: () => _setFilter('pending'),
-              color: kDangerColor,
             ),
           ],
         ),
@@ -333,43 +402,57 @@ class _SummaryCard extends StatelessWidget {
   final int count;
   final Color color;
   final IconData icon;
+  final bool isSelected;
+  final VoidCallback onTap;
 
   const _SummaryCard({
     required this.title,
     required this.count,
     required this.color,
     required this.icon,
+    required this.isSelected,
+    required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: kWhite,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: color.withValues(alpha: 0.1),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        children: [
-          Icon(icon, color: color, size: 24),
-          const SizedBox(height: 8),
-          Text(
-            count.toString(),
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-              color: color,
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: isSelected ? color : kWhite,
+          borderRadius: BorderRadius.circular(12),
+          border: isSelected ? Border.all(color: color, width: 2) : null,
+          boxShadow: [
+            BoxShadow(
+              color: color.withValues(alpha: isSelected ? 0.3 : 0.1),
+              blurRadius: 12,
+              offset: const Offset(0, 4),
             ),
-          ),
-          Text(title, style: const TextStyle(fontSize: 12, color: kTextGrey)),
-        ],
+          ],
+        ),
+        child: Column(
+          children: [
+            Icon(icon, color: isSelected ? kWhite : color, size: 24),
+            const SizedBox(height: 8),
+            Text(
+              count.toString(),
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+                color: isSelected ? kWhite : color,
+              ),
+            ),
+            Text(
+              title,
+              style: TextStyle(
+                fontSize: 12,
+                color: isSelected ? kWhite : kTextGrey,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -392,16 +475,16 @@ class _FilterChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final chipColor = color ?? kPrimaryColor;
 
-    return InkWell(
+    return GestureDetector(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(20),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         decoration: BoxDecoration(
           color: isSelected ? chipColor : kWhite,
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
             color: isSelected ? chipColor : kTextGrey.withValues(alpha: 0.3),
+            width: 1.5,
           ),
         ),
         child: Text(
@@ -425,12 +508,10 @@ class _TagihanCard extends StatelessWidget {
 
   Color _getStatusColor(String status) {
     switch (status) {
-      case 'lunas':
+      case 'sudah_bayar':
         return kSuccessColor;
       case 'belum_bayar':
         return kWarningColor;
-      case 'pending':
-        return kDangerColor;
       default:
         return kTextGrey;
     }
@@ -438,12 +519,10 @@ class _TagihanCard extends StatelessWidget {
 
   String _getStatusText(String status) {
     switch (status) {
-      case 'lunas':
-        return 'Lunas';
+      case 'sudah_bayar':
+        return 'Sudah Bayar';
       case 'belum_bayar':
         return 'Belum Bayar';
-      case 'pending':
-        return 'Pending';
       default:
         return status;
     }
@@ -451,7 +530,9 @@ class _TagihanCard extends StatelessWidget {
 
   int _parseStringToInt(String? value) {
     if (value == null || value.isEmpty) return 0;
-    return int.tryParse(value.replaceAll(RegExp(r'[^0-9]'), '')) ?? 0;
+    // Parse dari string seperti "267958.00" atau "267958"
+    final cleanValue = value.replaceAll(RegExp(r'[^0-9.]'), '');
+    return double.tryParse(cleanValue)?.toInt() ?? 0;
   }
 
   DateTime? _parseDate(String? dateStr) {
@@ -461,6 +542,32 @@ class _TagihanCard extends StatelessWidget {
     } catch (e) {
       return null;
     }
+  }
+
+  String _getPatientName() {
+    try {
+      final reg = tagihan.registrasi;
+      if (reg != null && reg['pasien'] is Map) {
+        final pasien = reg['pasien'] as Map;
+        return pasien['nama']?.toString() ?? 'Pasien #${tagihan.registrasiId}';
+      }
+    } catch (e) {
+      // Ignore
+    }
+    return 'Pasien #${tagihan.registrasiId}';
+  }
+
+  String _getMRNumber() {
+    try {
+      final reg = tagihan.registrasi;
+      if (reg != null && reg['pasien'] is Map) {
+        final pasien = reg['pasien'] as Map;
+        return pasien['mrn']?.toString() ?? '-';
+      }
+    } catch (e) {
+      // Ignore
+    }
+    return '-';
   }
 
   @override
@@ -502,39 +609,81 @@ class _TagihanCard extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            tagihan.noInvoice,
+                            _getPatientName(),
                             style: const TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.bold,
                               color: kTextDark,
                             ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
                           const SizedBox(height: 4),
-                          Text(
-                            'Pasien #${tagihan.registrasiId}',
-                            style: const TextStyle(
-                              fontSize: 14,
-                              color: kTextGrey,
-                            ),
+                          Row(
+                            children: [
+                              const Icon(
+                                Icons.badge,
+                                size: 14,
+                                color: kTextGrey,
+                              ),
+                              const SizedBox(width: 4),
+                              Flexible(
+                                child: Text(
+                                  _getMRNumber(),
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    color: kTextGrey,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              const Icon(
+                                Icons.receipt,
+                                size: 14,
+                                color: kTextGrey,
+                              ),
+                              const SizedBox(width: 4),
+                              Flexible(
+                                child: Text(
+                                  tagihan.noInvoice,
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    color: kTextGrey,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
                           ),
                         ],
                       ),
                     ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 6,
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(
+                        maxWidth: 120,
+                        minWidth: 0,
                       ),
-                      decoration: BoxDecoration(
-                        color: statusColor.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: Text(
-                        _getStatusText(tagihan.statusPembayaran),
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.bold,
-                          color: statusColor,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 6,
+                        ),
+                        decoration: BoxDecoration(
+                          color: statusColor.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Text(
+                          _getStatusText(tagihan.statusPembayaran),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                            color: statusColor,
+                          ),
                         ),
                       ),
                     ),
@@ -550,18 +699,24 @@ class _TagihanCard extends StatelessWidget {
                   child: Column(
                     children: [
                       Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          const Text(
-                            'Total Biaya',
-                            style: TextStyle(fontSize: 13, color: kTextGrey),
+                          const Expanded(
+                            child: Text(
+                              'Total Biaya',
+                              style: TextStyle(fontSize: 13, color: kTextGrey),
+                            ),
                           ),
-                          Text(
-                            'Rp ${NumberFormat('#,###', 'id_ID').format(totalBiaya)}',
-                            style: const TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.bold,
-                              color: kTextDark,
+                          Expanded(
+                            child: Text(
+                              'Rp ${NumberFormat('#,###', 'id_ID').format(totalBiaya)}',
+                              textAlign: TextAlign.right,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold,
+                                color: kTextDark,
+                              ),
                             ),
                           ),
                         ],
@@ -571,15 +726,25 @@ class _TagihanCard extends StatelessWidget {
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            const Text(
-                              'Deposit',
-                              style: TextStyle(fontSize: 13, color: kTextGrey),
+                            const Expanded(
+                              child: Text(
+                                'Deposit',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: kTextGrey,
+                                ),
+                              ),
                             ),
-                            Text(
-                              'Rp ${NumberFormat('#,###', 'id_ID').format(deposit)}',
-                              style: const TextStyle(
-                                fontSize: 13,
-                                color: kSuccessColor,
+                            Expanded(
+                              child: Text(
+                                'Rp ${NumberFormat('#,###', 'id_ID').format(deposit)}',
+                                textAlign: TextAlign.right,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontSize: 13,
+                                  color: kSuccessColor,
+                                ),
                               ),
                             ),
                           ],
@@ -587,24 +752,30 @@ class _TagihanCard extends StatelessWidget {
                       ],
                       const Divider(height: 16),
                       Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          const Text(
-                            'Sisa Bayar',
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.bold,
-                              color: kTextDark,
+                          const Expanded(
+                            child: Text(
+                              'Sisa Bayar',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold,
+                                color: kTextDark,
+                              ),
                             ),
                           ),
-                          Text(
-                            'Rp ${NumberFormat('#,###', 'id_ID').format(sisaBiaya)}',
-                            style: TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.bold,
-                              color: sisaBiaya > 0
-                                  ? kDangerColor
-                                  : kSuccessColor,
+                          Expanded(
+                            child: Text(
+                              'Rp ${NumberFormat('#,###', 'id_ID').format(sisaBiaya)}',
+                              textAlign: TextAlign.right,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.bold,
+                                color: sisaBiaya > 0
+                                    ? kDangerColor
+                                    : kSuccessColor,
+                              ),
                             ),
                           ),
                         ],
@@ -613,22 +784,40 @@ class _TagihanCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 12),
-                Row(
+                Wrap(
+                  spacing: 16,
+                  runSpacing: 6,
+                  crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
-                    Icon(Icons.calendar_today, size: 14, color: kTextGrey),
-                    const SizedBox(width: 6),
-                    Text(
-                      tanggal != null
-                          ? DateFormat('d MMM yyyy').format(tanggal)
-                          : '-',
-                      style: const TextStyle(fontSize: 12, color: kTextGrey),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.calendar_today, size: 14, color: kTextGrey),
+                        const SizedBox(width: 6),
+                        Text(
+                          tanggal != null
+                              ? DateFormat('d MMM yyyy').format(tanggal)
+                              : '-',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: kTextGrey,
+                          ),
+                        ),
+                      ],
                     ),
-                    const SizedBox(width: 16),
-                    Icon(Icons.badge, size: 14, color: kTextGrey),
-                    const SizedBox(width: 6),
-                    Text(
-                      'Reg #${tagihan.registrasiId}',
-                      style: const TextStyle(fontSize: 12, color: kTextGrey),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.badge, size: 14, color: kTextGrey),
+                        const SizedBox(width: 6),
+                        Text(
+                          'Reg #${tagihan.registrasiId}',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: kTextGrey,
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),

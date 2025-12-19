@@ -18,6 +18,7 @@ class PatientListLoaded extends PatientState {
   final String searchQuery;
   final String? activeFilter; // null, 'registered', 'unregistered'
   final bool isLoadingRegistrations; // true ketika sedang fetch registrations
+  final int? registrasiCount;
 
   const PatientListLoaded({
     required this.patients,
@@ -25,6 +26,7 @@ class PatientListLoaded extends PatientState {
     this.searchQuery = '',
     this.activeFilter,
     this.isLoadingRegistrations = false,
+    this.registrasiCount,
   });
 
   PatientListLoaded copyWith({
@@ -34,13 +36,16 @@ class PatientListLoaded extends PatientState {
     String? activeFilter,
     bool clearFilter = false,
     bool? isLoadingRegistrations,
+    int? registrasiCount,
   }) {
     return PatientListLoaded(
       patients: patients ?? this.patients,
       filteredPatients: filteredPatients ?? this.filteredPatients,
       searchQuery: searchQuery ?? this.searchQuery,
       activeFilter: clearFilter ? null : (activeFilter ?? this.activeFilter),
-      isLoadingRegistrations: isLoadingRegistrations ?? this.isLoadingRegistrations,
+      isLoadingRegistrations:
+          isLoadingRegistrations ?? this.isLoadingRegistrations,
+      registrasiCount: registrasiCount ?? this.registrasiCount,
     );
   }
 
@@ -49,8 +54,10 @@ class PatientListLoaded extends PatientState {
   int get femaleCount => patients.where((p) => p.jenisKelamin == 'P').length;
 
   // Hitung berdasarkan array registrasi dari API
-  int get registeredCount => patients.where((p) => p.isRegistered).length;
-  int get unregisteredCount => patients.where((p) => !p.isRegistered).length;
+  int get registeredCount =>
+      registrasiCount ?? patients.where((p) => p.isRegistered).length;
+  int get unregisteredCount =>
+      (patients.length - registeredCount).clamp(0, patients.length);
 }
 
 class PatientDetailLoaded extends PatientState {

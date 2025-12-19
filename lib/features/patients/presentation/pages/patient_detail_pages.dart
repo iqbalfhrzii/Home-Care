@@ -7,6 +7,7 @@ import 'package:homecare_mobile/features/patients/presentation/bloc/patient_bloc
 import 'package:homecare_mobile/shared/app_injections.dart';
 import 'package:homecare_mobile/features/patients/domain/models/pasien.dart';
 import 'package:homecare_mobile/features/patients/data/repositories/pasien_repository.dart';
+import 'package:homecare_mobile/features/schedules/data/repositories/registrasi_repository.dart';
 
 const Color kPrimaryColor = Color(0xFF004B8C);
 const Color kPrimaryLight = Color(0xFF0063B2);
@@ -98,33 +99,48 @@ class _PatientDetailViewState extends State<_PatientDetailView> {
 
     setState(() => _loadingRegistration = true);
     try {
-      // Dummy latest registration for display (no API)
-      await Future.delayed(const Duration(milliseconds: 300));
-      final now = DateTime.now();
-      final reg = _RegistrationInfo(
-        id: 1000 + patient.id,
-        noReg: 'REG-${patient.id.toString().padLeft(4, '0')}',
-        tglJamReg: now.toIso8601String(),
-        jenisKunjungan: 'Kunjungan Rumah',
-        tipePasien: 'Umum',
-        kodePoli: 'POLI-UMUM',
-        dokterId: 'DR-001',
-        penanggungNama: patient.nama,
-        penanggungTelepon: patient.telepon,
-        penanggungAlamat: patient.alamat,
-        penanggungNoPegawai: null,
-        eselon: null,
-      );
-      if (mounted) {
+      final repository = getIt<RegistrasiRepository>();
+      final latestReg = await repository.getLatestRegistrasiForPatient(patient.id);
+      
+      if (latestReg != null && mounted) {
+        // Fetch raw data to get nested penanggung object
+        final rawMap = await repository.getRegistrasiRawById(latestReg.id);
+        Map<String, dynamic>? penanggungData;
+        if (rawMap != null && rawMap.containsKey('penanggung') && rawMap['penanggung'] is Map) {
+          penanggungData = Map<String, dynamic>.from(rawMap['penanggung']);
+        }
+        
+        final reg = _RegistrationInfo(
+          id: latestReg.id,
+          noReg: latestReg.noReg ?? '',
+          tglJamReg: latestReg.tglJamReg ?? DateTime.now().toIso8601String(),
+          jenisKunjungan: latestReg.jenisKunjungan ?? 'HOME CARE',
+          tipePasien: latestReg.tipePasien ?? 'UMUM',
+          kodePoli: latestReg.kodePoli,
+          dokterId: latestReg.dokterId?.toString(),
+          penanggungNama: penanggungData?['nama']?.toString() ?? latestReg.penanggungNama,
+          penanggungTelepon: penanggungData?['telepon']?.toString() ?? latestReg.penanggungTelepon,
+          penanggungAlamat: penanggungData?['alamat']?.toString() ?? latestReg.penanggungAlamat,
+          penanggungNoPegawai: penanggungData?['no_pegawai']?.toString() ?? latestReg.penanggungNoPegawai,
+          eselon: latestReg.eselon,
+        );
         setState(() {
           _latestRegistration = reg;
+          _loadingRegistration = false;
+        });
+      } else if (mounted) {
+        setState(() {
+          _latestRegistration = null;
           _loadingRegistration = false;
         });
       }
     } catch (e) {
       debugPrint('❌ Error loading registration: $e');
       if (mounted) {
-        setState(() => _loadingRegistration = false);
+        setState(() {
+          _latestRegistration = null;
+          _loadingRegistration = false;
+        });
       }
     }
   }
@@ -591,14 +607,15 @@ class _PatientDetailViewState extends State<_PatientDetailView> {
             ),
           ),
           const SizedBox(height: 8),
-          _buildRegInfoRow('Nama', reg.penanggungNama ?? '-'),
-          _buildRegInfoRow('Telepon', reg.penanggungTelepon ?? '-'),
-          _buildRegInfoRow('Alamat', reg.penanggungAlamat ?? '-'),
+          if (reg.penanggungNama != null && reg.penanggungNama!.isNotEmpty)
+            _buildRegInfoRow('Nama', reg.penanggungNama!),
           if (reg.penanggungNoPegawai != null &&
               reg.penanggungNoPegawai!.isNotEmpty)
             _buildRegInfoRow('No. Pegawai', reg.penanggungNoPegawai!),
-          if (reg.eselon != null && reg.eselon!.isNotEmpty)
-            _buildRegInfoRow('Eselon', reg.eselon!),
+          if (reg.penanggungTelepon != null && reg.penanggungTelepon!.isNotEmpty)
+            _buildRegInfoRow('No. Telepon', reg.penanggungTelepon!),
+          if (reg.penanggungAlamat != null && reg.penanggungAlamat!.isNotEmpty)
+            _buildRegInfoRow('Alamat', reg.penanggungAlamat!),
         ],
       ),
     );
@@ -684,9 +701,6 @@ class _PatientDetailViewState extends State<_PatientDetailView> {
                 if (!context.mounted) return;
                 if (result != null) {
                   debugPrint('✅ Processing result: $result');
-
-                  await _reloadPatientData(patient.id.toString());
-                  debugPrint('✅ Patient data reloaded');
 
                   await _loadRegistrationData();
                   debugPrint('✅ Registration data reloaded');

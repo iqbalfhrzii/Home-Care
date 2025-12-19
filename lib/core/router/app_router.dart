@@ -6,6 +6,7 @@ import 'package:homecare_mobile/core/utils/logger.dart';
 import 'package:homecare_mobile/features/auth/presentation/bloc/auth_bloc.dart';
 import 'package:homecare_mobile/features/auth/presentation/pages/login_page.dart';
 import 'package:homecare_mobile/features/reports/presentation/pages/report_list_page.dart';
+import 'package:homecare_mobile/features/reports/presentation/pages/tagihan_form_page.dart';
 import 'package:homecare_mobile/features/schedules/presentation/pages/schedule_list_page.dart';
 import 'package:homecare_mobile/pages/home_page.dart';
 import 'package:homecare_mobile/shared/presentation/pages/main_page.dart';
@@ -172,6 +173,23 @@ class AppRouter {
               key: state.pageKey,
               child: const ReportListPage(),
             ),
+            routes: [
+              GoRoute(
+                path: 'tagihan/create',
+                name: 'tagihanCreate',
+                builder: (context, state) {
+                  final extra = state.extra as Map<String, dynamic>?;
+                  final registrasiId = extra?['registrasiId'] as int? ?? 0;
+                  final registrasiData = extra?['registrasiData'];
+                  final existingTagihan = extra?['existingTagihan'];
+                  return TagihanFormPage(
+                    registrasiId: registrasiId,
+                    registrasiData: registrasiData,
+                    existingTagihan: existingTagihan,
+                  );
+                },
+              ),
+            ],
           ),
         ],
       ),

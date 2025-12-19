@@ -1,4 +1,5 @@
 // lib/main.dart
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -16,7 +17,28 @@ void main() async {
   await initializeDateFormatting('id_ID', null);
 
   logger.i('App started');
-  runApp(const MyApp());
+
+  // Global error handlers to capture uncaught exceptions and report to console/logger
+  FlutterError.onError = (FlutterErrorDetails details) {
+    FlutterError.presentError(details);
+    logger.e(
+      'FlutterError',
+      error: details.exception,
+      stackTrace: details.stack,
+    );
+  };
+
+  runZonedGuarded(
+    () {
+      runApp(const MyApp());
+    },
+    (error, stack) {
+      logger.e('UncaughtZoneError', error: error, stackTrace: stack);
+      // Also print to console so `flutter run` / logcat captures it
+      debugPrint('Uncaught error: $error');
+      debugPrintStack(stackTrace: stack);
+    },
+  );
 }
 
 class MyApp extends StatefulWidget {

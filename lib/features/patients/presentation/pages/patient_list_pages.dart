@@ -165,39 +165,39 @@ class _PatientListViewState extends State<_PatientListView> {
       debugPrint('🔍 Registration result: $result');
 
       if (result != null && mounted) {
-      debugPrint('✅ Processing registration result: $result');
+        debugPrint('✅ Processing registration result: $result');
 
-      // Clear repository caches to force fresh fetch
-      try {
-        getIt<RegistrasiRepository>().clearCache();
-        getIt<PasienRepository>().clearCache();
-      } catch (_) {}
+        // Clear repository caches to force fresh fetch
+        try {
+          getIt<RegistrasiRepository>().clearCache();
+          getIt<PasienRepository>().clearCache();
+        } catch (_) {}
 
-      // Trigger reload to fetch latest data from API
-      await Future.delayed(const Duration(milliseconds: 150));
-      context.read<PatientBloc>().add(const LoadPatients());
-      debugPrint('✅ RefreshPatients event triggered');
+        // Trigger reload to fetch latest data from API
+        await Future.delayed(const Duration(milliseconds: 150));
+        context.read<PatientBloc>().add(const LoadPatients());
+        debugPrint('✅ RefreshPatients event triggered');
 
-      String message;
-      Color backgroundColor;
+        String message;
+        Color backgroundColor;
 
-      switch (result) {
-        case 'created':
-          message = 'Registrasi untuk ${patient.nama} berhasil';
-          backgroundColor = kSuccessColor;
-          break;
-        case 'updated':
-          message = 'Registrasi untuk ${patient.nama} berhasil diupdate';
-          backgroundColor = kSuccessColor;
-          break;
-        case 'canceled':
-          message = 'Registrasi untuk ${patient.nama} berhasil dibatalkan';
-          backgroundColor = Colors.orange;
-          break;
-        default:
-          message = 'Operasi berhasil';
-          backgroundColor = kSuccessColor;
-      }
+        switch (result) {
+          case 'created':
+            message = 'Registrasi untuk ${patient.nama} berhasil';
+            backgroundColor = kSuccessColor;
+            break;
+          case 'updated':
+            message = 'Registrasi untuk ${patient.nama} berhasil diupdate';
+            backgroundColor = kSuccessColor;
+            break;
+          case 'canceled':
+            message = 'Registrasi untuk ${patient.nama} berhasil dibatalkan';
+            backgroundColor = Colors.orange;
+            break;
+          default:
+            message = 'Operasi berhasil';
+            backgroundColor = kSuccessColor;
+        }
 
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(message), backgroundColor: backgroundColor),
@@ -293,6 +293,15 @@ class _PatientListViewState extends State<_PatientListView> {
                 duration: const Duration(seconds: 2),
               ),
             );
+
+            // Auto-refresh the list after a delete operation so UI updates immediately
+            if (state.type == PatientOperationType.delete) {
+              // Small delay to allow any navigation/pop to complete
+              Future.delayed(const Duration(milliseconds: 150), () {
+                if (mounted)
+                  context.read<PatientBloc>().add(const RefreshPatients());
+              });
+            }
           } else if (state is PatientError) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
@@ -304,6 +313,8 @@ class _PatientListViewState extends State<_PatientListView> {
           }
         },
         builder: (context, state) {
+          final bool hideTop = state is PatientLoading;
+
           return Column(
             children: [
               _buildHeader(),
@@ -359,6 +370,12 @@ class _PatientListViewState extends State<_PatientListView> {
     }
 
     if (state is PatientListLoaded) {
+      // If registration-derived data is still loading, show a full-page loader
+      if (state.isLoadingRegistrations) {
+        return const Center(
+          child: CircularProgressIndicator(color: kPrimaryColor),
+        );
+      }
       if (state.filteredPatients.isEmpty) {
         return Center(
           child: Column(
@@ -386,10 +403,8 @@ class _PatientListViewState extends State<_PatientListView> {
           ? _buildDesktopTable(state.filteredPatients)
           : _buildMobileList(state.filteredPatients);
 
-      // Show loading overlay if registrations are being fetched
-      if (state.isLoadingRegistrations) {
-        return Stack(children: [listWidget]);
-      }
+      // Previously hid the list while registration-derived data loaded.
+      // Rollback: always show the list so patient UI remains available.
 
       return RefreshIndicator(
         onRefresh: () async {
@@ -411,43 +426,54 @@ class _PatientListViewState extends State<_PatientListView> {
           Expanded(
             child: _buildStatusCard(
               'Total Pasien',
-              state.totalPatients.toString(),
+              (state.isLoadingRegistrations ? 0 : state.totalPatients)
+                  .toString(),
               kPrimaryColor,
               Icons.people,
               isActive: state.activeFilter == null,
-              onTap: () {
-                context.read<PatientBloc>().add(const FilterPatients(null));
-              },
+              onTap: state.isLoadingRegistrations
+                  ? null
+                  : () {
+                      context.read<PatientBloc>().add(
+                        const FilterPatients(null),
+                      );
+                    },
             ),
           ),
           const SizedBox(width: 12),
           Expanded(
             child: _buildStatusCard(
               'Teregistrasi',
-              state.registeredCount.toString(),
+              (state.isLoadingRegistrations ? 0 : state.registeredCount)
+                  .toString(),
               const Color(0xFF22C55E),
               Icons.check_circle,
               isActive: state.activeFilter == 'registered',
-              onTap: () {
-                context.read<PatientBloc>().add(
-                  const FilterPatients('registered'),
-                );
-              },
+              onTap: state.isLoadingRegistrations
+                  ? null
+                  : () {
+                      context.read<PatientBloc>().add(
+                        const FilterPatients('registered'),
+                      );
+                    },
             ),
           ),
           const SizedBox(width: 12),
           Expanded(
             child: _buildStatusCard(
               'Belum Registrasi',
-              state.unregisteredCount.toString(),
+              (state.isLoadingRegistrations ? 0 : state.unregisteredCount)
+                  .toString(),
               const Color(0xFFF59E0B),
               Icons.pending,
               isActive: state.activeFilter == 'unregistered',
-              onTap: () {
-                context.read<PatientBloc>().add(
-                  const FilterPatients('unregistered'),
-                );
-              },
+              onTap: state.isLoadingRegistrations
+                  ? null
+                  : () {
+                      context.read<PatientBloc>().add(
+                        const FilterPatients('unregistered'),
+                      );
+                    },
             ),
           ),
         ],
@@ -569,7 +595,7 @@ class _PatientListViewState extends State<_PatientListView> {
                 return TextField(
                   controller: _searchController,
                   decoration: InputDecoration(
-                    hintText: 'Cari nama, nomor RM, NIK, atau BPJS...',
+                    hintText: 'Cari nama atau nomor RM...',
                     prefixIcon: const Icon(Icons.search, color: kTextGrey),
                     suffixIcon: value.text.isNotEmpty
                         ? IconButton(
@@ -615,6 +641,57 @@ class _PatientListViewState extends State<_PatientListView> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildFilterChips(PatientListLoaded state) {
+    Widget chip(String label, String? value) {
+      final bool selected =
+          state.activeFilter == value ||
+          (value == null && state.activeFilter == null);
+      final Color bg = selected ? kPrimaryColor : kWhite;
+      final Color fg = selected ? kWhite : kTextGrey;
+
+      return GestureDetector(
+        onTap: () {
+          context.read<PatientBloc>().add(FilterPatients(value));
+        },
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          margin: const EdgeInsets.only(right: 8),
+          decoration: BoxDecoration(
+            color: bg,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: selected
+                  ? kPrimaryColor
+                  : kTextGrey.withValues(alpha: 0.25),
+            ),
+          ),
+          child: Text(
+            label,
+            style: TextStyle(
+              color: fg,
+              fontWeight: selected ? FontWeight.w700 : FontWeight.normal,
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+      color: kWhite,
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: [
+            chip('Semua', null),
+            chip('Teregistrasi', 'registered'),
+            chip('Belum Registrasi', 'unregistered'),
+          ],
+        ),
       ),
     );
   }
